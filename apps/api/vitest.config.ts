@@ -9,7 +9,11 @@ process.env.DATABASE_MIGRATION_URL = bancoDeTeste(process.env.DATABASE_MIGRATION
 
 export default defineConfig({
   test: {
-    env: { NODE_ENV: 'test', DATABASE_URL: process.env.DATABASE_URL, DATABASE_MIGRATION_URL: process.env.DATABASE_MIGRATION_URL },
+    env: {
+      NODE_ENV: 'test',
+      DATABASE_URL: process.env.DATABASE_URL,
+      DATABASE_MIGRATION_URL: process.env.DATABASE_MIGRATION_URL,
+    },
     globalSetup: ['./vitest.setup.ts'],
     fileParallelism: false,
   },

@@ -1,4 +1,12 @@
-import { ACESSO_TOTAL, combinarAcessos, funcaoInputSchema, funcaoSchema, idParamSchema, type Acessos, type Funcao } from '@mobios/shared';
+import {
+  ACESSO_TOTAL,
+  combinarAcessos,
+  funcaoInputSchema,
+  funcaoSchema,
+  idParamSchema,
+  type Acessos,
+  type Funcao,
+} from '@mobios/shared';
 import { asc, count, eq } from 'drizzle-orm';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
@@ -9,7 +17,13 @@ import { ErroHttp, naoEncontrado } from '../../lib/erros.js';
 
 async function listar(tx: Tx, id?: string): Promise<Funcao[]> {
   const lista = await tx
-    .select({ id: funcoes.id, nome: funcoes.nome, admin: funcoes.admin, ativa: funcoes.ativa, usuarios: count(usuarioFuncoes.usuarioId) })
+    .select({
+      id: funcoes.id,
+      nome: funcoes.nome,
+      admin: funcoes.admin,
+      ativa: funcoes.ativa,
+      usuarios: count(usuarioFuncoes.usuarioId),
+    })
     .from(funcoes)
     .leftJoin(usuarioFuncoes, eq(usuarioFuncoes.funcaoId, funcoes.id))
     .where(id ? eq(funcoes.id, id) : undefined)
@@ -22,7 +36,11 @@ async function listar(tx: Tx, id?: string): Promise<Funcao[]> {
     .map((f) => ({
       ...f,
       // O Administrador não guarda níveis: tem acesso total por regra.
-      acessos: f.admin ? ACESSO_TOTAL : combinarAcessos(niveis.filter((n) => n.funcaoId === f.id).map((n) => ({ [n.modulo]: n.nivel }) as Partial<Acessos>)),
+      acessos: f.admin
+        ? ACESSO_TOTAL
+        : combinarAcessos(
+            niveis.filter((n) => n.funcaoId === f.id).map((n) => ({ [n.modulo]: n.nivel }) as Partial<Acessos>),
+          ),
     }));
 }
 
@@ -31,26 +49,38 @@ export const funcoesRoutes: FastifyPluginAsyncZod = async (app) => {
   app.addHook('onRequest', app.autenticar);
   app.addHook('onRequest', app.exigirAdmin);
 
-  app.get('/', { schema: { response: { 200: z.array(funcaoSchema) } } }, async (req) => withTenant(req.user.tid, (tx) => listar(tx)));
+  app.get('/', { schema: { response: { 200: z.array(funcaoSchema) } } }, async (req) =>
+    withTenant(req.user.tid, (tx) => listar(tx)),
+  );
 
   app.post('/', { schema: { body: funcaoInputSchema, response: { 201: funcaoSchema } } }, async (req, reply) => {
     const funcao = await withTenant(req.user.tid, async (tx) => {
-      const [criada] = await tx.insert(funcoes).values({ nome: req.body.nome, ativa: req.body.ativa }).returning({ id: funcoes.id });
+      const [criada] = await tx
+        .insert(funcoes)
+        .values({ nome: req.body.nome, ativa: req.body.ativa })
+        .returning({ id: funcoes.id });
       await gravarAcessos(tx, criada!.id, req.body.acessos);
       return (await listar(tx, criada!.id))[0]!;
     });
     return reply.code(201).send(funcao);
   });
 
-  app.put('/:id', { schema: { params: idParamSchema, body: funcaoInputSchema, response: { 200: funcaoSchema } } }, async (req) =>
-    withTenant(req.user.tid, async (tx) => {
-      const [atual] = await tx.select({ admin: funcoes.admin }).from(funcoes).where(eq(funcoes.id, req.params.id));
-      if (!atual) throw naoEncontrado('Função');
-      if (atual.admin) throw new ErroHttp(400, 'A função Administrador é fixa: tem acesso total e não pode ser alterada.');
-      // Desativar retira na hora o acesso que vinha desta função (decisão do produto).
-      await tx.update(funcoes).set({ nome: req.body.nome, ativa: req.body.ativa, atualizadoEm: new Date() }).where(eq(funcoes.id, req.params.id));
-      await gravarAcessos(tx, req.params.id, req.body.acessos);
-      return (await listar(tx, req.params.id))[0]!;
-    }),
+  app.put(
+    '/:id',
+    { schema: { params: idParamSchema, body: funcaoInputSchema, response: { 200: funcaoSchema } } },
+    async (req) =>
+      withTenant(req.user.tid, async (tx) => {
+        const [atual] = await tx.select({ admin: funcoes.admin }).from(funcoes).where(eq(funcoes.id, req.params.id));
+        if (!atual) throw naoEncontrado('Função');
+        if (atual.admin)
+          throw new ErroHttp(400, 'A função Administrador é fixa: tem acesso total e não pode ser alterada.');
+        // Desativar retira na hora o acesso que vinha desta função (decisão do produto).
+        await tx
+          .update(funcoes)
+          .set({ nome: req.body.nome, ativa: req.body.ativa, atualizadoEm: new Date() })
+          .where(eq(funcoes.id, req.params.id));
+        await gravarAcessos(tx, req.params.id, req.body.acessos);
+        return (await listar(tx, req.params.id))[0]!;
+      }),
   );
 };

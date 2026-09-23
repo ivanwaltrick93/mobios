@@ -8,7 +8,8 @@ import { hojeIso } from './formatos.js';
  * Estoque, compras, vendas e O.S. usarão estes cadastros, mas não estão aqui.
  */
 
-const chaves = <T extends Record<string, unknown>>(o: T) => Object.keys(o) as [keyof T & string, ...(keyof T & string)[]];
+const chaves = <T extends Record<string, unknown>>(o: T) =>
+  Object.keys(o) as [keyof T & string, ...(keyof T & string)[]];
 const vazioComoNulo = (v: unknown) => (v === '' || v === undefined ? null : v);
 const textoOpcional = (max: number) =>
   z
@@ -126,7 +127,11 @@ export const materialInputSchema = z.object({
   codigoBarras: z
     .preprocess(vazioComoNulo, z.string().trim().nullable())
     .refine((v) => !v || gtinValido(v), 'Código de barras inválido (EAN/GTIN de 8, 12, 13 ou 14 dígitos)'),
-  descricao: z.string({ error: 'Informe a descrição' }).trim().min(3, 'Informe a descrição').max(120, 'Máximo de 120 caracteres'),
+  descricao: z
+    .string({ error: 'Informe a descrição' })
+    .trim()
+    .min(3, 'Informe a descrição')
+    .max(120, 'Máximo de 120 caracteres'),
   descricaoCurta: textoOpcional(40),
   tipoId: z.uuid('Escolha o tipo'),
   categoriaId: z.uuid('Escolha a categoria'),
@@ -266,10 +271,15 @@ const PRECO_MAXIMO = 9_999_999_999;
 const dataIso = (msg: string) => z.iso.date(msg);
 const dataFimOpcional = z.preprocess(vazioComoNulo, dataIso('Data inválida').nullable());
 
-const centavos = z.number({ error: 'Informe o preço' }).int('Informe o preço em centavos').min(0, 'O preço não pode ser negativo').max(PRECO_MAXIMO, 'Preço alto demais');
+const centavos = z
+  .number({ error: 'Informe o preço' })
+  .int('Informe o preço em centavos')
+  .min(0, 'O preço não pode ser negativo')
+  .max(PRECO_MAXIMO, 'Preço alto demais');
 
 const vigenciaValida = <T extends { dataInicio: string; dataFim: string | null }>(v: T, ctx: z.RefinementCtx) => {
-  if (v.dataFim && v.dataFim < v.dataInicio) ctx.addIssue({ code: 'custom', path: ['dataFim'], message: 'O fim deve ser igual ou posterior ao início' });
+  if (v.dataFim && v.dataFim < v.dataInicio)
+    ctx.addIssue({ code: 'custom', path: ['dataFim'], message: 'O fim deve ser igual ou posterior ao início' });
 };
 
 /**
@@ -296,13 +306,27 @@ export type PrecoInput = z.input<typeof precoInputSchema>;
 export const precoAtualizarSchema = z.object({ precoCentavos: centavos, dataFim: dataFimOpcional });
 
 export const precoEncerrarSchema = z.object({ dataFim: dataIso('Informe a data de encerramento') });
-export const precoCancelarSchema = z.object({ motivo: z.string({ error: 'Informe o motivo' }).trim().min(3, 'Informe o motivo').max(200, 'Máximo de 200 caracteres') });
+export const precoCancelarSchema = z.object({
+  motivo: z
+    .string({ error: 'Informe o motivo' })
+    .trim()
+    .min(3, 'Informe o motivo')
+    .max(200, 'Máximo de 200 caracteres'),
+});
 
-export const SITUACOES_PRECO = { futuro: 'Futuro', vigente: 'Vigente', encerrado: 'Encerrado', cancelado: 'Cancelado' } as const;
+export const SITUACOES_PRECO = {
+  futuro: 'Futuro',
+  vigente: 'Vigente',
+  encerrado: 'Encerrado',
+  cancelado: 'Cancelado',
+} as const;
 export type SituacaoPreco = keyof typeof SITUACOES_PRECO;
 
 /** Situação de uma vigência numa data (padrão: hoje). O fim é inclusivo; fim vazio = aberta. */
-export function situacaoPreco(p: { dataInicio: string; dataFim: string | null; cancelado: boolean }, data = hojeIso()): SituacaoPreco {
+export function situacaoPreco(
+  p: { dataInicio: string; dataFim: string | null; cancelado: boolean },
+  data = hojeIso(),
+): SituacaoPreco {
   if (p.cancelado) return 'cancelado';
   if (p.dataInicio > data) return 'futuro';
   if (p.dataFim && p.dataFim < data) return 'encerrado';
@@ -338,7 +362,10 @@ export const precoVigenteQuerySchema = z
     data: z.iso.date('Data inválida').optional(),
   })
   .refine((q) => q.materialId || q.sku, { message: 'Informe materialId ou sku', path: ['sku'] })
-  .refine((q) => q.tabelaPrecoId || q.tabela, { message: 'Informe tabelaPrecoId ou tabela (código)', path: ['tabela'] });
+  .refine((q) => q.tabelaPrecoId || q.tabela, {
+    message: 'Informe tabelaPrecoId ou tabela (código)',
+    path: ['tabela'],
+  });
 
 export const precoVigenteSchema = z.object({
   data: z.string(),

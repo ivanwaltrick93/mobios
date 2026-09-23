@@ -2,10 +2,12 @@ import type { Categoria, Deposito, Marca, TabelaPreco } from '@mobios/shared';
 import { useQuery } from '@tanstack/react-query';
 import { api } from './api';
 
-export const useCategorias = () => useQuery({ queryKey: ['categorias'], queryFn: () => api<Categoria[]>('/categorias') });
+export const useCategorias = () =>
+  useQuery({ queryKey: ['categorias'], queryFn: () => api<Categoria[]>('/categorias') });
 export const useMarcas = () => useQuery({ queryKey: ['marcas'], queryFn: () => api<Marca[]>('/marcas') });
 export const useDepositos = () => useQuery({ queryKey: ['depositos'], queryFn: () => api<Deposito[]>('/depositos') });
-export const useTabelasPreco = (habilitado = true) => useQuery({ queryKey: ['tabelas-preco'], queryFn: () => api<TabelaPreco[]>('/tabelas-preco'), enabled: habilitado });
+export const useTabelasPreco = (habilitado = true) =>
+  useQuery({ queryKey: ['tabelas-preco'], queryFn: () => api<TabelaPreco[]>('/tabelas-preco'), enabled: habilitado });
 
 export type NoCategoria = Categoria & { nivel: number; caminho: string };
 
@@ -31,7 +33,8 @@ export function descendentes(lista: Categoria[], id: string): Set<string> {
   let mudou = true;
   while (mudou) {
     mudou = false;
-    for (const c of lista) if (c.categoriaPaiId && ids.has(c.categoriaPaiId) && !ids.has(c.id)) (ids.add(c.id), (mudou = true));
+    for (const c of lista)
+      if (c.categoriaPaiId && ids.has(c.categoriaPaiId) && !ids.has(c.id)) (ids.add(c.id), (mudou = true));
   }
   return ids;
 }

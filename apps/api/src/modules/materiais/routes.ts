@@ -1,10 +1,26 @@
-import { idParamSchema, materialFiltroSchema, materialInputSchema, materialResumoSchema, materialSchema, statusInputSchema, type Material } from '@mobios/shared';
+import {
+  idParamSchema,
+  materialFiltroSchema,
+  materialInputSchema,
+  materialResumoSchema,
+  materialSchema,
+  statusInputSchema,
+  type Material,
+} from '@mobios/shared';
 import { and, asc, count, eq, ilike, or, sql, type SQL } from 'drizzle-orm';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { withTenant, type Tx } from '../../db/client.js';
 import { categorias, marcas, materiais, tiposMaterial } from '../../db/schema.js';
-import { alterarAtivo, atualizarVersionado, excluirSeNaoUsado, exigirVersao, naCategoriaOuAbaixo, nomeUsuario, validarReferencia } from '../../lib/cadastro.js';
+import {
+  alterarAtivo,
+  atualizarVersionado,
+  excluirSeNaoUsado,
+  exigirVersao,
+  naCategoriaOuAbaixo,
+  nomeUsuario,
+  validarReferencia,
+} from '../../lib/cadastro.js';
 import { naoEncontrado } from '../../lib/erros.js';
 
 const colunasResumo = {
@@ -60,7 +76,11 @@ async function carregar(tx: Tx, id: string): Promise<Material> {
 }
 
 /** Tipo, categoria e marca precisam existir na oficina e estar ativos (exceto os que o material já usa). */
-async function validarReferencias(tx: Tx, dados: { tipoId: string; categoriaId: string; marcaId: string | null }, atual?: Material) {
+async function validarReferencias(
+  tx: Tx,
+  dados: { tipoId: string; categoriaId: string; marcaId: string | null },
+  atual?: Material,
+) {
   await validarReferencia(tx, tiposMaterial, tiposMaterial.ativa, dados.tipoId, atual?.tipoId, 'Tipo de material');
   await validarReferencia(tx, categorias, categorias.ativa, dados.categoriaId, atual?.categoriaId, 'Categoria');
   await validarReferencia(tx, marcas, marcas.ativa, dados.marcaId, atual?.marcaId, 'Marca');
@@ -77,7 +97,12 @@ export const materiaisRoutes: FastifyPluginAsyncZod = async (app) => {
    */
   app.get(
     '/',
-    { schema: { querystring: materialFiltroSchema, response: { 200: z.object({ itens: z.array(materialResumoSchema), total: z.number() }) } } },
+    {
+      schema: {
+        querystring: materialFiltroSchema,
+        response: { 200: z.object({ itens: z.array(materialResumoSchema), total: z.number() }) },
+      },
+    },
     async (req) => {
       const { q, tipoId, categoriaId, marcaId, ativo, pagina, porPagina } = req.query;
       const filtros: (SQL | undefined)[] = [
@@ -112,39 +137,68 @@ export const materiaisRoutes: FastifyPluginAsyncZod = async (app) => {
     },
   );
 
-  app.get('/:id', { schema: { params: idParamSchema, response: { 200: materialSchema } } }, async (req) => withTenant(req.user.tid, (tx) => carregar(tx, req.params.id)));
+  app.get('/:id', { schema: { params: idParamSchema, response: { 200: materialSchema } } }, async (req) =>
+    withTenant(req.user.tid, (tx) => carregar(tx, req.params.id)),
+  );
 
-  app.post('/', { ...editar, schema: { body: materialInputSchema, response: { 201: materialSchema } } }, async (req, reply) => {
-    const { versao: _v, ...dados } = req.body;
-    const material = await withTenant(req.user.tid, async (tx) => {
-      await validarReferencias(tx, dados);
-      const [{ id }] = (await tx.insert(materiais).values({ ...dados, criadoPor: req.user.sub, atualizadoPor: req.user.sub }).returning({ id: materiais.id })) as [{ id: string }];
-      return carregar(tx, id);
-    });
-    return reply.code(201).send(material);
-  });
+  app.post(
+    '/',
+    { ...editar, schema: { body: materialInputSchema, response: { 201: materialSchema } } },
+    async (req, reply) => {
+      const { versao: _v, ...dados } = req.body;
+      const material = await withTenant(req.user.tid, async (tx) => {
+        await validarReferencias(tx, dados);
+        const [{ id }] = (await tx
+          .insert(materiais)
+          .values({ ...dados, criadoPor: req.user.sub, atualizadoPor: req.user.sub })
+          .returning({ id: materiais.id })) as [{ id: string }];
+        return carregar(tx, id);
+      });
+      return reply.code(201).send(material);
+    },
+  );
 
-  app.put('/:id', { ...editar, schema: { params: idParamSchema, body: materialInputSchema, response: { 200: materialSchema } } }, async (req) => {
-    const { versao, ...dados } = req.body;
-    return withTenant(req.user.tid, async (tx) => {
-      const atual = await carregar(tx, req.params.id);
-      await validarReferencias(tx, dados, atual);
-      await atualizarVersionado(tx, materiais, req.params.id, exigirVersao(versao), { ...dados, atualizadoPor: req.user.sub }, 'Material');
-      return carregar(tx, req.params.id);
-    });
-  });
+  app.put(
+    '/:id',
+    { ...editar, schema: { params: idParamSchema, body: materialInputSchema, response: { 200: materialSchema } } },
+    async (req) => {
+      const { versao, ...dados } = req.body;
+      return withTenant(req.user.tid, async (tx) => {
+        const atual = await carregar(tx, req.params.id);
+        await validarReferencias(tx, dados, atual);
+        await atualizarVersionado(
+          tx,
+          materiais,
+          req.params.id,
+          exigirVersao(versao),
+          { ...dados, atualizadoPor: req.user.sub },
+          'Material',
+        );
+        return carregar(tx, req.params.id);
+      });
+    },
+  );
 
-  app.patch('/:id/status', { ...editar, schema: { params: idParamSchema, body: statusInputSchema, response: { 200: materialSchema } } }, async (req) =>
-    withTenant(req.user.tid, async (tx) => {
-      await alterarAtivo(tx, materiais, materiais.ativo, req.params.id, req.body.ativo, req.user.sub, 'Material');
-      return carregar(tx, req.params.id);
-    }),
+  app.patch(
+    '/:id/status',
+    { ...editar, schema: { params: idParamSchema, body: statusInputSchema, response: { 200: materialSchema } } },
+    async (req) =>
+      withTenant(req.user.tid, async (tx) => {
+        await alterarAtivo(tx, materiais, materiais.ativo, req.params.id, req.body.ativo, req.user.sub, 'Material');
+        return carregar(tx, req.params.id);
+      }),
   );
 
   /** Só material nunca precificado pode ser excluído (o histórico de preços não se perde). */
   app.delete('/:id', { ...editar, schema: { params: idParamSchema } }, async (req, reply) => {
     await withTenant(req.user.tid, (tx) =>
-      excluirSeNaoUsado(tx, materiais, req.params.id, 'Material', 'Este material tem preços cadastrados e não pode ser excluído (o histórico é mantido). Inative-o.'),
+      excluirSeNaoUsado(
+        tx,
+        materiais,
+        req.params.id,
+        'Material',
+        'Este material tem preços cadastrados e não pode ser excluído (o histórico é mantido). Inative-o.',
+      ),
     );
     return reply.code(204).send();
   });

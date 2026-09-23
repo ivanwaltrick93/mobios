@@ -19,19 +19,19 @@ services:
       APP_DB_PASSWORD: ${APP_DB_PASSWORD:-mobios_app}
     ports:
       # Só na própria máquina, para o `pnpm dev` e ferramentas de banco.
-      - "127.0.0.1:${DB_PORT:-5432}:5432"
+      - '127.0.0.1:${DB_PORT:-5432}:5432'
     volumes:
       - db-data:/var/lib/postgresql/data
       - ./infra/db/init.sh:/docker-entrypoint-initdb.d/01-init.sh:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U mobios -d mobios"]
+      test: ['CMD-SHELL', 'pg_isready -U mobios -d mobios']
       interval: 5s
       retries: 10
 
   # Aplica as migrações e termina; a API só sobe depois que ele concluir com sucesso.
   migrate:
     <<: *api-image
-    command: ["node", "dist/db/migrate.js"]
+    command: ['node', 'dist/db/migrate.js']
     environment:
       DATABASE_MIGRATION_URL: postgres://mobios:${POSTGRES_PASSWORD:-mobios}@db:5432/mobios
       # Usados só na primeira instalação (banco sem usuários) para criar a oficina e o admin.
@@ -42,7 +42,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    restart: "no"
+    restart: 'no'
 
   api:
     <<: *api-image
@@ -65,7 +65,7 @@ services:
     image: mobios/web:local
     restart: unless-stopped
     ports:
-      - "${WEB_PORT:-8080}:80"
+      - '${WEB_PORT:-8080}:80'
     depends_on:
       api:
         condition: service_healthy

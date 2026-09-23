@@ -19,13 +19,18 @@ export function Materiais() {
   const tipos = useOpcoes('tiposMaterial');
   const categorias = useCategorias();
   const marcas = useMarcas();
-  const parametros = new URLSearchParams(Object.entries({ ...filtro, porPagina: String(Math.min(quantidade, 100)) }).filter(([, v]) => v));
+  const parametros = new URLSearchParams(
+    Object.entries({ ...filtro, porPagina: String(Math.min(quantidade, 100)) }).filter(([, v]) => v),
+  );
   const materiais = useQuery({
     queryKey: ['materiais', parametros.toString()],
     queryFn: () => api<{ itens: MaterialResumo[]; total: number }>(`/materiais?${parametros}`),
     placeholderData: keepPreviousData,
   });
-  const mudar = (campo: keyof typeof filtro, valor: string) => (setFiltro((f) => ({ ...f, [campo]: valor })), setQuantidade(POR_PAGINA));
+  const mudar = (campo: keyof typeof filtro, valor: string) => (
+    setFiltro((f) => ({ ...f, [campo]: valor })),
+    setQuantidade(POR_PAGINA)
+  );
   const dados = materiais.data;
 
   if (!pode('materiais')) return <Alerta>Você não tem permissão para acessar os materiais.</Alerta>;
@@ -47,8 +52,17 @@ export function Materiais() {
 
       <div className="space-y-3">
         <div className="relative">
-          <Search className="pointer-events-none absolute top-1/2 left-4 size-5 -translate-y-1/2 text-texto-suave" aria-hidden />
-          <Input className="h-12 pl-12 text-base" placeholder="SKU, descrição, código do fabricante ou de barras" aria-label="Buscar materiais" value={filtro.q} onChange={(e) => mudar('q', e.target.value)} />
+          <Search
+            className="pointer-events-none absolute top-1/2 left-4 size-5 -translate-y-1/2 text-texto-suave"
+            aria-hidden
+          />
+          <Input
+            className="h-12 pl-12 text-base"
+            placeholder="SKU, descrição, código do fabricante ou de barras"
+            aria-label="Buscar materiais"
+            value={filtro.q}
+            onChange={(e) => mudar('q', e.target.value)}
+          />
         </div>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Select aria-label="Tipo" value={filtro.tipoId} onChange={(e) => mudar('tipoId', e.target.value)}>
@@ -59,7 +73,11 @@ export function Materiais() {
               </option>
             ))}
           </Select>
-          <Select aria-label="Categoria" value={filtro.categoriaId} onChange={(e) => mudar('categoriaId', e.target.value)}>
+          <Select
+            aria-label="Categoria"
+            value={filtro.categoriaId}
+            onChange={(e) => mudar('categoriaId', e.target.value)}
+          >
             <option value="">Todas as categorias</option>
             {arvoreCategorias(categorias.data).map((c) => (
               <option key={c.id} value={c.id}>
@@ -85,25 +103,42 @@ export function Materiais() {
       </div>
 
       {dados && dados.itens.length === 0 ? (
-        <Vazio icone={<Package />} titulo={filtro.q || filtro.tipoId || filtro.categoriaId || filtro.marcaId ? 'Nenhum material encontrado' : 'Nenhum material cadastrado ainda'}>
+        <Vazio
+          icone={<Package />}
+          titulo={
+            filtro.q || filtro.tipoId || filtro.categoriaId || filtro.marcaId
+              ? 'Nenhum material encontrado'
+              : 'Nenhum material cadastrado ainda'
+          }
+        >
           {filtro.q ? 'Confira a grafia ou busque pelo SKU ou código do fabricante.' : undefined}
         </Vazio>
       ) : (
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {dados?.itens.map((m) => (
-            <Cartao key={m.id} className="relative flex flex-col gap-2 p-4 transition hover:border-borda-forte hover:shadow-md">
+            <Cartao
+              key={m.id}
+              className="relative flex flex-col gap-2 p-4 transition hover:border-borda-forte hover:shadow-md"
+            >
               <div className="flex items-start justify-between gap-2">
-                <span className="rounded bg-superficie-alt px-2 py-0.5 font-mono text-xs font-semibold text-texto">{m.sku}</span>
+                <span className="rounded bg-superficie-alt px-2 py-0.5 font-mono text-xs font-semibold text-texto">
+                  {m.sku}
+                </span>
                 <span className="flex gap-1">
                   {!m.ativo && <Selo>Inativo</Selo>}
                   <Selo tom="primario">{m.tipoNome}</Selo>
                 </span>
               </div>
-              <Link to={`/materiais/${m.id}`} className="font-semibold text-texto after:absolute after:inset-0 after:rounded-lg hover:text-primaria">
+              <Link
+                to={`/materiais/${m.id}`}
+                className="font-semibold text-texto after:absolute after:inset-0 after:rounded-lg hover:text-primaria"
+              >
                 {m.descricao}
               </Link>
               <p className="text-sm text-texto-suave">
-                {[m.marcaNome, m.categoriaNome, m.codigoFabricante && `Fab. ${m.codigoFabricante}`, m.unidade].filter(Boolean).join(' · ')}
+                {[m.marcaNome, m.categoriaNome, m.codigoFabricante && `Fab. ${m.codigoFabricante}`, m.unidade]
+                  .filter(Boolean)
+                  .join(' · ')}
               </p>
             </Cartao>
           ))}
@@ -116,11 +151,17 @@ export function Materiais() {
             Mostrando {dados.itens.length} de {dados.total.toLocaleString('pt-BR')} material(is)
           </TextoSuave>
           {dados.total > dados.itens.length && quantidade < 100 && (
-            <Botao variante="secundario" disabled={materiais.isFetching} onClick={() => setQuantidade((q) => q + POR_PAGINA)}>
+            <Botao
+              variante="secundario"
+              disabled={materiais.isFetching}
+              onClick={() => setQuantidade((q) => q + POR_PAGINA)}
+            >
               Mostrar mais
             </Botao>
           )}
-          {dados.total > dados.itens.length && quantidade >= 100 && <TextoSuave className="text-xs">Refine a busca ou os filtros para ver os demais.</TextoSuave>}
+          {dados.total > dados.itens.length && quantidade >= 100 && (
+            <TextoSuave className="text-xs">Refine a busca ou os filtros para ver os demais.</TextoSuave>
+          )}
         </div>
       )}
     </div>

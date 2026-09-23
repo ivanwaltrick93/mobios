@@ -6,7 +6,9 @@ import { responderImagem } from './imagem.js';
 
 // Marca da oficina (tema + logo). Sempre dentro de withTenant: o RLS escolhe a linha da oficina.
 
-const colunasTema = Object.fromEntries(CAMPOS_TEMA.map((c) => [c, tenantAparencia[c]])) as { [K in keyof Tema]: (typeof tenantAparencia)[K] };
+const colunasTema = Object.fromEntries(CAMPOS_TEMA.map((c) => [c, tenantAparencia[c]])) as {
+  [K in keyof Tema]: (typeof tenantAparencia)[K];
+};
 
 export async function lerTema(tx: Tx): Promise<Tema> {
   const [tema] = await tx.select(colunasTema).from(tenantAparencia);
@@ -30,6 +32,8 @@ export async function lerVersaoLogo(tx: Tx): Promise<string | null> {
 
 /** Responde com a imagem do logo (ou 404), com cache por versão/ETag. */
 export async function enviarLogo(tx: Tx, req: FastifyRequest, reply: FastifyReply) {
-  const [logo] = await tx.select({ conteudo: tenantLogos.conteudo, tipo: tenantLogos.tipo, atualizadoEm: tenantLogos.atualizadoEm }).from(tenantLogos);
+  const [logo] = await tx
+    .select({ conteudo: tenantLogos.conteudo, tipo: tenantLogos.tipo, atualizadoEm: tenantLogos.atualizadoEm })
+    .from(tenantLogos);
   return responderImagem(req, reply, logo, 'Nenhum logo cadastrado');
 }

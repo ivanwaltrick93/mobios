@@ -13,9 +13,13 @@ export function EstoqueMaterial({ material }: { material: Material }) {
   const pode = usePode();
   const editar = pode('estoque', 'editar');
   const [aberto, setAberto] = useState<{ depositoId: string; modo: 'ajuste' | 'historico' } | null>(null);
-  const saldos = useQuery({ queryKey: ['estoque', 'material', material.id], queryFn: () => api<Saldo[]>(`/estoque/material/${material.id}`) });
+  const saldos = useQuery({
+    queryKey: ['estoque', 'material', material.id],
+    queryFn: () => api<Saldo[]>(`/estoque/material/${material.id}`),
+  });
 
-  if (!material.controlaEstoque) return <Alerta>Este material não controla estoque (veja a etapa Controles do cadastro).</Alerta>;
+  if (!material.controlaEstoque)
+    return <Alerta>Este material não controla estoque (veja a etapa Controles do cadastro).</Alerta>;
   if (saldos.isPending) return <TextoSuave>Carregando…</TextoSuave>;
   if (saldos.isError) return <Alerta>{saldos.error.message}</Alerta>;
   if (saldos.data.length === 0) {
@@ -68,22 +72,39 @@ export function EstoqueMaterial({ material }: { material: Material }) {
               </span>
               <span className="flex flex-wrap items-center gap-4">
                 <span>
-                  Disponível <strong className={s.disponivel === 0 ? 'text-alerta' : ''}>{formatarQuantidade(s.disponivel)}</strong>
+                  Disponível{' '}
+                  <strong className={s.disponivel === 0 ? 'text-alerta' : ''}>
+                    {formatarQuantidade(s.disponivel)}
+                  </strong>
                 </span>
                 <span>
                   Reservado <strong>{formatarQuantidade(s.reservado)}</strong>
                 </span>
                 <span className="text-texto-suave">Físico {formatarQuantidade(s.total)}</span>
-                {editar && material.ativo && s.depositoAtivo && <BotaoLink onClick={() => setAberto({ depositoId: s.depositoId, modo: 'ajuste' })}>Ajustar</BotaoLink>}
+                {editar && material.ativo && s.depositoAtivo && (
+                  <BotaoLink onClick={() => setAberto({ depositoId: s.depositoId, modo: 'ajuste' })}>Ajustar</BotaoLink>
+                )}
                 {s.versao != null && (
-                  <BotaoLink onClick={() => setAberto(aberto?.depositoId === s.depositoId && aberto.modo === 'historico' ? null : { depositoId: s.depositoId, modo: 'historico' })}>
+                  <BotaoLink
+                    onClick={() =>
+                      setAberto(
+                        aberto?.depositoId === s.depositoId && aberto.modo === 'historico'
+                          ? null
+                          : { depositoId: s.depositoId, modo: 'historico' },
+                      )
+                    }
+                  >
                     Histórico
                   </BotaoLink>
                 )}
               </span>
             </div>
             {aberto?.depositoId === s.depositoId &&
-              (aberto.modo === 'ajuste' ? <AjusteEstoqueForm saldo={s} aoConcluir={() => setAberto(null)} /> : <HistoricoAjustes saldo={s} />)}
+              (aberto.modo === 'ajuste' ? (
+                <AjusteEstoqueForm saldo={s} aoConcluir={() => setAberto(null)} />
+              ) : (
+                <HistoricoAjustes saldo={s} />
+              ))}
           </div>
         ))}
       </Cartao>

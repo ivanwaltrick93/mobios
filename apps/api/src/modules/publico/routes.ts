@@ -23,16 +23,20 @@ async function resolverOficina(oficina?: string) {
 const querySchema = z.object({ oficina: z.uuid().optional().catch(undefined) });
 
 export const publicoRoutes: FastifyPluginAsyncZod = async (app) => {
-  app.get('/aparencia', { schema: { querystring: querySchema, response: { 200: aparenciaPublicaSchema } } }, async (req) => {
-    const oficina = await resolverOficina(req.query.oficina);
-    if (!oficina) return { oficinaId: null, nome: null, tema: TEMA_VAZIO, logoVersao: null };
-    return withTenant(oficina.id, async (tx) => ({
-      oficinaId: oficina.id,
-      nome: oficina.nome,
-      tema: await lerTema(tx),
-      logoVersao: await lerVersaoLogo(tx),
-    }));
-  });
+  app.get(
+    '/aparencia',
+    { schema: { querystring: querySchema, response: { 200: aparenciaPublicaSchema } } },
+    async (req) => {
+      const oficina = await resolverOficina(req.query.oficina);
+      if (!oficina) return { oficinaId: null, nome: null, tema: TEMA_VAZIO, logoVersao: null };
+      return withTenant(oficina.id, async (tx) => ({
+        oficinaId: oficina.id,
+        nome: oficina.nome,
+        tema: await lerTema(tx),
+        logoVersao: await lerVersaoLogo(tx),
+      }));
+    },
+  );
 
   app.get('/logo', { schema: { querystring: querySchema } }, async (req, reply) => {
     const oficina = await resolverOficina(req.query.oficina);

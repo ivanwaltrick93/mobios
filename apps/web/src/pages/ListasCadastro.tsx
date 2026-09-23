@@ -17,7 +17,8 @@ export function ListasCadastro() {
       <Titulo>Configurações</Titulo>
       <AbasConfiguracoes />
       <TextoSuave>
-        Opções que a equipe escolhe nos cadastros de clientes, materiais e depósitos. Um item desativado deixa de aparecer para novos cadastros, mas continua nos registros que já o usam.
+        Opções que a equipe escolhe nos cadastros de clientes, materiais e depósitos. Um item desativado deixa de
+        aparecer para novos cadastros, mas continua nos registros que já o usam.
       </TextoSuave>
       <div className="grid gap-6 lg:grid-cols-2">
         {(Object.keys(LISTAS_OPCOES) as ListaOpcoes[]).map((lista) => (
@@ -37,7 +38,10 @@ function Lista({ lista }: { lista: ListaOpcoes }) {
 
   const salvar = useMutation({
     mutationFn: ({ id, ...dados }: { id?: string; nome: string; ativa: boolean }) =>
-      api<Opcao>(id ? `/opcoes/${lista}/${id}` : `/opcoes/${lista}`, { method: id ? 'PUT' : 'POST', body: opcaoInputSchema.parse(dados) }),
+      api<Opcao>(id ? `/opcoes/${lista}/${id}` : `/opcoes/${lista}`, {
+        method: id ? 'PUT' : 'POST',
+        body: opcaoInputSchema.parse(dados),
+      }),
     onSuccess: (_, dados) => {
       queryClient.invalidateQueries({ queryKey: chaveOpcoes(lista) });
       if (!dados.id) setNovo('');
@@ -71,7 +75,11 @@ function Lista({ lista }: { lista: ListaOpcoes }) {
                   enviar({ id: o.id, nome: editando.nome, ativa: o.ativa });
                 }}
               >
-                <Input autoFocus value={editando.nome} onChange={(e) => setEditando({ id: o.id, nome: e.target.value })} />
+                <Input
+                  autoFocus
+                  value={editando.nome}
+                  onChange={(e) => setEditando({ id: o.id, nome: e.target.value })}
+                />
                 <Botao type="submit" disabled={salvar.isPending}>
                   Salvar
                 </Botao>
@@ -90,7 +98,10 @@ function Lista({ lista }: { lista: ListaOpcoes }) {
                 </span>
                 <span className="flex gap-4">
                   <BotaoLink onClick={() => setEditando({ id: o.id, nome: o.nome })}>Renomear</BotaoLink>
-                  <BotaoLink disabled={salvar.isPending} onClick={() => enviar({ id: o.id, nome: o.nome, ativa: !o.ativa })}>
+                  <BotaoLink
+                    disabled={salvar.isPending}
+                    onClick={() => enviar({ id: o.id, nome: o.nome, ativa: !o.ativa })}
+                  >
                     {o.ativa ? 'Desativar' : 'Reativar'}
                   </BotaoLink>
                 </span>

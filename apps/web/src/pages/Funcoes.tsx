@@ -1,9 +1,33 @@
-import { MODULOS, nomesNivel, SEM_ACESSO, type Acessos, type Funcao, type FuncaoInput, type Nivel } from '@mobios/shared';
+import {
+  MODULOS,
+  nomesNivel,
+  SEM_ACESSO,
+  type Acessos,
+  type Funcao,
+  type FuncaoInput,
+  type Nivel,
+} from '@mobios/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle } from 'lucide-react';
 import { useState } from 'react';
 import { AbasConfiguracoes } from '../components/AbasConfiguracoes';
-import { Alerta, Botao, BotaoLink, Cabecalho, Campo, Cartao, Input, Linha, Select, Selo, Tabela, Td, TextoSuave, Th, Titulo } from '../components/ui';
+import {
+  Alerta,
+  Botao,
+  BotaoLink,
+  Cabecalho,
+  Campo,
+  Cartao,
+  Input,
+  Linha,
+  Select,
+  Selo,
+  Tabela,
+  Td,
+  TextoSuave,
+  Th,
+  Titulo,
+} from '../components/ui';
 import { api, ErroApi } from '../lib/api';
 import { chaveSessao, useAdmin } from '../lib/sessao';
 import { chaveFuncoes } from './Usuarios';
@@ -34,7 +58,13 @@ function EditorFuncao({ funcao, aoConcluir }: { funcao?: Funcao; aoConcluir: () 
   });
 
   function enviar() {
-    if (perdendoAcesso && !confirm(`${funcao!.usuarios} usuário(s) perderão na hora o acesso que vem da função ${funcao!.nome}. Desativar mesmo assim?`)) return;
+    if (
+      perdendoAcesso &&
+      !confirm(
+        `${funcao!.usuarios} usuário(s) perderão na hora o acesso que vem da função ${funcao!.nome}. Desativar mesmo assim?`,
+      )
+    )
+      return;
     salvar.mutate({ nome, ativa, acessos });
   }
 
@@ -42,7 +72,14 @@ function EditorFuncao({ funcao, aoConcluir }: { funcao?: Funcao; aoConcluir: () 
     <div className="space-y-4">
       <div className="flex flex-wrap items-end gap-4">
         <div className="w-64">
-          <Campo rotulo="Nome da função" erro={salvar.error instanceof ErroApi && salvar.error.campos?.nome ? { message: salvar.error.campos.nome } : undefined}>
+          <Campo
+            rotulo="Nome da função"
+            erro={
+              salvar.error instanceof ErroApi && salvar.error.campos?.nome
+                ? { message: salvar.error.campos.nome }
+                : undefined
+            }
+          >
             <Input value={nome} autoFocus onChange={(e) => setNome(e.target.value)} placeholder="Ex.: Almoxarife" />
           </Campo>
         </div>
@@ -72,7 +109,8 @@ function EditorFuncao({ funcao, aoConcluir }: { funcao?: Funcao; aoConcluir: () 
 
       {perdendoAcesso && (
         <p className="flex items-center gap-2 text-sm text-alerta">
-          <AlertTriangle className="size-4" aria-hidden /> Ao desativar, {funcao!.usuarios} usuário(s) perdem na hora o acesso que vem desta função.
+          <AlertTriangle className="size-4" aria-hidden /> Ao desativar, {funcao!.usuarios} usuário(s) perdem na hora o
+          acesso que vem desta função.
         </p>
       )}
       <Alerta>{salvar.isError && (salvar.error instanceof ErroApi ? salvar.error.message : 'Erro ao salvar.')}</Alerta>
@@ -102,8 +140,9 @@ export function Funcoes() {
 
       <div className="flex flex-wrap items-start justify-between gap-3">
         <TextoSuave className="max-w-2xl">
-          Defina o que cada função pode fazer em cada módulo. Um usuário pode ter várias funções e recebe o maior acesso de cada módulo. As mudanças valem
-          na hora, inclusive para quem já está conectado. Usuários, funções e configurações são exclusivos do Administrador.
+          Defina o que cada função pode fazer em cada módulo. Um usuário pode ter várias funções e recebe o maior acesso
+          de cada módulo. As mudanças valem na hora, inclusive para quem já está conectado. Usuários, funções e
+          configurações são exclusivos do Administrador.
         </TextoSuave>
         {editando !== 'nova' && <Botao onClick={() => setEditando('nova')}>Nova função</Botao>}
       </div>
@@ -158,7 +197,9 @@ export function Funcoes() {
                   ))
                 )}
                 <Td suave>{f.usuarios}</Td>
-                <Td className="text-right">{!f.admin && <BotaoLink onClick={() => setEditando(f.id)}>Editar</BotaoLink>}</Td>
+                <Td className="text-right">
+                  {!f.admin && <BotaoLink onClick={() => setEditando(f.id)}>Editar</BotaoLink>}
+                </Td>
               </Linha>
             ),
           )}

@@ -22,7 +22,12 @@ export function EditarCliente() {
     <div className="mx-auto max-w-4xl space-y-6">
       <Titulo>Editar {cliente.data.nome}</Titulo>
       <Cartao>
-        <ClienteForm cliente={cliente.data} etapaInicial={(params.get('etapa') as EtapaCliente | null) ?? undefined} aoSalvar={() => navigate(`/clientes/${id}`)} aoCancelar={() => navigate(-1)} />
+        <ClienteForm
+          cliente={cliente.data}
+          etapaInicial={(params.get('etapa') as EtapaCliente | null) ?? undefined}
+          aoSalvar={() => navigate(`/clientes/${id}`)}
+          aoCancelar={() => navigate(-1)}
+        />
       </Cartao>
     </div>
   );

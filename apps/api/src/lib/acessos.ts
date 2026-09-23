@@ -1,4 +1,11 @@
-import { ACESSO_TOTAL, combinarAcessos, type Acessos, type FuncaoResumo, type ModuloId, type Nivel } from '@mobios/shared';
+import {
+  ACESSO_TOTAL,
+  combinarAcessos,
+  type Acessos,
+  type FuncaoResumo,
+  type ModuloId,
+  type Nivel,
+} from '@mobios/shared';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import { funcaoPermissoes, funcoes, usuarioFuncoes, users } from '../db/schema.js';
@@ -28,7 +35,19 @@ export async function carregarAcesso(tx: Tx, usuarioId: string): Promise<AcessoU
   let acessos = ACESSO_TOTAL;
   if (!admin) {
     const niveis = ativas.length
-      ? await tx.select({ funcaoId: funcaoPermissoes.funcaoId, modulo: funcaoPermissoes.modulo, nivel: funcaoPermissoes.nivel }).from(funcaoPermissoes).where(inArray(funcaoPermissoes.funcaoId, ativas.map((f) => f.id)))
+      ? await tx
+          .select({
+            funcaoId: funcaoPermissoes.funcaoId,
+            modulo: funcaoPermissoes.modulo,
+            nivel: funcaoPermissoes.nivel,
+          })
+          .from(funcaoPermissoes)
+          .where(
+            inArray(
+              funcaoPermissoes.funcaoId,
+              ativas.map((f) => f.id),
+            ),
+          )
       : [];
     acessos = combinarAcessos(niveis.map((n) => ({ [n.modulo]: n.nivel }) as Partial<Acessos>));
   }
@@ -53,6 +72,9 @@ export async function gravarFuncoesDoUsuario(tx: Tx, usuarioId: string, funcaoId
 
 /** Confere se os ids são de funções ATIVAS desta oficina (o RLS esconde as de outras). */
 export async function funcoesAtivasValidas(tx: Tx, ids: string[]) {
-  const encontradas = await tx.select({ id: funcoes.id, admin: funcoes.admin }).from(funcoes).where(and(inArray(funcoes.id, ids), eq(funcoes.ativa, true)));
+  const encontradas = await tx
+    .select({ id: funcoes.id, admin: funcoes.admin })
+    .from(funcoes)
+    .where(and(inArray(funcoes.id, ids), eq(funcoes.ativa, true)));
   return { validas: encontradas.length === ids.length, incluiAdmin: encontradas.some((f) => f.admin) };
 }

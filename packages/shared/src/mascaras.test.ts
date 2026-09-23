@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { mascaraCep, mascaraChassi, mascaraCnpj, mascaraCpf, mascaraEmail, mascaraKm, mascaraPlaca, mascaraTelefone } from './mascaras.js';
+import {
+  mascaraCep,
+  mascaraChassi,
+  mascaraCnpj,
+  mascaraCpf,
+  mascaraEmail,
+  mascaraKm,
+  mascaraPlaca,
+  mascaraTelefone,
+} from './mascaras.js';
 
 describe('máscaras', () => {
   it('CPF e CNPJ (inclusive alfanumérico), aos poucos e colados', () => {

@@ -1,5 +1,14 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { mascaraCest, mascaraCodigo, mascaraGtin, mascaraNcm, materialInputSchema, ORIGENS_FISCAIS, UNIDADES, type Material } from '@mobios/shared';
+import {
+  mascaraCest,
+  mascaraCodigo,
+  mascaraGtin,
+  mascaraNcm,
+  materialInputSchema,
+  ORIGENS_FISCAIS,
+  UNIDADES,
+  type Material,
+} from '@mobios/shared';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm, type UseFormReturn } from 'react-hook-form';
 import type { z } from 'zod';
@@ -60,21 +69,42 @@ const valoresIniciais = (m?: Material): Entrada =>
       };
 
 const ETAPAS: EtapaDef[] = [
-  { titulo: 'Identificação', campos: ['sku', 'descricao', 'descricaoCurta', 'unidade', 'codigoBarras', 'codigoFabricante'] },
+  {
+    titulo: 'Identificação',
+    campos: ['sku', 'descricao', 'descricaoCurta', 'unidade', 'codigoBarras', 'codigoFabricante'],
+  },
   { titulo: 'Classificação', campos: ['tipoId', 'categoriaId', 'marcaId'] },
   { titulo: 'Fiscal', campos: ['ncm', 'cest', 'origem'] },
-  { titulo: 'Controles', campos: ['controlaEstoque', 'permiteVenda', 'permiteCompra', 'permiteUsoOs', 'controlaLote', 'controlaSerie'] },
+  {
+    titulo: 'Controles',
+    campos: ['controlaEstoque', 'permiteVenda', 'permiteCompra', 'permiteUsoOs', 'controlaLote', 'controlaSerie'],
+  },
 ];
 
 /** Cadastro de material em etapas; na edição, etapas livres e controle de versão (quem salvou antes vence). */
-export function MaterialForm({ material, aoSalvar, aoCancelar }: { material?: Material; aoSalvar: (m: Material) => void; aoCancelar: () => void }) {
+export function MaterialForm({
+  material,
+  aoSalvar,
+  aoCancelar,
+}: {
+  material?: Material;
+  aoSalvar: (m: Material) => void;
+  aoCancelar: () => void;
+}) {
   const queryClient = useQueryClient();
   const livre = !!material;
-  const form = useForm<Entrada, unknown, Saida>({ resolver: zodResolver(materialInputSchema), defaultValues: valoresIniciais(material), mode: 'onTouched' });
+  const form = useForm<Entrada, unknown, Saida>({
+    resolver: zodResolver(materialInputSchema),
+    defaultValues: valoresIniciais(material),
+    mode: 'onTouched',
+  });
   const assistente = useAssistente(form, ETAPAS);
   const salvar = useMutation({
     mutationFn: (dados: Saida) =>
-      api<Material>(material ? `/materiais/${material.id}` : '/materiais', { method: material ? 'PUT' : 'POST', body: { ...dados, versao: material?.versao } }),
+      api<Material>(material ? `/materiais/${material.id}` : '/materiais', {
+        method: material ? 'PUT' : 'POST',
+        body: { ...dados, versao: material?.versao },
+      }),
     onSuccess: (salvo) => {
       queryClient.invalidateQueries({ queryKey: ['materiais'] });
       queryClient.invalidateQueries({ queryKey: ['categorias'] });
@@ -87,13 +117,25 @@ export function MaterialForm({ material, aoSalvar, aoCancelar }: { material?: Ma
 
   return (
     <form className="space-y-6" noValidate onSubmit={(e) => assistente.interceptarEnvio(e, livre) || enviar(e)}>
-      <Etapas titulos={ETAPAS.map((e) => e.titulo)} atual={assistente.etapa} aoIr={assistente.irPara} livre={livre} comErro={assistente.comErro} />
+      <Etapas
+        titulos={ETAPAS.map((e) => e.titulo)}
+        atual={assistente.etapa}
+        aoIr={assistente.irPara}
+        livre={livre}
+        comErro={assistente.comErro}
+      />
       <Alerta>{salvar.isError && aplicarErrosDaApi(salvar.error, form.setError)}</Alerta>
       {assistente.etapa === 0 && <EtapaIdentificacao form={form} />}
       {assistente.etapa === 1 && <EtapaClassificacao form={form} material={material} />}
       {assistente.etapa === 2 && <EtapaFiscal form={form} />}
       {assistente.etapa === 3 && <EtapaControles form={form} />}
-      <NavegacaoEtapas assistente={assistente} livre={livre} salvando={salvar.isPending} rotuloSalvar={livre ? 'Salvar alterações' : 'Cadastrar material'} aoCancelar={aoCancelar} />
+      <NavegacaoEtapas
+        assistente={assistente}
+        livre={livre}
+        salvando={salvar.isPending}
+        rotuloSalvar={livre ? 'Salvar alterações' : 'Cadastrar material'}
+        aoCancelar={aoCancelar}
+      />
     </form>
   );
 }
@@ -123,7 +165,12 @@ function EtapaIdentificacao({ form }: { form: Form }) {
         </Select>
       </Campo>
       <Campo rotulo="Código de barras (EAN/GTIN)" erro={erros.codigoBarras}>
-        <InputMascara inputMode="numeric" placeholder="7891234567895" registro={form.register('codigoBarras')} mascara={mascaraGtin} />
+        <InputMascara
+          inputMode="numeric"
+          placeholder="7891234567895"
+          registro={form.register('codigoBarras')}
+          mascara={mascaraGtin}
+        />
       </Campo>
       <Campo rotulo="Código do fabricante" dica="Part number da peça" erro={erros.codigoFabricante}>
         <InputMascara registro={form.register('codigoFabricante')} mascara={(v) => v.toUpperCase()} />
@@ -153,7 +200,11 @@ function EtapaClassificacao({ form, material }: { form: Form; material?: Materia
             ))}
         </Select>
       </Campo>
-      <Campo rotulo="Categoria *" dica={arvore.length ? undefined : 'Cadastre categorias em Materiais → Categorias'} erro={erros.categoriaId}>
+      <Campo
+        rotulo="Categoria *"
+        dica={arvore.length ? undefined : 'Cadastre categorias em Materiais → Categorias'}
+        erro={erros.categoriaId}
+      >
         <Select disabled={categorias.isPending} {...form.register('categoriaId')}>
           <option value="">—</option>
           {arvore.map((c) => (
@@ -187,10 +238,20 @@ function EtapaFiscal({ form }: { form: Form }) {
       <TextoSuave>Dados usados na nota fiscal. Opcionais agora; o módulo fiscal poderá exigi-los.</TextoSuave>
       <div className="grid gap-4 md:grid-cols-3">
         <Campo rotulo="NCM" erro={erros.ncm}>
-          <InputMascara inputMode="numeric" placeholder="0000.00.00" registro={form.register('ncm')} mascara={mascaraNcm} />
+          <InputMascara
+            inputMode="numeric"
+            placeholder="0000.00.00"
+            registro={form.register('ncm')}
+            mascara={mascaraNcm}
+          />
         </Campo>
         <Campo rotulo="CEST" erro={erros.cest}>
-          <InputMascara inputMode="numeric" placeholder="00.000.00" registro={form.register('cest')} mascara={mascaraCest} />
+          <InputMascara
+            inputMode="numeric"
+            placeholder="00.000.00"
+            registro={form.register('cest')}
+            mascara={mascaraCest}
+          />
         </Campo>
         <Campo rotulo="Origem da mercadoria" erro={erros.origem}>
           <Select {...form.register('origem')}>
@@ -208,12 +269,20 @@ function EtapaFiscal({ form }: { form: Form }) {
 }
 
 const CONTROLES = [
-  { campo: 'controlaEstoque', rotulo: 'Controla estoque', dica: 'Desmarque para itens consumidos sem controle de saldo.' },
+  {
+    campo: 'controlaEstoque',
+    rotulo: 'Controla estoque',
+    dica: 'Desmarque para itens consumidos sem controle de saldo.',
+  },
   { campo: 'permiteVenda', rotulo: 'Permite venda', dica: 'Pode ser vendido no balcão.' },
   { campo: 'permiteCompra', rotulo: 'Permite compra', dica: 'Pode entrar em pedidos de compra.' },
   { campo: 'permiteUsoOs', rotulo: 'Permite uso em O.S.', dica: 'Pode ser adicionado a ordens de serviço.' },
   { campo: 'controlaLote', rotulo: 'Controla lote', dica: 'Exigirá lote nas entradas e saídas (ex.: óleos, fluidos).' },
-  { campo: 'controlaSerie', rotulo: 'Controla número de série', dica: 'Exigirá o número de série de cada unidade (ex.: baterias).' },
+  {
+    campo: 'controlaSerie',
+    rotulo: 'Controla número de série',
+    dica: 'Exigirá o número de série de cada unidade (ex.: baterias).',
+  },
 ] as const;
 
 function EtapaControles({ form }: { form: Form }) {

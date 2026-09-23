@@ -18,12 +18,16 @@ export const fotosRoutes: FastifyPluginAsyncZod = async (app) => {
   aceitarUploadDeImagem(app);
 
   const exigirAdminOuProprio = async (req: { user: { admin: boolean; sub: string }; params: { id: string } }) => {
-    if (!req.user.admin && req.user.sub !== req.params.id) throw new ErroHttp(403, 'Só o Administrador ou o próprio usuário podem trocar esta foto.');
+    if (!req.user.admin && req.user.sub !== req.params.id)
+      throw new ErroHttp(403, 'Só o Administrador ou o próprio usuário podem trocar esta foto.');
   };
 
   app.get('/usuario/:id', { schema: { params: idParamSchema } }, async (req, reply) => {
     const [foto] = await withTenant(req.user.tid, (tx) =>
-      tx.select({ conteudo: usuarioFotos.conteudo, tipo: usuarioFotos.tipo, atualizadoEm: usuarioFotos.atualizadoEm }).from(usuarioFotos).where(eq(usuarioFotos.usuarioId, req.params.id)),
+      tx
+        .select({ conteudo: usuarioFotos.conteudo, tipo: usuarioFotos.tipo, atualizadoEm: usuarioFotos.atualizadoEm })
+        .from(usuarioFotos)
+        .where(eq(usuarioFotos.usuarioId, req.params.id)),
     );
     return responderImagem(req, reply, foto, 'Usuário sem foto');
   });
@@ -34,7 +38,10 @@ export const fotosRoutes: FastifyPluginAsyncZod = async (app) => {
     await withTenant(req.user.tid, async (tx) => {
       const [usuario] = await tx.select({ id: users.id }).from(users).where(eq(users.id, req.params.id));
       if (!usuario) throw naoEncontrado('Usuário');
-      await tx.insert(usuarioFotos).values({ usuarioId: usuario.id, ...valores }).onConflictDoUpdate({ target: usuarioFotos.usuarioId, set: valores });
+      await tx
+        .insert(usuarioFotos)
+        .values({ usuarioId: usuario.id, ...valores })
+        .onConflictDoUpdate({ target: usuarioFotos.usuarioId, set: valores });
     });
     return reply.code(204).send();
   });

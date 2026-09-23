@@ -42,7 +42,8 @@ const mensagensUnicidade: Record<string, string> = {
   tabelas_preco_codigo_unico: 'Já existe uma tabela de preço com este código',
   tabelas_preco_nome_unico: 'Já existe uma tabela de preço com este nome',
   // Duas pessoas criando o primeiro saldo do mesmo material no mesmo depósito ao mesmo tempo.
-  estoques_material_id_deposito_id_pk: 'O saldo foi alterado por outra pessoa enquanto você editava. Recarregue e refaça o ajuste.',
+  estoques_material_id_deposito_id_pk:
+    'O saldo foi alterado por outra pessoa enquanto você editava. Recarregue e refaça o ajuste.',
   veiculos_tenant_id_chassi_index: 'Já existe um veículo com este chassi',
 };
 
@@ -77,13 +78,16 @@ export function registrarTratamentoDeErros(app: FastifyInstance) {
     }
     // Constraint EXCLUDE: duas vigências do mesmo material e tabela no mesmo período.
     if (pg?.code === '23P01') {
-      return reply.code(409).send({ erro: 'Já existe preço deste material nesta tabela em parte do período informado.' });
+      return reply
+        .code(409)
+        .send({ erro: 'Já existe preço deste material nesta tabela em parte do período informado.' });
     }
     if (pg?.code === '23503') {
       return reply.code(409).send({ erro: 'Registro vinculado a outros dados ou referência inexistente' });
     }
     if (err.code === 'FST_ERR_CTP_BODY_TOO_LARGE') return reply.code(413).send({ erro: 'Arquivo grande demais.' });
-    if (err.code === 'FST_ERR_CTP_INVALID_MEDIA_TYPE') return reply.code(415).send({ erro: 'Formato de arquivo não suportado.' });
+    if (err.code === 'FST_ERR_CTP_INVALID_MEDIA_TYPE')
+      return reply.code(415).send({ erro: 'Formato de arquivo não suportado.' });
     if (err.statusCode && err.statusCode < 500) return reply.code(err.statusCode).send({ erro: err.message });
 
     req.log.error(err);

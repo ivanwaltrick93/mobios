@@ -1,4 +1,11 @@
-import { hojeIso, idParamSchema, statusInputSchema, tabelaPrecoInputSchema, tabelaPrecoSchema, type TabelaPreco } from '@mobios/shared';
+import {
+  hojeIso,
+  idParamSchema,
+  statusInputSchema,
+  tabelaPrecoInputSchema,
+  tabelaPrecoSchema,
+  type TabelaPreco,
+} from '@mobios/shared';
 import { asc, eq, sql } from 'drizzle-orm';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
@@ -15,8 +22,11 @@ const colunas = () => ({
   moeda: sql<'BRL'>`${tabelasPreco.moeda}`,
   ativa: tabelasPreco.ativa,
   // Materiais com preço vigente hoje (Brasília). Correlação escrita à mão.
-  materiaisComPreco: sql<number>`(select count(distinct p.material_id) from materiais_precos p where p.tabela_preco_id = "tabelas_preco"."id"
-    and not p.cancelado and p.data_inicio <= ${hojeIso()}::date and (p.data_fim is null or p.data_fim >= ${hojeIso()}::date))`.mapWith(Number),
+  materiaisComPreco:
+    sql<number>`(select count(distinct p.material_id) from materiais_precos p where p.tabela_preco_id = "tabelas_preco"."id"
+    and not p.cancelado and p.data_inicio <= ${hojeIso()}::date and (p.data_fim is null or p.data_fim >= ${hojeIso()}::date))`.mapWith(
+      Number,
+    ),
   criadoEm: tabelasPreco.criadoEm,
   atualizadoEm: tabelasPreco.atualizadoEm,
   criadoPor: nomeUsuario('tabelas_preco', 'criado_por'),
@@ -38,35 +48,75 @@ export const tabelasPrecoRoutes: FastifyPluginAsyncZod = async (app) => {
   app.get('/', { schema: { response: { 200: z.array(tabelaPrecoSchema) } } }, async (req) =>
     withTenant(req.user.tid, (tx) => tx.select(colunas()).from(tabelasPreco).orderBy(asc(tabelasPreco.nome))),
   );
-  app.get('/:id', { schema: { params: idParamSchema, response: { 200: tabelaPrecoSchema } } }, async (req) => withTenant(req.user.tid, (tx) => carregar(tx, req.params.id)));
+  app.get('/:id', { schema: { params: idParamSchema, response: { 200: tabelaPrecoSchema } } }, async (req) =>
+    withTenant(req.user.tid, (tx) => carregar(tx, req.params.id)),
+  );
 
-  app.post('/', { ...editar, schema: { body: tabelaPrecoInputSchema, response: { 201: tabelaPrecoSchema } } }, async (req, reply) => {
-    const { versao: _v, ...dados } = req.body;
-    const tabela = await withTenant(req.user.tid, async (tx) => {
-      const [{ id }] = (await tx.insert(tabelasPreco).values({ ...dados, criadoPor: req.user.sub, atualizadoPor: req.user.sub }).returning({ id: tabelasPreco.id })) as [{ id: string }];
-      return carregar(tx, id);
-    });
-    return reply.code(201).send(tabela);
-  });
+  app.post(
+    '/',
+    { ...editar, schema: { body: tabelaPrecoInputSchema, response: { 201: tabelaPrecoSchema } } },
+    async (req, reply) => {
+      const { versao: _v, ...dados } = req.body;
+      const tabela = await withTenant(req.user.tid, async (tx) => {
+        const [{ id }] = (await tx
+          .insert(tabelasPreco)
+          .values({ ...dados, criadoPor: req.user.sub, atualizadoPor: req.user.sub })
+          .returning({ id: tabelasPreco.id })) as [{ id: string }];
+        return carregar(tx, id);
+      });
+      return reply.code(201).send(tabela);
+    },
+  );
 
-  app.put('/:id', { ...editar, schema: { params: idParamSchema, body: tabelaPrecoInputSchema, response: { 200: tabelaPrecoSchema } } }, async (req) => {
-    const { versao, ...dados } = req.body;
-    return withTenant(req.user.tid, async (tx) => {
-      await atualizarVersionado(tx, tabelasPreco, req.params.id, exigirVersao(versao), { ...dados, atualizadoPor: req.user.sub }, 'Tabela de preço');
-      return carregar(tx, req.params.id);
-    });
-  });
+  app.put(
+    '/:id',
+    {
+      ...editar,
+      schema: { params: idParamSchema, body: tabelaPrecoInputSchema, response: { 200: tabelaPrecoSchema } },
+    },
+    async (req) => {
+      const { versao, ...dados } = req.body;
+      return withTenant(req.user.tid, async (tx) => {
+        await atualizarVersionado(
+          tx,
+          tabelasPreco,
+          req.params.id,
+          exigirVersao(versao),
+          { ...dados, atualizadoPor: req.user.sub },
+          'Tabela de preço',
+        );
+        return carregar(tx, req.params.id);
+      });
+    },
+  );
 
-  app.patch('/:id/status', { ...editar, schema: { params: idParamSchema, body: statusInputSchema, response: { 200: tabelaPrecoSchema } } }, async (req) =>
-    withTenant(req.user.tid, async (tx) => {
-      await alterarAtivo(tx, tabelasPreco, tabelasPreco.ativa, req.params.id, req.body.ativo, req.user.sub, 'Tabela de preço');
-      return carregar(tx, req.params.id);
-    }),
+  app.patch(
+    '/:id/status',
+    { ...editar, schema: { params: idParamSchema, body: statusInputSchema, response: { 200: tabelaPrecoSchema } } },
+    async (req) =>
+      withTenant(req.user.tid, async (tx) => {
+        await alterarAtivo(
+          tx,
+          tabelasPreco,
+          tabelasPreco.ativa,
+          req.params.id,
+          req.body.ativo,
+          req.user.sub,
+          'Tabela de preço',
+        );
+        return carregar(tx, req.params.id);
+      }),
   );
 
   app.delete('/:id', { ...editar, schema: { params: idParamSchema } }, async (req, reply) => {
     await withTenant(req.user.tid, (tx) =>
-      excluirSeNaoUsado(tx, tabelasPreco, req.params.id, 'Tabela de preço', 'Esta tabela tem preços cadastrados e não pode ser excluída (o histórico é mantido). Inative-a.'),
+      excluirSeNaoUsado(
+        tx,
+        tabelasPreco,
+        req.params.id,
+        'Tabela de preço',
+        'Esta tabela tem preços cadastrados e não pode ser excluída (o histórico é mantido). Inative-a.',
+      ),
     );
     return reply.code(204).send();
   });

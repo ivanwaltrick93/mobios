@@ -3,7 +3,19 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Tag } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { AbasPrecos } from '../components/AbasPrecos';
-import { Alerta, Botao, BotaoLink, Campo, Cartao, Input, Select, Selo, TextoSuave, Titulo, Vazio } from '../components/ui';
+import {
+  Alerta,
+  Botao,
+  BotaoLink,
+  Campo,
+  Cartao,
+  Input,
+  Select,
+  Selo,
+  TextoSuave,
+  Titulo,
+  Vazio,
+} from '../components/ui';
 import { api } from '../lib/api';
 import { useTabelasPreco } from '../lib/materiais';
 import { usePode } from '../lib/sessao';
@@ -17,7 +29,9 @@ export function TabelasPreco() {
   const queryClient = useQueryClient();
   const acao = useMutation({
     mutationFn: ({ t, tipo }: { t: TabelaPreco; tipo: 'status' | 'excluir' }) =>
-      tipo === 'excluir' ? api(`/tabelas-preco/${t.id}`, { method: 'DELETE' }) : api(`/tabelas-preco/${t.id}/status`, { method: 'PATCH', body: { ativo: !t.ativa } }),
+      tipo === 'excluir'
+        ? api(`/tabelas-preco/${t.id}`, { method: 'DELETE' })
+        : api(`/tabelas-preco/${t.id}/status`, { method: 'PATCH', body: { ativo: !t.ativa } }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tabelas-preco'] }),
   });
 
@@ -25,9 +39,13 @@ export function TabelasPreco() {
 
   return (
     <div className="space-y-6">
-      <Titulo acao={editar && !edicao && <Botao onClick={() => setEdicao('nova')}>Nova tabela</Botao>}>Lista de preços</Titulo>
+      <Titulo acao={editar && !edicao && <Botao onClick={() => setEdicao('nova')}>Nova tabela</Botao>}>
+        Lista de preços
+      </Titulo>
       <AbasPrecos />
-      <TextoSuave>Cada material pode ter um preço por tabela, com vigências. Informe os preços na aba Preços de cada material.</TextoSuave>
+      <TextoSuave>
+        Cada material pode ter um preço por tabela, com vigências. Informe os preços na aba Preços de cada material.
+      </TextoSuave>
       {edicao === 'nova' && (
         <Cartao>
           <EditorTabela aoConcluir={() => setEdicao(null)} />
@@ -65,8 +83,14 @@ export function TabelasPreco() {
                 {editar && !edicao && (
                   <div className="mt-auto flex gap-4 border-t border-borda pt-3 text-sm">
                     <BotaoLink onClick={() => setEdicao(t)}>Editar</BotaoLink>
-                    <BotaoLink onClick={() => acao.mutate({ t, tipo: 'status' })}>{t.ativa ? 'Inativar' : 'Reativar'}</BotaoLink>
-                    <BotaoLink perigo className="ml-auto" onClick={() => confirm(`Excluir a tabela ${t.nome}?`) && acao.mutate({ t, tipo: 'excluir' })}>
+                    <BotaoLink onClick={() => acao.mutate({ t, tipo: 'status' })}>
+                      {t.ativa ? 'Inativar' : 'Reativar'}
+                    </BotaoLink>
+                    <BotaoLink
+                      perigo
+                      className="ml-auto"
+                      onClick={() => confirm(`Excluir a tabela ${t.nome}?`) && acao.mutate({ t, tipo: 'excluir' })}
+                    >
                       Excluir
                     </BotaoLink>
                   </div>
@@ -82,9 +106,18 @@ export function TabelasPreco() {
 
 function EditorTabela({ tabela, aoConcluir }: { tabela?: TabelaPreco; aoConcluir: () => void }) {
   const queryClient = useQueryClient();
-  const [dados, setDados] = useState({ codigo: tabela?.codigo ?? '', nome: tabela?.nome ?? '', descricao: tabela?.descricao ?? '', moeda: tabela?.moeda ?? 'BRL' });
+  const [dados, setDados] = useState({
+    codigo: tabela?.codigo ?? '',
+    nome: tabela?.nome ?? '',
+    descricao: tabela?.descricao ?? '',
+    moeda: tabela?.moeda ?? 'BRL',
+  });
   const salvar = useMutation({
-    mutationFn: () => api(tabela ? `/tabelas-preco/${tabela.id}` : '/tabelas-preco', { method: tabela ? 'PUT' : 'POST', body: { ...dados, versao: tabela?.versao } }),
+    mutationFn: () =>
+      api(tabela ? `/tabelas-preco/${tabela.id}` : '/tabelas-preco', {
+        method: tabela ? 'PUT' : 'POST',
+        body: { ...dados, versao: tabela?.versao },
+      }),
     onSuccess: () => (queryClient.invalidateQueries({ queryKey: ['tabelas-preco'] }), aoConcluir()),
   });
   const enviar = (e: FormEvent) => (e.preventDefault(), salvar.mutate());
@@ -92,7 +125,12 @@ function EditorTabela({ tabela, aoConcluir }: { tabela?: TabelaPreco; aoConcluir
     <form onSubmit={enviar} className="space-y-3">
       <div className="grid gap-3 md:grid-cols-4">
         <Campo rotulo="Código *">
-          <Input autoFocus placeholder="VAREJO" value={dados.codigo} onChange={(e) => setDados({ ...dados, codigo: mascaraCodigo(e.target.value) })} />
+          <Input
+            autoFocus
+            placeholder="VAREJO"
+            value={dados.codigo}
+            onChange={(e) => setDados({ ...dados, codigo: mascaraCodigo(e.target.value) })}
+          />
         </Campo>
         <div className="md:col-span-2">
           <Campo rotulo="Nome *">

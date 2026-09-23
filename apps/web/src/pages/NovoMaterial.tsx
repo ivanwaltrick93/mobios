@@ -12,7 +12,10 @@ export function NovoMaterial() {
       <Titulo>Novo material</Titulo>
       <Cartao>
         {/* Depois de cadastrar, o próximo passo natural é informar os preços. */}
-        <MaterialForm aoSalvar={(m) => navigate(`/materiais/${m.id}${pode('precos') ? '?aba=precos' : ''}`)} aoCancelar={() => navigate(-1)} />
+        <MaterialForm
+          aoSalvar={(m) => navigate(`/materiais/${m.id}${pode('precos') ? '?aba=precos' : ''}`)}
+          aoCancelar={() => navigate(-1)}
+        />
       </Cartao>
     </div>
   );

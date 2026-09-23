@@ -1,6 +1,28 @@
 import { sql } from 'drizzle-orm';
 import { MODULO_IDS, NIVEIS, UNIDADES, type Unidade } from '@mobios/shared';
-import { bigint, boolean, check, char, customType, date, foreignKey, index, integer, jsonb, numeric, pgEnum, pgPolicy, pgTable, primaryKey, smallint, text, timestamp, unique, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import {
+  bigint,
+  boolean,
+  check,
+  char,
+  customType,
+  date,
+  foreignKey,
+  index,
+  integer,
+  jsonb,
+  numeric,
+  pgEnum,
+  pgPolicy,
+  pgTable,
+  primaryKey,
+  smallint,
+  text,
+  timestamp,
+  unique,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 
 const timestamps = {
   criadoEm: timestamp({ withTimezone: true }).notNull().defaultNow(),
@@ -70,7 +92,15 @@ export const users = pgTable(
 export const tipoPessoa = pgEnum('tipo_pessoa', ['PF', 'PJ']);
 export const sexo = pgEnum('sexo', ['masculino', 'feminino', 'outro', 'nao_informado']);
 export const tipoEndereco = pgEnum('tipo_endereco', ['residencial', 'comercial', 'outro']);
-export const combustivel = pgEnum('combustivel', ['flex', 'gasolina', 'etanol', 'diesel', 'gnv', 'eletrico', 'hibrido']);
+export const combustivel = pgEnum('combustivel', [
+  'flex',
+  'gasolina',
+  'etanol',
+  'diesel',
+  'gnv',
+  'eletrico',
+  'hibrido',
+]);
 export const statusVeiculo = pgEnum('status_veiculo', ['ativo', 'vendido', 'inativo']);
 
 /** Lista editável por oficina (Configurações → Cadastros). Desativar tira da escolha, sem mexer nos clientes que já usam. */
@@ -114,7 +144,9 @@ export const clientes = pgTable(
     whatsapp: text(),
     email: text(),
     observacoes: text(),
-    clienteDesde: date().notNull().default(sql`current_date`),
+    clienteDesde: date()
+      .notNull()
+      .default(sql`current_date`),
     origemId: uuid(),
     relacionamentoId: uuid(),
     ativo: boolean().notNull().default(true),
@@ -123,10 +155,15 @@ export const clientes = pgTable(
   (t) => [
     // Alvo das FKs compostas: garante que filhos só apontem para linhas do mesmo tenant.
     unique().on(t.tenantId, t.id),
-    uniqueIndex().on(t.tenantId, t.cpfCnpj).where(sql`${t.cpfCnpj} is not null`),
+    uniqueIndex()
+      .on(t.tenantId, t.cpfCnpj)
+      .where(sql`${t.cpfCnpj} is not null`),
     index().on(t.tenantId, t.nome),
     foreignKey({ columns: [t.tenantId, t.origemId], foreignColumns: [origensCliente.tenantId, origensCliente.id] }),
-    foreignKey({ columns: [t.tenantId, t.relacionamentoId], foreignColumns: [relacionamentosCliente.tenantId, relacionamentosCliente.id] }),
+    foreignKey({
+      columns: [t.tenantId, t.relacionamentoId],
+      foreignColumns: [relacionamentosCliente.tenantId, relacionamentosCliente.id],
+    }),
     index().on(t.origemId),
     index().on(t.relacionamentoId),
     isolamentoPorTenant('clientes'),
@@ -156,9 +193,13 @@ export const clienteEnderecos = pgTable(
     ...timestamps,
   },
   (t) => [
-    foreignKey({ columns: [t.tenantId, t.clienteId], foreignColumns: [clientes.tenantId, clientes.id] }).onDelete('cascade'),
+    foreignKey({ columns: [t.tenantId, t.clienteId], foreignColumns: [clientes.tenantId, clientes.id] }).onDelete(
+      'cascade',
+    ),
     index().on(t.clienteId),
-    uniqueIndex('cliente_enderecos_principal_unico').on(t.clienteId).where(sql`${t.principal}`),
+    uniqueIndex('cliente_enderecos_principal_unico')
+      .on(t.clienteId)
+      .where(sql`${t.principal}`),
     isolamentoPorTenant('cliente_enderecos'),
   ],
 );
@@ -179,11 +220,18 @@ export const clienteResponsaveis = pgTable(
     ...timestamps,
   },
   (t) => [
-    foreignKey({ columns: [t.tenantId, t.clienteId], foreignColumns: [clientes.tenantId, clientes.id] }).onDelete('cascade'),
-    foreignKey({ columns: [t.tenantId, t.cargoId], foreignColumns: [cargosResponsavel.tenantId, cargosResponsavel.id] }),
+    foreignKey({ columns: [t.tenantId, t.clienteId], foreignColumns: [clientes.tenantId, clientes.id] }).onDelete(
+      'cascade',
+    ),
+    foreignKey({
+      columns: [t.tenantId, t.cargoId],
+      foreignColumns: [cargosResponsavel.tenantId, cargosResponsavel.id],
+    }),
     index().on(t.clienteId),
     index().on(t.cargoId),
-    uniqueIndex('cliente_responsaveis_principal_unico').on(t.clienteId).where(sql`${t.principal}`),
+    uniqueIndex('cliente_responsaveis_principal_unico')
+      .on(t.clienteId)
+      .where(sql`${t.principal}`),
     isolamentoPorTenant('cliente_responsaveis'),
   ],
 );
@@ -217,8 +265,12 @@ export const veiculos = pgTable(
     foreignKey({ columns: [t.tenantId, t.clienteId], foreignColumns: [clientes.tenantId, clientes.id] }),
     // Placa e chassi são únicos na oficina: na venda para outro cliente, o veículo é transferido.
     uniqueIndex().on(t.tenantId, t.placa),
-    uniqueIndex().on(t.tenantId, t.chassi).where(sql`${t.chassi} is not null`),
-    uniqueIndex('veiculos_principal_unico').on(t.clienteId).where(sql`${t.principal}`),
+    uniqueIndex()
+      .on(t.tenantId, t.chassi)
+      .where(sql`${t.chassi} is not null`),
+    uniqueIndex('veiculos_principal_unico')
+      .on(t.clienteId)
+      .where(sql`${t.principal}`),
     index().on(t.clienteId),
     index().on(t.tenantId, t.marca, t.modelo),
     isolamentoPorTenant('veiculos'),
@@ -275,7 +327,9 @@ export const funcoes = pgTable(
   (t) => [
     unique().on(t.tenantId, t.id),
     uniqueIndex('funcoes_nome_unico').on(t.tenantId, sql`lower(${t.nome})`),
-    uniqueIndex('funcoes_admin_unico').on(t.tenantId).where(sql`${t.admin}`),
+    uniqueIndex('funcoes_admin_unico')
+      .on(t.tenantId)
+      .where(sql`${t.admin}`),
     isolamentoPorTenant('funcoes'),
   ],
 );
@@ -291,7 +345,9 @@ export const funcaoPermissoes = pgTable(
   },
   (t) => [
     primaryKey({ columns: [t.funcaoId, t.modulo] }),
-    foreignKey({ columns: [t.tenantId, t.funcaoId], foreignColumns: [funcoes.tenantId, funcoes.id] }).onDelete('cascade'),
+    foreignKey({ columns: [t.tenantId, t.funcaoId], foreignColumns: [funcoes.tenantId, funcoes.id] }).onDelete(
+      'cascade',
+    ),
     isolamentoPorTenant('funcao_permissoes'),
   ],
 );
@@ -374,8 +430,14 @@ export const categorias = pgTable(
     unique().on(t.tenantId, t.id),
     foreignKey({ columns: [t.tenantId, t.categoriaPaiId], foreignColumns: [t.tenantId, t.id] }),
     check('categorias_pai_diferente', sql`${t.categoriaPaiId} <> ${t.id}`),
-    uniqueIndex('categorias_codigo_unico').on(t.tenantId, t.codigo).where(sql`${t.codigo} is not null`),
-    uniqueIndex('categorias_nome_unico').on(t.tenantId, sql`coalesce(${t.categoriaPaiId}, '00000000-0000-0000-0000-000000000000'::uuid)`, sql`lower(${t.nome})`),
+    uniqueIndex('categorias_codigo_unico')
+      .on(t.tenantId, t.codigo)
+      .where(sql`${t.codigo} is not null`),
+    uniqueIndex('categorias_nome_unico').on(
+      t.tenantId,
+      sql`coalesce(${t.categoriaPaiId}, '00000000-0000-0000-0000-000000000000'::uuid)`,
+      sql`lower(${t.nome})`,
+    ),
     index().on(t.categoriaPaiId),
     ...fksAutoria(t),
     isolamentoPorTenant('categorias'),
@@ -396,7 +458,9 @@ export const marcas = pgTable(
   },
   (t) => [
     unique().on(t.tenantId, t.id),
-    uniqueIndex('marcas_codigo_unico').on(t.tenantId, t.codigo).where(sql`${t.codigo} is not null`),
+    uniqueIndex('marcas_codigo_unico')
+      .on(t.tenantId, t.codigo)
+      .where(sql`${t.codigo} is not null`),
     uniqueIndex('marcas_nome_unico').on(t.tenantId, sql`lower(${t.nome})`),
     ...fksAutoria(t),
     isolamentoPorTenant('marcas'),
@@ -437,7 +501,9 @@ export const materiais = pgTable(
   (t) => [
     unique().on(t.tenantId, t.id),
     uniqueIndex('materiais_sku_unico').on(t.tenantId, t.sku),
-    uniqueIndex('materiais_codigo_barras_unico').on(t.tenantId, t.codigoBarras).where(sql`${t.codigoBarras} is not null`),
+    uniqueIndex('materiais_codigo_barras_unico')
+      .on(t.tenantId, t.codigoBarras)
+      .where(sql`${t.codigoBarras} is not null`),
     foreignKey({ columns: [t.tenantId, t.tipoId], foreignColumns: [tiposMaterial.tenantId, tiposMaterial.id] }),
     foreignKey({ columns: [t.tenantId, t.categoriaId], foreignColumns: [categorias.tenantId, categorias.id] }),
     foreignKey({ columns: [t.tenantId, t.marcaId], foreignColumns: [marcas.tenantId, marcas.id] }),

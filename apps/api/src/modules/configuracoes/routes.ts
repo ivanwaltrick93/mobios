@@ -10,7 +10,9 @@ export const configuracoesRoutes: FastifyPluginAsyncZod = async (app) => {
 
   aceitarUploadDeImagem(app);
 
-  app.get('/aparencia', { schema: { response: { 200: temaSchema } } }, async (req) => withTenant(req.user.tid, lerTema));
+  app.get('/aparencia', { schema: { response: { 200: temaSchema } } }, async (req) =>
+    withTenant(req.user.tid, lerTema),
+  );
 
   app.put(
     '/aparencia',

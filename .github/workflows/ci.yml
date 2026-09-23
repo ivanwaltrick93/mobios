@@ -1,0 +1,42 @@
+# Verificação obrigatória de todo push e pull request: formatação, lint, tipos e testes.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      # Mesma versão usada nos Dockerfiles.
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.5.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Valores só de teste, sem segredo real: o banco sobe vazio dentro do runner.
+      - name: Preparar .env de teste
+        run: cp .env.example .env
+
+      - name: Subir o PostgreSQL (cria mobios_app e mobios_test via infra/db/init.sh)
+        run: docker compose up -d --wait db
+
+      - run: pnpm format:check
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test

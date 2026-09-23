@@ -1,4 +1,10 @@
-import { hojeIso, relatorioFiltroSchema, relatorioIdSchema, type RelatorioDescricao, type RelatorioId } from '@mobios/shared';
+import {
+  hojeIso,
+  relatorioFiltroSchema,
+  relatorioIdSchema,
+  type RelatorioDescricao,
+  type RelatorioId,
+} from '@mobios/shared';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { withTenant } from '../../db/client.js';
@@ -37,9 +43,14 @@ export const relatoriosRoutes: FastifyPluginAsyncZod = async (app) => {
 
   app.get('/:id/csv', { schema: { params: paramsSchema, querystring: relatorioFiltroSchema } }, async (req, reply) => {
     const def = definicaoPermitida(req.params.id, req.user.admin);
-    const { linhas, total } = await withTenant(req.user.tid, (tx) => def.consultar(tx, req.query, LIMITE_EXPORTACAO + 1));
+    const { linhas, total } = await withTenant(req.user.tid, (tx) =>
+      def.consultar(tx, req.query, LIMITE_EXPORTACAO + 1),
+    );
     if (total > LIMITE_EXPORTACAO) {
-      throw new ErroHttp(400, `O relatório tem ${total.toLocaleString('pt-BR')} linhas. Reduza o período (máximo ${LIMITE_EXPORTACAO.toLocaleString('pt-BR')}).`);
+      throw new ErroHttp(
+        400,
+        `O relatório tem ${total.toLocaleString('pt-BR')} linhas. Reduza o período (máximo ${LIMITE_EXPORTACAO.toLocaleString('pt-BR')}).`,
+      );
     }
     return reply
       .header('Content-Type', 'text/csv; charset=utf-8')

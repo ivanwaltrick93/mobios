@@ -15,7 +15,14 @@ import { asc, count, eq, ilike, or, sql } from 'drizzle-orm';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { withTenant, type Tx } from '../../db/client.js';
-import { cargosResponsavel, clienteEnderecos, clienteResponsaveis, clientes, origensCliente, relacionamentosCliente } from '../../db/schema.js';
+import {
+  cargosResponsavel,
+  clienteEnderecos,
+  clienteResponsaveis,
+  clientes,
+  origensCliente,
+  relacionamentosCliente,
+} from '../../db/schema.js';
 import { ErroHttp, naoEncontrado } from '../../lib/erros.js';
 
 // Correlação escrita à mão: dentro da subconsulta o Drizzle não qualifica as colunas.
@@ -28,7 +35,9 @@ type VeiculoResumo = ClienteResumo['veiculos'][number];
 const veiculosResumo = sql<VeiculoResumo[]>`(select coalesce(json_agg(x), '[]'::json) from (
   select v.id, v.placa, v.marca, v.modelo, v.status from veiculos v
   where v.cliente_id = "clientes"."id" order by v.principal desc, v.placa limit 4) x)`;
-const totalVeiculos = sql<number>`(select count(*) from veiculos v where v.cliente_id = "clientes"."id")`.mapWith(Number);
+const totalVeiculos = sql<number>`(select count(*) from veiculos v where v.cliente_id = "clientes"."id")`.mapWith(
+  Number,
+);
 
 const colunasResumo = {
   id: clientes.id,
@@ -61,7 +70,14 @@ const colunasEndereco = {
   cobranca: clienteEnderecos.cobranca,
 };
 
-type BasePendencias = { tipo: 'PF' | 'PJ'; cpfCnpj: string | null; telefone: string | null; whatsapp: string | null; temEndereco: boolean; temResponsavel: boolean };
+type BasePendencias = {
+  tipo: 'PF' | 'PJ';
+  cpfCnpj: string | null;
+  telefone: string | null;
+  whatsapp: string | null;
+  temEndereco: boolean;
+  temResponsavel: boolean;
+};
 const comPendencias = <T extends BasePendencias>({ temEndereco, temResponsavel, ...c }: T) => ({
   ...c,
   pendencias: pendenciasCliente(c, temEndereco, temResponsavel),
@@ -115,7 +131,13 @@ async function carregarCliente(tx: Tx, id: string): Promise<Cliente> {
  * Item de lista (origem/relacionamento) precisa estar ativo para ser escolhido.
  * Na edição, o cliente pode manter o item que já tinha, mesmo que tenha sido desativado depois.
  */
-async function validarOpcao(tx: Tx, tabela: typeof origensCliente, id: string | null, atual: string | null | string[], campo: string) {
+async function validarOpcao(
+  tx: Tx,
+  tabela: typeof origensCliente,
+  id: string | null,
+  atual: string | null | string[],
+  campo: string,
+) {
   if (!id || (Array.isArray(atual) ? atual.includes(id) : id === atual)) return;
   const [opcao] = await tx.select({ ativa: tabela.ativa }).from(tabela).where(eq(tabela.id, id));
   if (!opcao?.ativa) throw new ErroHttp(400, `${campo}: escolha um item ativo da lista`);
@@ -132,8 +154,14 @@ async function gravarEnderecos(tx: Tx, clienteId: string, enderecos: ClienteDado
  * exceto as que o cliente já usava (podem ter sido desativadas depois).
  */
 async function gravarResponsaveis(tx: Tx, clienteId: string, responsaveis: ClienteDados['responsaveis']) {
-  const atuais = (await tx.select({ cargoId: clienteResponsaveis.cargoId }).from(clienteResponsaveis).where(eq(clienteResponsaveis.clienteId, clienteId))).map((r) => r.cargoId);
-  for (const cargoId of new Set(responsaveis.map((r) => r.cargoId))) await validarOpcao(tx, cargosResponsavel, cargoId, atuais, 'Função do responsável');
+  const atuais = (
+    await tx
+      .select({ cargoId: clienteResponsaveis.cargoId })
+      .from(clienteResponsaveis)
+      .where(eq(clienteResponsaveis.clienteId, clienteId))
+  ).map((r) => r.cargoId);
+  for (const cargoId of new Set(responsaveis.map((r) => r.cargoId)))
+    await validarOpcao(tx, cargosResponsavel, cargoId, atuais, 'Função do responsável');
   await tx.delete(clienteResponsaveis).where(eq(clienteResponsaveis.clienteId, clienteId));
   if (responsaveis.length) await tx.insert(clienteResponsaveis).values(responsaveis.map((r) => ({ ...r, clienteId })));
 }
@@ -146,7 +174,12 @@ export const clientesRoutes: FastifyPluginAsyncZod = async (app) => {
 
   app.get(
     '/',
-    { schema: { querystring: paginacaoSchema, response: { 200: z.object({ itens: z.array(clienteResumoSchema), total: z.number() }) } } },
+    {
+      schema: {
+        querystring: paginacaoSchema,
+        response: { 200: z.object({ itens: z.array(clienteResumoSchema), total: z.number() }) },
+      },
+    },
     async (req) => {
       const { q, pagina, porPagina } = req.query;
       const digitos = q?.replace(/\D/g, '');
@@ -159,11 +192,21 @@ export const clientesRoutes: FastifyPluginAsyncZod = async (app) => {
             // Documento guardado sem pontuação e em maiúsculas (o CNPJ pode ter letras).
             ...(documento ? [ilike(clientes.cpfCnpj, `%${documento}%`)] : []),
             ...(digitos ? [ilike(clientes.telefone, `%${digitos}%`), ilike(clientes.whatsapp, `%${digitos}%`)] : []),
-            ...(placa.length >= 3 ? [sql`exists (select 1 from veiculos v where v.cliente_id = "clientes"."id" and v.placa like ${`%${placa}%`})`] : []),
+            ...(placa.length >= 3
+              ? [
+                  sql`exists (select 1 from veiculos v where v.cliente_id = "clientes"."id" and v.placa like ${`%${placa}%`})`,
+                ]
+              : []),
           )
         : undefined;
       return withTenant(req.user.tid, async (tx) => {
-        const linhas = await tx.select(colunasResumo).from(clientes).where(filtro).orderBy(asc(clientes.nome)).limit(porPagina).offset((pagina - 1) * porPagina);
+        const linhas = await tx
+          .select(colunasResumo)
+          .from(clientes)
+          .where(filtro)
+          .orderBy(asc(clientes.nome))
+          .limit(porPagina)
+          .offset((pagina - 1) * porPagina);
         const [{ total }] = (await tx.select({ total: count() }).from(clientes).where(filtro)) as [{ total: number }];
         return { itens: linhas.map(comPendencias), total };
       });
@@ -174,39 +217,55 @@ export const clientesRoutes: FastifyPluginAsyncZod = async (app) => {
     withTenant(req.user.tid, (tx) => carregarCliente(tx, req.params.id)),
   );
 
-  app.post('/', { ...editar, schema: { body: clienteInputSchema, response: { 201: clienteSchema } } }, async (req, reply) => {
-    const { enderecos, responsaveis, ...dados } = req.body;
-    const cliente = await withTenant(req.user.tid, async (tx) => {
-      await validarOpcao(tx, origensCliente, dados.origemId, null, 'Origem do cliente');
-      await validarOpcao(tx, relacionamentosCliente, dados.relacionamentoId, null, 'Tipo de relacionamento');
-      const [{ id }] = (await tx.insert(clientes).values(dados).returning({ id: clientes.id })) as [{ id: string }];
-      await gravarEnderecos(tx, id, enderecos);
-      await gravarResponsaveis(tx, id, responsaveis);
-      return carregarCliente(tx, id);
-    });
-    return reply.code(201).send(cliente);
-  });
+  app.post(
+    '/',
+    { ...editar, schema: { body: clienteInputSchema, response: { 201: clienteSchema } } },
+    async (req, reply) => {
+      const { enderecos, responsaveis, ...dados } = req.body;
+      const cliente = await withTenant(req.user.tid, async (tx) => {
+        await validarOpcao(tx, origensCliente, dados.origemId, null, 'Origem do cliente');
+        await validarOpcao(tx, relacionamentosCliente, dados.relacionamentoId, null, 'Tipo de relacionamento');
+        const [{ id }] = (await tx.insert(clientes).values(dados).returning({ id: clientes.id })) as [{ id: string }];
+        await gravarEnderecos(tx, id, enderecos);
+        await gravarResponsaveis(tx, id, responsaveis);
+        return carregarCliente(tx, id);
+      });
+      return reply.code(201).send(cliente);
+    },
+  );
 
-  app.put('/:id', { ...editar, schema: { params: idParamSchema, body: clienteInputSchema, response: { 200: clienteSchema } } }, async (req) => {
-    const { enderecos, responsaveis, ...dados } = req.body;
-    return withTenant(req.user.tid, async (tx) => {
-      const [atual] = await tx
-        .select({ origemId: clientes.origemId, relacionamentoId: clientes.relacionamentoId })
-        .from(clientes)
-        .where(eq(clientes.id, req.params.id))
-        .for('update');
-      if (!atual) throw naoEncontrado('Cliente');
-      await validarOpcao(tx, origensCliente, dados.origemId, atual.origemId, 'Origem do cliente');
-      await validarOpcao(tx, relacionamentosCliente, dados.relacionamentoId, atual.relacionamentoId, 'Tipo de relacionamento');
-      await tx.update(clientes).set(dados).where(eq(clientes.id, req.params.id));
-      await gravarEnderecos(tx, req.params.id, enderecos);
-      await gravarResponsaveis(tx, req.params.id, responsaveis);
-      return carregarCliente(tx, req.params.id);
-    });
-  });
+  app.put(
+    '/:id',
+    { ...editar, schema: { params: idParamSchema, body: clienteInputSchema, response: { 200: clienteSchema } } },
+    async (req) => {
+      const { enderecos, responsaveis, ...dados } = req.body;
+      return withTenant(req.user.tid, async (tx) => {
+        const [atual] = await tx
+          .select({ origemId: clientes.origemId, relacionamentoId: clientes.relacionamentoId })
+          .from(clientes)
+          .where(eq(clientes.id, req.params.id))
+          .for('update');
+        if (!atual) throw naoEncontrado('Cliente');
+        await validarOpcao(tx, origensCliente, dados.origemId, atual.origemId, 'Origem do cliente');
+        await validarOpcao(
+          tx,
+          relacionamentosCliente,
+          dados.relacionamentoId,
+          atual.relacionamentoId,
+          'Tipo de relacionamento',
+        );
+        await tx.update(clientes).set(dados).where(eq(clientes.id, req.params.id));
+        await gravarEnderecos(tx, req.params.id, enderecos);
+        await gravarResponsaveis(tx, req.params.id, responsaveis);
+        return carregarCliente(tx, req.params.id);
+      });
+    },
+  );
 
   app.delete('/:id', { ...editar, schema: { params: idParamSchema } }, async (req, reply) => {
-    const removidos = await withTenant(req.user.tid, (tx) => tx.delete(clientes).where(eq(clientes.id, req.params.id)).returning({ id: clientes.id }));
+    const removidos = await withTenant(req.user.tid, (tx) =>
+      tx.delete(clientes).where(eq(clientes.id, req.params.id)).returning({ id: clientes.id }),
+    );
     if (removidos.length === 0) throw naoEncontrado('Cliente');
     return reply.code(204).send();
   });

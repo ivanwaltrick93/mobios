@@ -7,7 +7,8 @@ import { UNIDADES } from './materiais.js';
  * Por enquanto o saldo muda só por ajuste manual com motivo; compras, vendas e O.S. vão movimentar depois.
  */
 
-const chaves = <T extends Record<string, unknown>>(o: T) => Object.keys(o) as [keyof T & string, ...(keyof T & string)[]];
+const chaves = <T extends Record<string, unknown>>(o: T) =>
+  Object.keys(o) as [keyof T & string, ...(keyof T & string)[]];
 
 /** Até 99.999.999.999,999 com no máximo 3 casas decimais. */
 const quantidade = (rotulo: string) =>
@@ -20,7 +21,11 @@ const quantidade = (rotulo: string) =>
 export const estoqueAjusteSchema = z.object({
   disponivel: quantidade('o disponível'),
   reservado: quantidade('o reservado'),
-  motivo: z.string({ error: 'Informe o motivo' }).trim().min(3, 'Informe o motivo do ajuste').max(200, 'Máximo de 200 caracteres'),
+  motivo: z
+    .string({ error: 'Informe o motivo' })
+    .trim()
+    .min(3, 'Informe o motivo do ajuste')
+    .max(200, 'Máximo de 200 caracteres'),
   /** Versão lida do saldo (obrigatória quando o saldo já existe): evita sobrescrever ajuste de outra pessoa. */
   versao: z.number().int().min(1).optional(),
 });

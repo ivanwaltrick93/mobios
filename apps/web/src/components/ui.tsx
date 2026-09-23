@@ -3,7 +3,15 @@
  * cores só por tokens (bg-primaria, text-texto-suave...), definidos em src/index.css.
  */
 import type { UseFormRegisterReturn } from 'react-hook-form';
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TdHTMLAttributes, TextareaHTMLAttributes, ThHTMLAttributes } from 'react';
+import type {
+  ButtonHTMLAttributes,
+  InputHTMLAttributes,
+  ReactNode,
+  SelectHTMLAttributes,
+  TdHTMLAttributes,
+  TextareaHTMLAttributes,
+  ThHTMLAttributes,
+} from 'react';
 
 const base =
   'block w-full rounded-md border border-borda-forte bg-superficie px-3 py-2 text-sm text-texto shadow-sm placeholder:text-texto-suave focus:border-primaria focus:outline-none focus:ring-1 focus:ring-primaria disabled:bg-superficie-alt';
@@ -15,7 +23,11 @@ export function Campo({ rotulo, erro, dica, children }: CampoProps) {
     <label className="block space-y-1">
       <span className="text-sm font-medium text-texto">{rotulo}</span>
       {children}
-      {erro?.message ? <span className="text-xs text-perigo">{erro.message}</span> : dica && <span className="text-xs text-texto-suave">{dica}</span>}
+      {erro?.message ? (
+        <span className="text-xs text-perigo">{erro.message}</span>
+      ) : (
+        dica && <span className="text-xs text-texto-suave">{dica}</span>
+      )}
     </label>
   );
 }
@@ -31,7 +43,11 @@ export const Select = ({ className = '', ...props }: SelectHTMLAttributes<HTMLSe
  * Use com `register`: `<InputMascara registro={form.register('telefone')} mascara={mascaraTelefone} />`.
  * A máscara só formata; quem valida e tira a pontuação é o schema.
  */
-export const InputMascara = ({ registro, mascara, ...props }: InputHTMLAttributes<HTMLInputElement> & { registro: UseFormRegisterReturn; mascara: (v: string) => string }) => (
+export const InputMascara = ({
+  registro,
+  mascara,
+  ...props
+}: InputHTMLAttributes<HTMLInputElement> & { registro: UseFormRegisterReturn; mascara: (v: string) => string }) => (
   <Input
     autoComplete="off"
     {...props}
@@ -70,7 +86,8 @@ type Variante = 'primario' | 'secundario' | 'perigo';
 
 const coresBotao: Record<Variante, string> = {
   primario: 'bg-botao-primario text-botao-primario-texto hover:bg-botao-primario-hover',
-  secundario: 'border border-botao-secundario-borda bg-botao-secundario text-botao-secundario-texto hover:bg-botao-secundario-hover',
+  secundario:
+    'border border-botao-secundario-borda bg-botao-secundario text-botao-secundario-texto hover:bg-botao-secundario-hover',
   perigo: 'bg-perigo text-sobre-perigo hover:bg-perigo-hover',
 };
 
@@ -84,7 +101,11 @@ export const Botao = ({ variante = 'primario', className = '', ...props }: Botao
 );
 
 /** Ação discreta em texto (ex.: "Editar" numa linha de tabela). */
-export const BotaoLink = ({ perigo, className = '', ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { perigo?: boolean }) => (
+export const BotaoLink = ({
+  perigo,
+  className = '',
+  ...props
+}: ButtonHTMLAttributes<HTMLButtonElement> & { perigo?: boolean }) => (
   <button className={`text-sm hover:underline ${perigo ? 'text-perigo' : 'text-primaria'} ${className}`} {...props} />
 );
 
@@ -117,7 +138,10 @@ const coresSelo: Record<Tom, string> = {
 };
 
 export const Selo = ({ tom = 'neutro', titulo, children }: { tom?: Tom; titulo?: string; children: ReactNode }) => (
-  <span title={titulo} className={`inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${coresSelo[tom]}`}>
+  <span
+    title={titulo}
+    className={`inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${coresSelo[tom]}`}
+  >
     {children}
   </span>
 );
@@ -144,7 +168,11 @@ export const Linha = ({ children, className = '' }: { children: ReactNode; class
   <tr className={`border-b border-borda last:border-0 ${className}`}>{children}</tr>
 );
 
-export const Td = ({ suave, className = '', ...props }: TdHTMLAttributes<HTMLTableCellElement> & { suave?: boolean }) => (
+export const Td = ({
+  suave,
+  className = '',
+  ...props
+}: TdHTMLAttributes<HTMLTableCellElement> & { suave?: boolean }) => (
   <td className={`px-4 py-3 ${suave ? 'text-texto-suave' : ''} ${className}`} {...props} />
 );
 
@@ -159,7 +187,15 @@ export const LinhaVazia = ({ colunas, children }: { colunas: number; children: R
 // ---------- Abas ----------
 
 /** Abas de uma página (ex.: perfil do cliente). `contagem` aparece ao lado do rótulo. */
-export function Abas<T extends string>({ abas, atual, aoTrocar }: { abas: { id: T; rotulo: string; contagem?: number }[]; atual: T; aoTrocar: (id: T) => void }) {
+export function Abas<T extends string>({
+  abas,
+  atual,
+  aoTrocar,
+}: {
+  abas: { id: T; rotulo: string; contagem?: number }[];
+  atual: T;
+  aoTrocar: (id: T) => void;
+}) {
   return (
     <nav className="flex gap-1 overflow-x-auto border-b border-borda" role="tablist">
       {abas.map((a) => (
@@ -170,12 +206,18 @@ export function Abas<T extends string>({ abas, atual, aoTrocar }: { abas: { id: 
           aria-selected={a.id === atual}
           onClick={() => aoTrocar(a.id)}
           className={`-mb-px flex items-center gap-2 whitespace-nowrap border-b-2 px-4 py-2.5 text-sm transition ${
-            a.id === atual ? 'border-primaria font-medium text-primaria' : 'border-transparent text-texto-suave hover:text-texto'
+            a.id === atual
+              ? 'border-primaria font-medium text-primaria'
+              : 'border-transparent text-texto-suave hover:text-texto'
           }`}
         >
           {a.rotulo}
           {a.contagem != null && (
-            <span className={`rounded-full px-1.5 text-xs ${a.id === atual ? 'bg-primaria-suave' : 'bg-superficie-alt'}`}>{a.contagem}</span>
+            <span
+              className={`rounded-full px-1.5 text-xs ${a.id === atual ? 'bg-primaria-suave' : 'bg-superficie-alt'}`}
+            >
+              {a.contagem}
+            </span>
           )}
         </button>
       ))}
@@ -184,7 +226,17 @@ export function Abas<T extends string>({ abas, atual, aoTrocar }: { abas: { id: 
 }
 
 /** Estado vazio amigável: ícone, mensagem e ação opcional. */
-export const Vazio = ({ icone, titulo, children, acao }: { icone: ReactNode; titulo: string; children?: ReactNode; acao?: ReactNode }) => (
+export const Vazio = ({
+  icone,
+  titulo,
+  children,
+  acao,
+}: {
+  icone: ReactNode;
+  titulo: string;
+  children?: ReactNode;
+  acao?: ReactNode;
+}) => (
   <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-borda-forte px-6 py-12 text-center">
     <span className="text-texto-suave [&>svg]:size-10">{icone}</span>
     <p className="font-medium text-texto">{titulo}</p>

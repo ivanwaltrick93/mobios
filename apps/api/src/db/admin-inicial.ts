@@ -4,13 +4,27 @@ import { count, sql } from 'drizzle-orm';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { gravarAcessos, gravarFuncoesDoUsuario } from '../lib/acessos.js';
 import type { Tx } from './client.js';
-import { cargosResponsavel, funcoes, origensCliente, relacionamentosCliente, tenants, tiposDeposito, tiposMaterial, users } from './schema.js';
+import {
+  cargosResponsavel,
+  funcoes,
+  origensCliente,
+  relacionamentosCliente,
+  tenants,
+  tiposDeposito,
+  tiposMaterial,
+  users,
+} from './schema.js';
 
 type Banco = PostgresJsDatabase<Record<string, unknown>>;
 
 /** Cria uma oficina com seu usuário admin. A senha é gravada apenas como hash Argon2id. */
-export async function criarOficinaComAdmin(banco: Banco, dados: { oficina: string; nome: string; email: string; senha: string }) {
-  const admin = usuarioCriarSchema.omit({ funcoes: true }).parse({ nome: dados.nome, email: dados.email, senha: dados.senha });
+export async function criarOficinaComAdmin(
+  banco: Banco,
+  dados: { oficina: string; nome: string; email: string; senha: string },
+) {
+  const admin = usuarioCriarSchema
+    .omit({ funcoes: true })
+    .parse({ nome: dados.nome, email: dados.email, senha: dados.senha });
   const senhaHash = await hash(admin.senha);
   return banco.transaction(async (tx) => {
     const [tenant] = await tx.insert(tenants).values({ nome: dados.oficina }).returning();

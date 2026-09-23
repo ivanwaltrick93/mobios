@@ -20,23 +20,48 @@ export function exigirVersao(versao: number | undefined): number {
  * UPDATE com concorrência otimista: só grava se a versão ainda for a lida, e incrementa a versão.
  * Nenhuma linha afetada: o registro não existe (404) ou outra pessoa salvou antes (409).
  */
-export async function atualizarVersionado(tx: Tx, tabela: TabelaVersionada, id: string, versao: number, valores: Record<string, unknown>, rotulo: string) {
+export async function atualizarVersionado(
+  tx: Tx,
+  tabela: TabelaVersionada,
+  id: string,
+  versao: number,
+  valores: Record<string, unknown>,
+  rotulo: string,
+) {
   const [linha] = await tx
     .update(tabela)
     .set({ ...valores, versao: sql`${tabela.versao} + 1` } as never)
     .where(and(eq(tabela.id, id), eq(tabela.versao, versao)))
     .returning({ id: tabela.id });
   if (linha) return;
-  const [existe] = await tx.select({ id: tabela.id }).from(tabela as PgTable).where(eq(tabela.id, id));
+  const [existe] = await tx
+    .select({ id: tabela.id })
+    .from(tabela as PgTable)
+    .where(eq(tabela.id, id));
   if (!existe) throw naoEncontrado(rotulo);
-  throw new ErroHttp(409, 'Este registro foi alterado por outra pessoa enquanto você editava. Recarregue a página e refaça a alteração.');
+  throw new ErroHttp(
+    409,
+    'Este registro foi alterado por outra pessoa enquanto você editava. Recarregue a página e refaça a alteração.',
+  );
 }
 
 /** Ativar/inativar (desativação lógica). */
-export async function alterarAtivo(tx: Tx, tabela: TabelaVersionada, coluna: AnyPgColumn, id: string, ativo: boolean, usuario: string, rotulo: string) {
+export async function alterarAtivo(
+  tx: Tx,
+  tabela: TabelaVersionada,
+  coluna: AnyPgColumn,
+  id: string,
+  ativo: boolean,
+  usuario: string,
+  rotulo: string,
+) {
   const [linha] = await tx
     .update(tabela)
-    .set({ [coluna.name === 'ativa' ? 'ativa' : 'ativo']: ativo, atualizadoPor: usuario, versao: sql`${tabela.versao} + 1` } as never)
+    .set({
+      [coluna.name === 'ativa' ? 'ativa' : 'ativo']: ativo,
+      atualizadoPor: usuario,
+      versao: sql`${tabela.versao} + 1`,
+    } as never)
     .where(eq(tabela.id, id))
     .returning({ id: tabela.id });
   if (!linha) throw naoEncontrado(rotulo);
@@ -46,9 +71,19 @@ export async function alterarAtivo(tx: Tx, tabela: TabelaVersionada, coluna: Any
  * Referência válida para cadastro/alteração: precisa existir na oficina (o RLS garante) e estar ativa.
  * Na edição, manter a referência atual é permitido mesmo se ela foi inativada depois.
  */
-export async function validarReferencia(tx: Tx, tabela: TabelaComId, ativo: AnyPgColumn, id: string | null, atual: string | null | undefined, rotulo: string) {
+export async function validarReferencia(
+  tx: Tx,
+  tabela: TabelaComId,
+  ativo: AnyPgColumn,
+  id: string | null,
+  atual: string | null | undefined,
+  rotulo: string,
+) {
   if (!id || id === atual) return;
-  const [ref] = await tx.select({ ativo }).from(tabela as PgTable).where(eq(tabela.id, id));
+  const [ref] = await tx
+    .select({ ativo })
+    .from(tabela as PgTable)
+    .where(eq(tabela.id, id));
   const a = rotulo.endsWith('a') ? 'a' : 'o'; // "Categoria inativa", "Tipo inativo"
   if (!ref) throw new ErroHttp(400, `${rotulo} não encontrad${a}.`);
   if (!ref.ativo) throw new ErroHttp(400, `${rotulo} está inativ${a}: escolha outr${a} ou reative.`);

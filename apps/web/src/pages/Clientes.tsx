@@ -19,7 +19,10 @@ export function Clientes() {
   const podeEditar = usePode()('clientes', 'editar');
   const clientes = useQuery({
     queryKey: ['clientes', busca, quantidade],
-    queryFn: () => api<{ itens: ClienteResumo[]; total: number }>(`/clientes?${new URLSearchParams({ q: busca, porPagina: String(Math.min(quantidade, 100)) })}`),
+    queryFn: () =>
+      api<{ itens: ClienteResumo[]; total: number }>(
+        `/clientes?${new URLSearchParams({ q: busca, porPagina: String(Math.min(quantidade, 100)) })}`,
+      ),
     placeholderData: keepPreviousData,
   });
   const dados = clientes.data;
@@ -39,7 +42,10 @@ export function Clientes() {
       </Titulo>
 
       <div className="relative">
-        <Search className="pointer-events-none absolute top-1/2 left-4 size-5 -translate-y-1/2 text-texto-suave" aria-hidden />
+        <Search
+          className="pointer-events-none absolute top-1/2 left-4 size-5 -translate-y-1/2 text-texto-suave"
+          aria-hidden
+        />
         <Input
           className="h-12 pl-12 text-base"
           placeholder="Buscar por nome, placa, CPF/CNPJ ou telefone"
@@ -81,11 +87,17 @@ export function Clientes() {
             Mostrando {dados.itens.length} de {dados.total} cliente(s)
           </TextoSuave>
           {dados.total > dados.itens.length && quantidade < 100 && (
-            <Botao variante="secundario" disabled={clientes.isFetching} onClick={() => setQuantidade((q) => q + POR_PAGINA)}>
+            <Botao
+              variante="secundario"
+              disabled={clientes.isFetching}
+              onClick={() => setQuantidade((q) => q + POR_PAGINA)}
+            >
               Mostrar mais
             </Botao>
           )}
-          {dados.total > dados.itens.length && quantidade >= 100 && <TextoSuave className="text-xs">Refine a busca para ver os demais.</TextoSuave>}
+          {dados.total > dados.itens.length && quantidade >= 100 && (
+            <TextoSuave className="text-xs">Refine a busca para ver os demais.</TextoSuave>
+          )}
         </div>
       )}
     </div>
@@ -100,7 +112,10 @@ function CartaoCliente({ cliente: c }: { cliente: ClienteResumo }) {
         <Iniciais nome={c.nome} />
         <div className="min-w-0 flex-1">
           {/* O link cobre o cartão inteiro; o WhatsApp fica por cima (relative z-10). */}
-          <Link to={`/clientes/${c.id}`} className="block truncate font-semibold text-texto after:absolute after:inset-0 after:rounded-lg hover:text-primaria">
+          <Link
+            to={`/clientes/${c.id}`}
+            className="block truncate font-semibold text-texto after:absolute after:inset-0 after:rounded-lg hover:text-primaria"
+          >
             {c.nome}
           </Link>
           <p className="truncate text-xs text-texto-suave">
@@ -122,7 +137,11 @@ function CartaoCliente({ cliente: c }: { cliente: ClienteResumo }) {
       <div className="mt-auto flex flex-wrap items-center gap-2 border-t border-borda pt-4">
         {c.veiculos.length === 0 && <span className="text-sm text-texto-suave">Nenhum veículo</span>}
         {c.veiculos.map((v) => (
-          <span key={v.id} className={`flex items-center gap-2 ${v.status === 'ativo' ? '' : 'opacity-50'}`} title={`${v.marca} ${v.modelo}`}>
+          <span
+            key={v.id}
+            className={`flex items-center gap-2 ${v.status === 'ativo' ? '' : 'opacity-50'}`}
+            title={`${v.marca} ${v.modelo}`}
+          >
             <Placa placa={v.placa} tamanho="sm" />
             {c.veiculos.length === 1 && <span className="text-sm text-texto">{v.modelo}</span>}
           </span>

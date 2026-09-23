@@ -13,9 +13,23 @@ describe('materiais e preços', () => {
   });
 
   it('normaliza SKU, NCM e códigos; campos vazios viram null', () => {
-    const base = { sku: ' fil-001 ', descricao: 'Filtro de óleo', tipoId: '4d3c1a2b-9f8e-4d7c-8b6a-5f4e3d2c1b0a', categoriaId: '4d3c1a2b-9f8e-4d7c-8b6a-5f4e3d2c1b0a', unidade: 'UN' };
+    const base = {
+      sku: ' fil-001 ',
+      descricao: 'Filtro de óleo',
+      tipoId: '4d3c1a2b-9f8e-4d7c-8b6a-5f4e3d2c1b0a',
+      categoriaId: '4d3c1a2b-9f8e-4d7c-8b6a-5f4e3d2c1b0a',
+      unidade: 'UN',
+    };
     const m = materialInputSchema.parse({ ...base, ncm: '8421.23.00', codigoBarras: '', marcaId: '', origem: '' });
-    expect(m).toMatchObject({ sku: 'FIL-001', ncm: '84212300', codigoBarras: null, marcaId: null, origem: null, controlaEstoque: true, controlaLote: false });
+    expect(m).toMatchObject({
+      sku: 'FIL-001',
+      ncm: '84212300',
+      codigoBarras: null,
+      marcaId: null,
+      origem: null,
+      controlaEstoque: true,
+      controlaLote: false,
+    });
     expect(materialInputSchema.safeParse({ ...base, sku: 'FIL 001' }).success).toBe(false);
     expect(materialInputSchema.safeParse({ ...base, ncm: '123' }).success).toBe(false);
   });
@@ -25,8 +39,23 @@ describe('materiais e preços', () => {
     expect(mascaraMoeda('5')).toBe('0,05');
     expect(moedaParaCentavos('1.234,56')).toBe(123456);
     expect(mascaraNcm('84212300')).toBe('8421.23.00');
-    expect(precoInputSchema.safeParse({ materialId: '4d3c1a2b-9f8e-4d7c-8b6a-5f4e3d2c1b0a', tabelaPrecoId: '4d3c1a2b-9f8e-4d7c-8b6a-5f4e3d2c1b0a', precoCentavos: 100, dataInicio: '2026-05-01', dataFim: '2026-04-30' }).success).toBe(false);
-    expect(precoInputSchema.safeParse({ materialId: '4d3c1a2b-9f8e-4d7c-8b6a-5f4e3d2c1b0a', tabelaPrecoId: '4d3c1a2b-9f8e-4d7c-8b6a-5f4e3d2c1b0a', precoCentavos: -1, dataInicio: '2026-05-01' }).success).toBe(false);
+    expect(
+      precoInputSchema.safeParse({
+        materialId: '4d3c1a2b-9f8e-4d7c-8b6a-5f4e3d2c1b0a',
+        tabelaPrecoId: '4d3c1a2b-9f8e-4d7c-8b6a-5f4e3d2c1b0a',
+        precoCentavos: 100,
+        dataInicio: '2026-05-01',
+        dataFim: '2026-04-30',
+      }).success,
+    ).toBe(false);
+    expect(
+      precoInputSchema.safeParse({
+        materialId: '4d3c1a2b-9f8e-4d7c-8b6a-5f4e3d2c1b0a',
+        tabelaPrecoId: '4d3c1a2b-9f8e-4d7c-8b6a-5f4e3d2c1b0a',
+        precoCentavos: -1,
+        dataInicio: '2026-05-01',
+      }).success,
+    ).toBe(false);
   });
 
   it('situação da vigência (fim inclusivo, fim vazio = aberta)', () => {
@@ -51,7 +80,9 @@ describe('estoque', async () => {
   it('ajuste exige motivo e não aceita negativo nem 4 casas', () => {
     expect(estoqueAjusteSchema.safeParse({ disponivel: 1, reservado: 0, motivo: '' }).success).toBe(false);
     expect(estoqueAjusteSchema.safeParse({ disponivel: -1, reservado: 0, motivo: 'Inventário' }).success).toBe(false);
-    expect(estoqueAjusteSchema.safeParse({ disponivel: 1.2345, reservado: 0, motivo: 'Inventário' }).success).toBe(false);
+    expect(estoqueAjusteSchema.safeParse({ disponivel: 1.2345, reservado: 0, motivo: 'Inventário' }).success).toBe(
+      false,
+    );
     expect(estoqueAjusteSchema.safeParse({ disponivel: 1.5, reservado: 2, motivo: 'Inventário' }).success).toBe(true);
   });
 });

@@ -10,19 +10,84 @@ export const NIVEIS = ['consultar', 'editar'] as const;
 export const nivelSchema = z.enum(NIVEIS);
 export type Nivel = z.infer<typeof nivelSchema>;
 
-export const nomesNivel: Record<Nivel | 'nenhum', string> = { nenhum: 'Sem acesso', consultar: 'Consultar', editar: 'Editar' };
+export const nomesNivel: Record<Nivel | 'nenhum', string> = {
+  nenhum: 'Sem acesso',
+  consultar: 'Consultar',
+  editar: 'Editar',
+};
 
 export const MODULOS = [
-  { id: 'clientes', nome: 'Clientes e veículos', niveis: ['consultar', 'editar'], disponivel: true, descricao: 'Editar = cadastrar e alterar clientes e veículos.' },
-  { id: 'os', nome: 'Ordem de Serviço', niveis: ['consultar', 'editar'], disponivel: false, descricao: 'Editar = abrir O.S., diagnóstico, solicitar peças, execução e entrega.' },
-  { id: 'pecas_os', nome: 'Peças na O.S.', niveis: ['editar'], disponivel: false, descricao: 'Editar = adicionar/separar peças em O.S. aberta, com baixa no estoque.' },
-  { id: 'materiais', nome: 'Materiais', niveis: ['consultar', 'editar'], disponivel: true, descricao: 'Editar = cadastrar materiais, categorias, marcas e depósitos.' },
-  { id: 'precos', nome: 'Preços', niveis: ['consultar', 'editar'], disponivel: true, descricao: 'Editar = tabelas de preço e novas vigências de preço.' },
-  { id: 'estoque', nome: 'Estoque', niveis: ['consultar', 'editar'], disponivel: true, descricao: 'Consultar = ver saldos por depósito. Editar = ajustar saldos (e, no futuro, entradas e venda no balcão).' },
-  { id: 'recebimentos', nome: 'Recebimentos', niveis: ['consultar', 'editar'], disponivel: false, descricao: 'Editar = registrar pagamentos, na O.S. ou no Financeiro.' },
-  { id: 'financeiro', nome: 'Financeiro', niveis: ['consultar', 'editar'], disponivel: false, descricao: 'Contas, caixa e faturamento. Consultar mostra o faturado na página inicial.' },
-  { id: 'relatorios', nome: 'Relatórios', niveis: ['consultar'], disponivel: true, descricao: 'Consultar = visualizar e extrair em CSV.' },
-] as const satisfies readonly { id: string; nome: string; niveis: readonly Nivel[]; disponivel: boolean; descricao: string }[];
+  {
+    id: 'clientes',
+    nome: 'Clientes e veículos',
+    niveis: ['consultar', 'editar'],
+    disponivel: true,
+    descricao: 'Editar = cadastrar e alterar clientes e veículos.',
+  },
+  {
+    id: 'os',
+    nome: 'Ordem de Serviço',
+    niveis: ['consultar', 'editar'],
+    disponivel: false,
+    descricao: 'Editar = abrir O.S., diagnóstico, solicitar peças, execução e entrega.',
+  },
+  {
+    id: 'pecas_os',
+    nome: 'Peças na O.S.',
+    niveis: ['editar'],
+    disponivel: false,
+    descricao: 'Editar = adicionar/separar peças em O.S. aberta, com baixa no estoque.',
+  },
+  {
+    id: 'materiais',
+    nome: 'Materiais',
+    niveis: ['consultar', 'editar'],
+    disponivel: true,
+    descricao: 'Editar = cadastrar materiais, categorias, marcas e depósitos.',
+  },
+  {
+    id: 'precos',
+    nome: 'Preços',
+    niveis: ['consultar', 'editar'],
+    disponivel: true,
+    descricao: 'Editar = tabelas de preço e novas vigências de preço.',
+  },
+  {
+    id: 'estoque',
+    nome: 'Estoque',
+    niveis: ['consultar', 'editar'],
+    disponivel: true,
+    descricao:
+      'Consultar = ver saldos por depósito. Editar = ajustar saldos (e, no futuro, entradas e venda no balcão).',
+  },
+  {
+    id: 'recebimentos',
+    nome: 'Recebimentos',
+    niveis: ['consultar', 'editar'],
+    disponivel: false,
+    descricao: 'Editar = registrar pagamentos, na O.S. ou no Financeiro.',
+  },
+  {
+    id: 'financeiro',
+    nome: 'Financeiro',
+    niveis: ['consultar', 'editar'],
+    disponivel: false,
+    descricao: 'Contas, caixa e faturamento. Consultar mostra o faturado na página inicial.',
+  },
+  {
+    id: 'relatorios',
+    nome: 'Relatórios',
+    niveis: ['consultar'],
+    disponivel: true,
+    descricao: 'Consultar = visualizar e extrair em CSV.',
+  },
+] as const satisfies readonly {
+  id: string;
+  nome: string;
+  niveis: readonly Nivel[];
+  disponivel: boolean;
+  descricao: string;
+}[];
 
 export type ModuloId = (typeof MODULOS)[number]['id'];
 export const MODULO_IDS = MODULOS.map((m) => m.id) as [ModuloId, ...ModuloId[]];
@@ -32,11 +97,16 @@ export const moduloSchema = z.enum(MODULO_IDS);
 export type Acessos = Record<ModuloId, Nivel | null>;
 
 export const acessosSchema = z.object(
-  Object.fromEntries(MODULO_IDS.map((id) => [id, nivelSchema.nullable()])) as Record<ModuloId, z.ZodNullable<typeof nivelSchema>>,
+  Object.fromEntries(MODULO_IDS.map((id) => [id, nivelSchema.nullable()])) as Record<
+    ModuloId,
+    z.ZodNullable<typeof nivelSchema>
+  >,
 );
 
 export const SEM_ACESSO: Acessos = Object.fromEntries(MODULO_IDS.map((id) => [id, null])) as Acessos;
-export const ACESSO_TOTAL: Acessos = Object.fromEntries(MODULOS.map((m) => [m.id, m.niveis[m.niveis.length - 1]])) as Acessos;
+export const ACESSO_TOTAL: Acessos = Object.fromEntries(
+  MODULOS.map((m) => [m.id, m.niveis[m.niveis.length - 1]]),
+) as Acessos;
 
 const peso = (n: Nivel | null) => (n === 'editar' ? 2 : n === 'consultar' ? 1 : 0);
 
@@ -65,13 +135,39 @@ export const NOME_FUNCAO_ADMIN = 'Administrador';
 export const FUNCOES_PADRAO: { nome: string; acessos: Partial<Acessos> }[] = [
   {
     nome: 'Atendente',
-    acessos: { clientes: 'editar', os: 'editar', pecas_os: 'editar', materiais: 'consultar', precos: 'consultar', estoque: 'editar', recebimentos: 'editar' },
+    acessos: {
+      clientes: 'editar',
+      os: 'editar',
+      pecas_os: 'editar',
+      materiais: 'consultar',
+      precos: 'consultar',
+      estoque: 'editar',
+      recebimentos: 'editar',
+    },
   },
   { nome: 'Mecânico', acessos: { clientes: 'consultar', os: 'editar', materiais: 'consultar', estoque: 'consultar' } },
-  { nome: 'Almoxarife', acessos: { clientes: 'consultar', os: 'consultar', pecas_os: 'editar', materiais: 'editar', precos: 'consultar', estoque: 'consultar' } },
+  {
+    nome: 'Almoxarife',
+    acessos: {
+      clientes: 'consultar',
+      os: 'consultar',
+      pecas_os: 'editar',
+      materiais: 'editar',
+      precos: 'consultar',
+      estoque: 'consultar',
+    },
+  },
   {
     nome: 'Financeiro',
-    acessos: { clientes: 'consultar', os: 'consultar', materiais: 'consultar', precos: 'editar', recebimentos: 'editar', financeiro: 'editar', relatorios: 'consultar' },
+    acessos: {
+      clientes: 'consultar',
+      os: 'consultar',
+      materiais: 'consultar',
+      precos: 'editar',
+      recebimentos: 'editar',
+      financeiro: 'editar',
+      relatorios: 'consultar',
+    },
   },
 ];
 

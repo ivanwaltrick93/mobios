@@ -13,7 +13,11 @@ export function NovoVeiculo() {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const clienteId = params.get('clienteId');
-  const cliente = useQuery({ queryKey: ['clientes', clienteId], queryFn: () => api<Cliente>(`/clientes/${clienteId}`), enabled: !!clienteId });
+  const cliente = useQuery({
+    queryKey: ['clientes', clienteId],
+    queryFn: () => api<Cliente>(`/clientes/${clienteId}`),
+    enabled: !!clienteId,
+  });
 
   if (!permitido) return <Alerta>Você não tem permissão para cadastrar veículos.</Alerta>;
 
@@ -42,7 +46,11 @@ export function NovoVeiculo() {
             </h2>
             <BotaoLink onClick={() => setParams({})}>Trocar cliente</BotaoLink>
           </div>
-          <VeiculoForm clienteId={clienteId} aoSalvar={() => navigate(`/clientes/${clienteId}?aba=veiculos`)} aoCancelar={() => navigate(-1)} />
+          <VeiculoForm
+            clienteId={clienteId}
+            aoSalvar={() => navigate(`/clientes/${clienteId}?aba=veiculos`)}
+            aoCancelar={() => navigate(-1)}
+          />
         </Cartao>
       )}
     </div>

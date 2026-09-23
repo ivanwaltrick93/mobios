@@ -20,7 +20,11 @@ export function EditarMaterial() {
         Editar {material.data.sku} — {material.data.descricao}
       </Titulo>
       <Cartao>
-        <MaterialForm material={material.data} aoSalvar={() => navigate(`/materiais/${id}`)} aoCancelar={() => navigate(-1)} />
+        <MaterialForm
+          material={material.data}
+          aoSalvar={() => navigate(`/materiais/${id}`)}
+          aoCancelar={() => navigate(-1)}
+        />
       </Cartao>
     </div>
   );

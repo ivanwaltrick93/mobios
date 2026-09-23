@@ -17,7 +17,11 @@ type Credencial = { id: string; tenant_id: string; senha_hash: string; ativo: bo
 async function carregarSessao(userId: string, tenantId: string): Promise<Sessao | undefined> {
   return withTenant(tenantId, async (tx) => {
     const [linha] = await tx
-      .select({ usuario: { id: users.id, nome: users.nome, email: users.email }, oficina: { id: tenants.id, nome: tenants.nome }, fotoEm: usuarioFotos.atualizadoEm })
+      .select({
+        usuario: { id: users.id, nome: users.nome, email: users.email },
+        oficina: { id: tenants.id, nome: tenants.nome },
+        fotoEm: usuarioFotos.atualizadoEm,
+      })
       .from(users)
       .innerJoin(tenants, eq(tenants.id, users.tenantId))
       .leftJoin(usuarioFotos, eq(usuarioFotos.usuarioId, users.id))
@@ -35,7 +39,9 @@ async function carregarSessao(userId: string, tenantId: string): Promise<Sessao 
 export const authRoutes: FastifyPluginAsyncZod = async (app) => {
   app.post('/login', { schema: { body: loginSchema, response: { 200: sessaoSchema } } }, async (req, reply) => {
     // users está sob RLS; a busca por e-mail passa pela função SECURITY DEFINER da migração 0001.
-    const [cred] = (await db.execute(sql`select * from auth_usuario_por_email(${req.body.email})`)) as unknown as Credencial[];
+    const [cred] = (await db.execute(
+      sql`select * from auth_usuario_por_email(${req.body.email})`,
+    )) as unknown as Credencial[];
     const senhaOk = await verify(cred?.senha_hash ?? HASH_FALSO, req.body.senha);
     if (!cred || !senhaOk) throw new ErroHttp(401, 'E-mail ou senha incorretos');
     if (!cred.ativo) throw new ErroHttp(401, 'Acesso desativado. Fale com o administrador.');

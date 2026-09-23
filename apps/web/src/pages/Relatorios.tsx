@@ -2,7 +2,21 @@ import { usePode } from '../lib/sessao';
 import type { RelatorioDescricao, RelatorioId, RelatorioPrevia } from '@mobios/shared';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Alerta, Botao, Cabecalho, Campo, Cartao, Input, Linha, LinhaVazia, Tabela, Td, TextoSuave, Th, Titulo } from '../components/ui';
+import {
+  Alerta,
+  Botao,
+  Cabecalho,
+  Campo,
+  Cartao,
+  Input,
+  Linha,
+  LinhaVazia,
+  Tabela,
+  Td,
+  TextoSuave,
+  Th,
+  Titulo,
+} from '../components/ui';
 import { api, ErroApi } from '../lib/api';
 
 async function baixarCsv(id: RelatorioId, filtro: URLSearchParams) {
@@ -21,7 +35,11 @@ async function baixarCsv(id: RelatorioId, filtro: URLSearchParams) {
 
 export function Relatorios() {
   const permitido = usePode()('relatorios');
-  const lista = useQuery({ queryKey: ['relatorios'], queryFn: () => api<RelatorioDescricao[]>('/relatorios'), enabled: permitido });
+  const lista = useQuery({
+    queryKey: ['relatorios'],
+    queryFn: () => api<RelatorioDescricao[]>('/relatorios'),
+    enabled: permitido,
+  });
   const [selecionado, setSelecionado] = useState<RelatorioId | null>(null);
   const atual = lista.data?.find((r) => r.id === selecionado) ?? lista.data?.[0];
 
@@ -31,7 +49,9 @@ export function Relatorios() {
   return (
     <div className="space-y-6">
       <Titulo>Relatórios</Titulo>
-      <TextoSuave>Escolha um relatório, filtre pelo período de cadastro e baixe em CSV (abre direto no Excel).</TextoSuave>
+      <TextoSuave>
+        Escolha um relatório, filtre pelo período de cadastro e baixe em CSV (abre direto no Excel).
+      </TextoSuave>
 
       <div className="grid gap-3 md:grid-cols-3">
         {lista.data?.map((r) => (
@@ -39,7 +59,9 @@ export function Relatorios() {
             key={r.id}
             onClick={() => setSelecionado(r.id)}
             className={`rounded-lg border p-4 text-left transition ${
-              atual?.id === r.id ? 'border-primaria bg-primaria-suave' : 'border-borda bg-superficie hover:border-borda-forte'
+              atual?.id === r.id
+                ? 'border-primaria bg-primaria-suave'
+                : 'border-borda bg-superficie hover:border-borda-forte'
             }`}
           >
             <div className={`font-medium ${atual?.id === r.id ? 'text-primaria' : 'text-texto'}`}>{r.titulo}</div>
@@ -109,7 +131,8 @@ function Extracao({ relatorio }: { relatorio: RelatorioDescricao }) {
         <>
           <TextoSuave>
             {previa.data.total.toLocaleString('pt-BR')} registro(s)
-            {previa.data.total > previa.data.linhas.length && ` · prévia dos primeiros ${previa.data.linhas.length}; o CSV traz todos`}
+            {previa.data.total > previa.data.linhas.length &&
+              ` · prévia dos primeiros ${previa.data.linhas.length}; o CSV traz todos`}
           </TextoSuave>
           <Tabela>
             <Cabecalho>
@@ -127,7 +150,9 @@ function Extracao({ relatorio }: { relatorio: RelatorioDescricao }) {
                   ))}
                 </Linha>
               ))}
-              {previa.data.linhas.length === 0 && <LinhaVazia colunas={previa.data.colunas.length}>Nenhum registro no período.</LinhaVazia>}
+              {previa.data.linhas.length === 0 && (
+                <LinhaVazia colunas={previa.data.colunas.length}>Nenhum registro no período.</LinhaVazia>
+              )}
             </tbody>
           </Tabela>
         </>

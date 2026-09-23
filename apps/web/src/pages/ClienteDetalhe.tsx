@@ -14,7 +14,18 @@ import {
   type Veiculo,
 } from '@mobios/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, CarFront, History, MapPin, MessageCircle, Pencil, Plus, Repeat, Star, Trash2 } from 'lucide-react';
+import {
+  AlertTriangle,
+  CarFront,
+  History,
+  MapPin,
+  MessageCircle,
+  Pencil,
+  Plus,
+  Repeat,
+  Star,
+  Trash2,
+} from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { Iniciais } from '../components/Avatar';
@@ -84,7 +95,12 @@ export function ClienteDetalhe() {
           </div>
           <div className="flex flex-wrap gap-2">
             {c.whatsapp && (
-              <a href={`https://wa.me/55${c.whatsapp}`} target="_blank" rel="noopener noreferrer" className={classesBotao('secundario')}>
+              <a
+                href={`https://wa.me/55${c.whatsapp}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={classesBotao('secundario')}
+              >
                 <MessageCircle className="mr-1.5 size-4 text-sucesso" aria-hidden /> WhatsApp
               </a>
             )}
@@ -100,7 +116,8 @@ export function ClienteDetalhe() {
           <div className="mt-5 flex flex-wrap items-center gap-3 rounded-md bg-alerta-suave px-4 py-3 text-sm text-alerta">
             <AlertTriangle className="size-5 shrink-0" aria-hidden />
             <span className="flex-1">
-              <strong>Cadastro incompleto.</strong> Falta: {c.pendencias.join(', ')}. Sem isso não será possível abrir O.S.
+              <strong>Cadastro incompleto.</strong> Falta: {c.pendencias.join(', ')}. Sem isso não será possível abrir
+              O.S.
             </span>
             {podeEditar && (
               <Link to={`/clientes/${id}/editar`} className="font-medium underline">
@@ -128,7 +145,13 @@ export function ClienteDetalhe() {
             <Bloco titulo="Contato">
               <Dado rotulo="WhatsApp">{c.whatsapp && <LinkWhatsApp numero={c.whatsapp} />}</Dado>
               <Dado rotulo="Telefone">{c.telefone && formatarTelefone(c.telefone)}</Dado>
-              <Dado rotulo="E-mail">{c.email && <a href={`mailto:${c.email}`} className="text-primaria hover:underline">{c.email}</a>}</Dado>
+              <Dado rotulo="E-mail">
+                {c.email && (
+                  <a href={`mailto:${c.email}`} className="text-primaria hover:underline">
+                    {c.email}
+                  </a>
+                )}
+              </Dado>
             </Bloco>
             <Bloco titulo="Identificação">
               <Dado rotulo={pf ? 'RG' : 'Inscrição estadual'}>{c.rgIe}</Dado>
@@ -138,7 +161,9 @@ export function ClienteDetalhe() {
             <Bloco titulo="Relacionamento">
               <Dado rotulo="Origem">{c.origemNome}</Dado>
               <Dado rotulo="Tipo de relacionamento">{c.relacionamentoNome}</Dado>
-              <Dado rotulo="Endereço principal">{c.enderecos[0] && `${c.enderecos[0].cidade}/${c.enderecos[0].uf}`}</Dado>
+              <Dado rotulo="Endereço principal">
+                {c.enderecos[0] && `${c.enderecos[0].cidade}/${c.enderecos[0].uf}`}
+              </Dado>
             </Bloco>
           </div>
           {!pf && (
@@ -146,7 +171,10 @@ export function ClienteDetalhe() {
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <h3 className="text-sm font-semibold">Responsáveis pela empresa</h3>
                 {podeEditar && (
-                  <Link to={`/clientes/${id}/editar?etapa=responsaveis`} className="text-sm text-primaria hover:underline">
+                  <Link
+                    to={`/clientes/${id}/editar?etapa=responsaveis`}
+                    className="text-sm text-primaria hover:underline"
+                  >
                     {c.responsaveis.length ? 'Editar' : 'Cadastrar responsável'}
                   </Link>
                 )}
@@ -164,7 +192,11 @@ export function ClienteDetalhe() {
                           {r.principal && <Selo tom="primario">Principal</Selo>}
                         </div>
                         <div className="text-xs text-texto-suave">{r.cargoNome}</div>
-                        {r.telefoneWhatsapp ? <LinkWhatsApp numero={r.telefone} /> : <div>{formatarTelefone(r.telefone)}</div>}
+                        {r.telefoneWhatsapp ? (
+                          <LinkWhatsApp numero={r.telefone} />
+                        ) : (
+                          <div>{formatarTelefone(r.telefone)}</div>
+                        )}
                         {r.email && (
                           <a href={`mailto:${r.email}`} className="block truncate text-primaria hover:underline">
                             {r.email}
@@ -185,14 +217,24 @@ export function ClienteDetalhe() {
           )}
           {podeEditar && (
             <div className="text-right">
-              <BotaoLink perigo disabled={excluir.isPending} onClick={() => confirm(`Excluir o cliente ${c.nome}? Esta ação não pode ser desfeita.`) && excluir.mutate()}>
+              <BotaoLink
+                perigo
+                disabled={excluir.isPending}
+                onClick={() =>
+                  confirm(`Excluir o cliente ${c.nome}? Esta ação não pode ser desfeita.`) && excluir.mutate()
+                }
+              >
                 <Trash2 className="mr-1 inline size-4" aria-hidden />
                 Excluir cliente
               </BotaoLink>
             </div>
           )}
           {excluir.isError && (
-            <Alerta>{excluir.error instanceof ErroApi && excluir.error.status === 409 ? 'Este cliente tem veículos. Remova-os ou transfira-os antes de excluir.' : excluir.error.message}</Alerta>
+            <Alerta>
+              {excluir.error instanceof ErroApi && excluir.error.status === 409
+                ? 'Este cliente tem veículos. Remova-os ou transfira-os antes de excluir.'
+                : excluir.error.message}
+            </Alerta>
           )}
         </div>
       )}
@@ -214,7 +256,8 @@ export function ClienteDetalhe() {
           )}
           {podeEditar && (
             <Link to={`/clientes/${id}/editar?etapa=endereco`} className={classesBotao('secundario')}>
-              <Pencil className="mr-1.5 size-4" aria-hidden /> {c.enderecos.length ? 'Editar endereços' : 'Cadastrar endereço'}
+              <Pencil className="mr-1.5 size-4" aria-hidden />{' '}
+              {c.enderecos.length ? 'Editar endereços' : 'Cadastrar endereço'}
             </Link>
           )}
         </div>
@@ -230,7 +273,9 @@ export function ClienteDetalhe() {
 }
 
 function ItemEndereco({ endereco: e }: { endereco: Endereco }) {
-  const finalidades = (Object.keys(FINALIDADES_PJ) as (keyof typeof FINALIDADES_PJ)[]).filter((f) => e[f]).map((f) => FINALIDADES_PJ[f]);
+  const finalidades = (Object.keys(FINALIDADES_PJ) as (keyof typeof FINALIDADES_PJ)[])
+    .filter((f) => e[f])
+    .map((f) => FINALIDADES_PJ[f]);
   return (
     <li>
       <Cartao className="flex gap-4 p-5">
@@ -262,7 +307,15 @@ function ItemEndereco({ endereco: e }: { endereco: Endereco }) {
   );
 }
 
-function Veiculos({ clienteId, veiculos, podeEditar }: { clienteId: string; veiculos?: Veiculo[]; podeEditar: boolean }) {
+function Veiculos({
+  clienteId,
+  veiculos,
+  podeEditar,
+}: {
+  clienteId: string;
+  veiculos?: Veiculo[];
+  podeEditar: boolean;
+}) {
   const queryClient = useQueryClient();
   const [transferindo, setTransferindo] = useState<string | null>(null);
   const remover = useMutation({
@@ -331,17 +384,25 @@ function Veiculos({ clienteId, veiculos, podeEditar }: { clienteId: string; veic
               </dl>
               <p className="text-xs text-texto-suave">
                 {v.chassi ? `Chassi ${v.chassi}` : 'Sem chassi informado'}
-                {v.renavam && ` · Renavam ${v.renavam}`} · Última visita: {v.ultimaVisita ? formatarDataIso(v.ultimaVisita) : '—'}
+                {v.renavam && ` · Renavam ${v.renavam}`} · Última visita:{' '}
+                {v.ultimaVisita ? formatarDataIso(v.ultimaVisita) : '—'}
               </p>
               {podeEditar && (
                 <div className="mt-auto flex flex-wrap gap-4 border-t border-borda pt-3">
-                  <Link to={`/veiculos/${v.id}/editar`} className="inline-flex items-center gap-1 text-sm text-primaria hover:underline">
+                  <Link
+                    to={`/veiculos/${v.id}/editar`}
+                    className="inline-flex items-center gap-1 text-sm text-primaria hover:underline"
+                  >
                     <Pencil className="size-4" aria-hidden /> {v.pendencias.length ? 'Completar' : 'Editar'}
                   </Link>
                   <BotaoLink onClick={() => setTransferindo(v.id)} className="inline-flex items-center gap-1">
                     <Repeat className="size-4" aria-hidden /> Transferir
                   </BotaoLink>
-                  <BotaoLink perigo className="ml-auto inline-flex items-center gap-1" onClick={() => confirm(`Remover o veículo ${formatarPlaca(v.placa)}?`) && remover.mutate(v.id)}>
+                  <BotaoLink
+                    perigo
+                    className="ml-auto inline-flex items-center gap-1"
+                    onClick={() => confirm(`Remover o veículo ${formatarPlaca(v.placa)}?`) && remover.mutate(v.id)}
+                  >
                     <Trash2 className="size-4" aria-hidden /> Remover
                   </BotaoLink>
                 </div>
@@ -368,7 +429,8 @@ function Transferir({ veiculo, aoConcluir }: { veiculo: Veiculo; aoConcluir: () 
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const transferir = useMutation({
-    mutationFn: (clienteId: string) => api<Veiculo>(`/veiculos/${veiculo.id}/transferir`, { method: 'POST', body: { clienteId } }),
+    mutationFn: (clienteId: string) =>
+      api<Veiculo>(`/veiculos/${veiculo.id}/transferir`, { method: 'POST', body: { clienteId } }),
     onSuccess: (v) => {
       queryClient.invalidateQueries({ queryKey: ['veiculos'] });
       queryClient.invalidateQueries({ queryKey: ['clientes'] });
@@ -386,12 +448,20 @@ function Transferir({ veiculo, aoConcluir }: { veiculo: Veiculo; aoConcluir: () 
         </div>
         <BotaoLink onClick={aoConcluir}>Cancelar</BotaoLink>
       </div>
-      <TextoSuave>O veículo passa para o novo proprietário com o mesmo cadastro e volta a ficar ativo. As O.S. já feitas continuam no histórico do dono anterior.</TextoSuave>
+      <TextoSuave>
+        O veículo passa para o novo proprietário com o mesmo cadastro e volta a ficar ativo. As O.S. já feitas continuam
+        no histórico do dono anterior.
+      </TextoSuave>
       <Alerta>{transferir.isError && transferir.error.message}</Alerta>
       {transferir.isPending ? (
         <TextoSuave>Transferindo…</TextoSuave>
       ) : (
-        <BuscaCliente ignorar={veiculo.clienteId} aoEscolher={(c) => confirm(`Transferir ${formatarPlaca(veiculo.placa)} para ${c.nome}?`) && transferir.mutate(c.id)} />
+        <BuscaCliente
+          ignorar={veiculo.clienteId}
+          aoEscolher={(c) =>
+            confirm(`Transferir ${formatarPlaca(veiculo.placa)} para ${c.nome}?`) && transferir.mutate(c.id)
+          }
+        />
       )}
       <TextoSuave className="text-xs">
         Comprador ainda não é cliente?{' '}

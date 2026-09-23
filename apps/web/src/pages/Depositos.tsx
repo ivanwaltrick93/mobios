@@ -3,7 +3,20 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Warehouse } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { AbasMateriais } from '../components/AbasMateriais';
-import { Alerta, Botao, BotaoLink, Campo, Cartao, Input, Marcador, Select, Selo, TextoSuave, Titulo, Vazio } from '../components/ui';
+import {
+  Alerta,
+  Botao,
+  BotaoLink,
+  Campo,
+  Cartao,
+  Input,
+  Marcador,
+  Select,
+  Selo,
+  TextoSuave,
+  Titulo,
+  Vazio,
+} from '../components/ui';
 import { api } from '../lib/api';
 import { useOpcoes } from '../lib/cadastro';
 import { useDepositos } from '../lib/materiais';
@@ -18,7 +31,9 @@ export function Depositos() {
   const queryClient = useQueryClient();
   const acao = useMutation({
     mutationFn: ({ d, tipo }: { d: Deposito; tipo: 'status' | 'excluir' }) =>
-      tipo === 'excluir' ? api(`/depositos/${d.id}`, { method: 'DELETE' }) : api(`/depositos/${d.id}/status`, { method: 'PATCH', body: { ativo: !d.ativo } }),
+      tipo === 'excluir'
+        ? api(`/depositos/${d.id}`, { method: 'DELETE' })
+        : api(`/depositos/${d.id}/status`, { method: 'PATCH', body: { ativo: !d.ativo } }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['depositos'] }),
   });
 
@@ -26,9 +41,14 @@ export function Depositos() {
 
   return (
     <div className="space-y-6">
-      <Titulo acao={editar && !edicao && <Botao onClick={() => setEdicao('novo')}>Novo depósito</Botao>}>Materiais</Titulo>
+      <Titulo acao={editar && !edicao && <Botao onClick={() => setEdicao('novo')}>Novo depósito</Botao>}>
+        Materiais
+      </Titulo>
       <AbasMateriais />
-      <TextoSuave>Locais onde os materiais ficam guardados (loja, oficina, garantia...). O saldo por depósito chega com o módulo de estoque.</TextoSuave>
+      <TextoSuave>
+        Locais onde os materiais ficam guardados (loja, oficina, garantia...). O saldo por depósito chega com o módulo
+        de estoque.
+      </TextoSuave>
       {edicao === 'novo' && (
         <Cartao>
           <EditorDeposito aoConcluir={() => setEdicao(null)} />
@@ -65,8 +85,14 @@ export function Depositos() {
                 {editar && !edicao && (
                   <div className="mt-auto flex gap-4 border-t border-borda pt-3 text-sm">
                     <BotaoLink onClick={() => setEdicao(d)}>Editar</BotaoLink>
-                    <BotaoLink onClick={() => acao.mutate({ d, tipo: 'status' })}>{d.ativo ? 'Inativar' : 'Reativar'}</BotaoLink>
-                    <BotaoLink perigo className="ml-auto" onClick={() => confirm(`Excluir o depósito ${d.nome}?`) && acao.mutate({ d, tipo: 'excluir' })}>
+                    <BotaoLink onClick={() => acao.mutate({ d, tipo: 'status' })}>
+                      {d.ativo ? 'Inativar' : 'Reativar'}
+                    </BotaoLink>
+                    <BotaoLink
+                      perigo
+                      className="ml-auto"
+                      onClick={() => confirm(`Excluir o depósito ${d.nome}?`) && acao.mutate({ d, tipo: 'excluir' })}
+                    >
                       Excluir
                     </BotaoLink>
                   </div>
@@ -93,15 +119,28 @@ function EditorDeposito({ deposito, aoConcluir }: { deposito?: Deposito; aoConcl
     permiteTransferencia: deposito?.permiteTransferencia ?? true,
   });
   const salvar = useMutation({
-    mutationFn: () => api(deposito ? `/depositos/${deposito.id}` : '/depositos', { method: deposito ? 'PUT' : 'POST', body: { ...dados, versao: deposito?.versao } }),
-    onSuccess: () => (queryClient.invalidateQueries({ queryKey: ['depositos'] }), queryClient.invalidateQueries({ queryKey: ['opcoes'] }), aoConcluir()),
+    mutationFn: () =>
+      api(deposito ? `/depositos/${deposito.id}` : '/depositos', {
+        method: deposito ? 'PUT' : 'POST',
+        body: { ...dados, versao: deposito?.versao },
+      }),
+    onSuccess: () => (
+      queryClient.invalidateQueries({ queryKey: ['depositos'] }),
+      queryClient.invalidateQueries({ queryKey: ['opcoes'] }),
+      aoConcluir()
+    ),
   });
   const enviar = (e: FormEvent) => (e.preventDefault(), salvar.mutate());
   return (
     <form onSubmit={enviar} className="space-y-4">
       <div className="grid gap-3 md:grid-cols-4">
         <Campo rotulo="Código *">
-          <Input autoFocus placeholder="LOJA-01" value={dados.codigo} onChange={(e) => setDados({ ...dados, codigo: mascaraCodigo(e.target.value) })} />
+          <Input
+            autoFocus
+            placeholder="LOJA-01"
+            value={dados.codigo}
+            onChange={(e) => setDados({ ...dados, codigo: mascaraCodigo(e.target.value) })}
+          />
         </Campo>
         <div className="md:col-span-2">
           <Campo rotulo="Nome *">
@@ -127,9 +166,21 @@ function EditorDeposito({ deposito, aoConcluir }: { deposito?: Deposito; aoConcl
         </div>
       </div>
       <div className="flex flex-wrap gap-x-6 gap-y-2">
-        <Marcador rotulo="Permite venda" checked={dados.permiteVenda} onChange={(e) => setDados({ ...dados, permiteVenda: e.target.checked })} />
-        <Marcador rotulo="Permite uso em O.S." checked={dados.permiteUsoOs} onChange={(e) => setDados({ ...dados, permiteUsoOs: e.target.checked })} />
-        <Marcador rotulo="Permite transferência" checked={dados.permiteTransferencia} onChange={(e) => setDados({ ...dados, permiteTransferencia: e.target.checked })} />
+        <Marcador
+          rotulo="Permite venda"
+          checked={dados.permiteVenda}
+          onChange={(e) => setDados({ ...dados, permiteVenda: e.target.checked })}
+        />
+        <Marcador
+          rotulo="Permite uso em O.S."
+          checked={dados.permiteUsoOs}
+          onChange={(e) => setDados({ ...dados, permiteUsoOs: e.target.checked })}
+        />
+        <Marcador
+          rotulo="Permite transferência"
+          checked={dados.permiteTransferencia}
+          onChange={(e) => setDados({ ...dados, permiteTransferencia: e.target.checked })}
+        />
       </div>
       <Alerta>{salvar.isError && salvar.error.message}</Alerta>
       <div className="flex gap-2">

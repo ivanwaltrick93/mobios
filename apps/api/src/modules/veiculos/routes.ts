@@ -1,4 +1,12 @@
-import { idParamSchema, pendenciasVeiculo, sugestoesVeiculoSchema, veiculoAtualizarSchema, veiculoInputSchema, veiculoSchema, veiculoTransferirSchema } from '@mobios/shared';
+import {
+  idParamSchema,
+  pendenciasVeiculo,
+  sugestoesVeiculoSchema,
+  veiculoAtualizarSchema,
+  veiculoInputSchema,
+  veiculoSchema,
+  veiculoTransferirSchema,
+} from '@mobios/shared';
 import { and, asc, desc, eq, ne, sql } from 'drizzle-orm';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
@@ -41,11 +49,17 @@ async function carregarVeiculo(tx: Tx, id: string) {
 async function ajustarPrincipal(tx: Tx, clienteId: string, veiculoId?: string, marcado = false) {
   if (veiculoId && marcado) {
     // Desmarca antes de marcar: o índice único parcial permite um só principal por cliente.
-    await tx.update(veiculos).set({ principal: false }).where(and(eq(veiculos.clienteId, clienteId), eq(veiculos.principal, true), ne(veiculos.id, veiculoId)));
+    await tx
+      .update(veiculos)
+      .set({ principal: false })
+      .where(and(eq(veiculos.clienteId, clienteId), eq(veiculos.principal, true), ne(veiculos.id, veiculoId)));
     await tx.update(veiculos).set({ principal: true }).where(eq(veiculos.id, veiculoId));
     return;
   }
-  const [atual] = await tx.select({ id: veiculos.id }).from(veiculos).where(and(eq(veiculos.clienteId, clienteId), eq(veiculos.principal, true)));
+  const [atual] = await tx
+    .select({ id: veiculos.id })
+    .from(veiculos)
+    .where(and(eq(veiculos.clienteId, clienteId), eq(veiculos.principal, true)));
   if (atual) return;
   const [candidato] = await tx
     .select({ id: veiculos.id })
@@ -63,7 +77,9 @@ export const veiculosRoutes: FastifyPluginAsyncZod = async (app) => {
 
   app.get(
     '/',
-    { schema: { querystring: z.object({ clienteId: z.uuid().optional() }), response: { 200: z.array(veiculoSchema) } } },
+    {
+      schema: { querystring: z.object({ clienteId: z.uuid().optional() }), response: { 200: z.array(veiculoSchema) } },
+    },
     async (req) => {
       const { clienteId } = req.query;
       const lista = await withTenant(req.user.tid, (tx) =>
@@ -80,12 +96,22 @@ export const veiculosRoutes: FastifyPluginAsyncZod = async (app) => {
   /** Marcas e modelos já cadastrados na oficina, para sugerir no formulário (sem serviço externo). */
   app.get(
     '/sugestoes',
-    { schema: { querystring: z.object({ marca: z.string().trim().optional() }), response: { 200: sugestoesVeiculoSchema } } },
+    {
+      schema: {
+        querystring: z.object({ marca: z.string().trim().optional() }),
+        response: { 200: sugestoesVeiculoSchema },
+      },
+    },
     async (req) =>
       withTenant(req.user.tid, async (tx) => {
         const marcas = await tx.selectDistinct({ v: veiculos.marca }).from(veiculos).orderBy(veiculos.marca).limit(300);
         const modelos = req.query.marca
-          ? await tx.selectDistinct({ v: veiculos.modelo }).from(veiculos).where(sql`lower(${veiculos.marca}) = lower(${req.query.marca})`).orderBy(veiculos.modelo).limit(300)
+          ? await tx
+              .selectDistinct({ v: veiculos.modelo })
+              .from(veiculos)
+              .where(sql`lower(${veiculos.marca}) = lower(${req.query.marca})`)
+              .orderBy(veiculos.modelo)
+              .limit(300)
           : [];
         return { marcas: marcas.map((m) => m.v), modelos: modelos.map((m) => m.v) };
       }),
@@ -95,30 +121,41 @@ export const veiculosRoutes: FastifyPluginAsyncZod = async (app) => {
     withTenant(req.user.tid, (tx) => carregarVeiculo(tx, req.params.id)),
   );
 
-  app.post('/', { ...editar, schema: { body: veiculoInputSchema, response: { 201: veiculoSchema } } }, async (req, reply) => {
-    const { principal, ...dados } = req.body;
-    const veiculo = await withTenant(req.user.tid, async (tx) => {
-      const [{ id }] = (await tx.insert(veiculos).values({ ...dados, principal: false }).returning({ id: veiculos.id })) as [{ id: string }];
-      await ajustarPrincipal(tx, dados.clienteId, id, principal);
-      return carregarVeiculo(tx, id);
-    });
-    return reply.code(201).send(veiculo);
-  });
+  app.post(
+    '/',
+    { ...editar, schema: { body: veiculoInputSchema, response: { 201: veiculoSchema } } },
+    async (req, reply) => {
+      const { principal, ...dados } = req.body;
+      const veiculo = await withTenant(req.user.tid, async (tx) => {
+        const [{ id }] = (await tx
+          .insert(veiculos)
+          .values({ ...dados, principal: false })
+          .returning({ id: veiculos.id })) as [{ id: string }];
+        await ajustarPrincipal(tx, dados.clienteId, id, principal);
+        return carregarVeiculo(tx, id);
+      });
+      return reply.code(201).send(veiculo);
+    },
+  );
 
-  app.put('/:id', { ...editar, schema: { params: idParamSchema, body: veiculoAtualizarSchema, response: { 200: veiculoSchema } } }, async (req) => {
-    const { principal, ...dados } = req.body;
-    return withTenant(req.user.tid, async (tx) => {
-      const [atualizado] = await tx
-        .update(veiculos)
-        // Desmarcar o principal: outro veículo do cliente assume (ajustarPrincipal).
-        .set({ ...dados, ...(principal ? {} : { principal: false }) })
-        .where(eq(veiculos.id, req.params.id))
-        .returning({ clienteId: veiculos.clienteId });
-      if (!atualizado) throw naoEncontrado('Veículo');
-      await ajustarPrincipal(tx, atualizado.clienteId, req.params.id, principal);
-      return carregarVeiculo(tx, req.params.id);
-    });
-  });
+  app.put(
+    '/:id',
+    { ...editar, schema: { params: idParamSchema, body: veiculoAtualizarSchema, response: { 200: veiculoSchema } } },
+    async (req) => {
+      const { principal, ...dados } = req.body;
+      return withTenant(req.user.tid, async (tx) => {
+        const [atualizado] = await tx
+          .update(veiculos)
+          // Desmarcar o principal: outro veículo do cliente assume (ajustarPrincipal).
+          .set({ ...dados, ...(principal ? {} : { principal: false }) })
+          .where(eq(veiculos.id, req.params.id))
+          .returning({ clienteId: veiculos.clienteId });
+        if (!atualizado) throw naoEncontrado('Veículo');
+        await ajustarPrincipal(tx, atualizado.clienteId, req.params.id, principal);
+        return carregarVeiculo(tx, req.params.id);
+      });
+    },
+  );
 
   /**
    * Venda para outro cliente da oficina: o mesmo veículo (placa e chassi únicos) muda de dono
@@ -129,13 +166,23 @@ export const veiculosRoutes: FastifyPluginAsyncZod = async (app) => {
     { ...editar, schema: { params: idParamSchema, body: veiculoTransferirSchema, response: { 200: veiculoSchema } } },
     async (req) =>
       withTenant(req.user.tid, async (tx) => {
-        const [atual] = await tx.select({ clienteId: veiculos.clienteId }).from(veiculos).where(eq(veiculos.id, req.params.id)).for('update');
+        const [atual] = await tx
+          .select({ clienteId: veiculos.clienteId })
+          .from(veiculos)
+          .where(eq(veiculos.id, req.params.id))
+          .for('update');
         if (!atual) throw naoEncontrado('Veículo');
         if (atual.clienteId === req.body.clienteId) throw new ErroHttp(400, 'O veículo já é deste cliente');
-        const [novoDono] = await tx.select({ id: clientes.id }).from(clientes).where(eq(clientes.id, req.body.clienteId));
+        const [novoDono] = await tx
+          .select({ id: clientes.id })
+          .from(clientes)
+          .where(eq(clientes.id, req.body.clienteId));
         if (!novoDono) throw naoEncontrado('Cliente');
 
-        await tx.update(veiculos).set({ clienteId: req.body.clienteId, principal: false, status: 'ativo' }).where(eq(veiculos.id, req.params.id));
+        await tx
+          .update(veiculos)
+          .set({ clienteId: req.body.clienteId, principal: false, status: 'ativo' })
+          .where(eq(veiculos.id, req.params.id));
         await ajustarPrincipal(tx, atual.clienteId);
         await ajustarPrincipal(tx, req.body.clienteId);
         return carregarVeiculo(tx, req.params.id);
@@ -144,7 +191,10 @@ export const veiculosRoutes: FastifyPluginAsyncZod = async (app) => {
 
   app.delete('/:id', { ...editar, schema: { params: idParamSchema } }, async (req, reply) => {
     await withTenant(req.user.tid, async (tx) => {
-      const [removido] = await tx.delete(veiculos).where(eq(veiculos.id, req.params.id)).returning({ clienteId: veiculos.clienteId });
+      const [removido] = await tx
+        .delete(veiculos)
+        .where(eq(veiculos.id, req.params.id))
+        .returning({ clienteId: veiculos.clienteId });
       if (!removido) throw naoEncontrado('Veículo');
       await ajustarPrincipal(tx, removido.clienteId);
     });

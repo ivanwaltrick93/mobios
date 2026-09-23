@@ -39,12 +39,19 @@ export const mascaraCep = (v: string) => aplicar(digitos(v, 8), '#####-###');
 
 /** Placa antiga (ABC-1234) ou Mercosul (ABC1D23). */
 export function mascaraPlaca(v: string): string {
-  const p = v.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 7);
+  const p = v
+    .replace(/[^a-zA-Z0-9]/g, '')
+    .toUpperCase()
+    .slice(0, 7);
   return /^[A-Z]{3}\d{4}$/.test(p) ? `${p.slice(0, 3)}-${p.slice(3)}` : p;
 }
 
 export const mascaraRenavam = (v: string) => digitos(v, 11);
-export const mascaraChassi = (v: string) => v.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 17);
+export const mascaraChassi = (v: string) =>
+  v
+    .replace(/[^a-zA-Z0-9]/g, '')
+    .toUpperCase()
+    .slice(0, 17);
 export const mascaraAno = (v: string) => digitos(v, 4);
 
 /** Quilometragem com separador de milhar (125.000). */
@@ -58,21 +65,33 @@ export const mascaraEmail = (v: string) => v.replace(/\s/g, '').toLowerCase();
 
 /** Valor em reais com centavos ("1.234,56"): os dígitos digitados são os centavos. */
 export function mascaraMoeda(v: string): string {
-  const d = v.replace(/\D/g, '').replace(/^0+(?=\d)/, '').slice(0, 11);
+  const d = v
+    .replace(/\D/g, '')
+    .replace(/^0+(?=\d)/, '')
+    .slice(0, 11);
   if (!d) return '';
   return (Number(d) / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 /** "1.234,56" → 123456 (centavos). Vazio → null. */
-export const moedaParaCentavos = (v: string): number | null => (v.replace(/\D/g, '') ? Number(v.replace(/\D/g, '')) : null);
+export const moedaParaCentavos = (v: string): number | null =>
+  v.replace(/\D/g, '') ? Number(v.replace(/\D/g, '')) : null;
 
 export const mascaraNcm = (v: string) => {
   const d = v.replace(/\D/g, '').slice(0, 8);
-  return d.length > 6 ? `${d.slice(0, 4)}.${d.slice(4, 6)}.${d.slice(6)}` : d.length > 4 ? `${d.slice(0, 4)}.${d.slice(4)}` : d;
+  return d.length > 6
+    ? `${d.slice(0, 4)}.${d.slice(4, 6)}.${d.slice(6)}`
+    : d.length > 4
+      ? `${d.slice(0, 4)}.${d.slice(4)}`
+      : d;
 };
 export const mascaraCest = (v: string) => {
   const d = v.replace(/\D/g, '').slice(0, 7);
-  return d.length > 5 ? `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5)}` : d.length > 2 ? `${d.slice(0, 2)}.${d.slice(2)}` : d;
+  return d.length > 5
+    ? `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5)}`
+    : d.length > 2
+      ? `${d.slice(0, 2)}.${d.slice(2)}`
+      : d;
 };
 /** Códigos de cadastro (SKU, código de depósito...): maiúsculas, sem espaços. */
 export const mascaraCodigo = (v: string) => v.toUpperCase().replace(/\s/g, '');
@@ -84,7 +103,10 @@ export const mascaraGtin = (v: string) => v.replace(/\D/g, '').slice(0, 14);
  */
 export function mascaraQuantidade(v: string, fracionada: boolean): string {
   if (!fracionada) {
-    const d = v.replace(/\D/g, '').replace(/^0+(?=\d)/, '').slice(0, 9);
+    const d = v
+      .replace(/\D/g, '')
+      .replace(/^0+(?=\d)/, '')
+      .slice(0, 9);
     return d ? Number(d).toLocaleString('pt-BR') : '';
   }
   const [inteira = '', ...resto] = v.replace(/[^\d,]/g, '').split(',');

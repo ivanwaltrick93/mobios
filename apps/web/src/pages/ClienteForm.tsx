@@ -24,7 +24,19 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { useFieldArray, useForm, type UseFormReturn } from 'react-hook-form';
 import type { z } from 'zod';
 import { Etapas } from '../components/Etapas';
-import { Alerta, AreaTexto, Botao, BotaoLink, Campo, Input, InputMascara, Marcador, Secao, Select, TextoSuave } from '../components/ui';
+import {
+  Alerta,
+  AreaTexto,
+  Botao,
+  BotaoLink,
+  Campo,
+  Input,
+  InputMascara,
+  Marcador,
+  Secao,
+  Select,
+  TextoSuave,
+} from '../components/ui';
 import { api } from '../lib/api';
 import { useAssistente, type EtapaDef } from '../lib/assistente';
 import { buscarCep, useOpcoes } from '../lib/cadastro';
@@ -91,15 +103,26 @@ function valoresIniciais(c?: Cliente): Entrada {
     ativo: c.ativo,
     // Cadastro antigo sem endereço: já abre um em branco para completar.
     enderecos: c.enderecos.length
-      ? c.enderecos.map(({ id: _id, ...e }) => ({ ...e, cep: e.pais === PAIS_PADRAO ? mascaraCep(e.cep) : e.cep, complemento: e.complemento ?? '' }))
+      ? c.enderecos.map(({ id: _id, ...e }) => ({
+          ...e,
+          cep: e.pais === PAIS_PADRAO ? mascaraCep(e.cep) : e.cep,
+          complemento: e.complemento ?? '',
+        }))
       : [enderecoVazio(true)],
-    responsaveis: c.responsaveis.map(({ id: _id, cargoNome: _cargo, ...r }) => ({ ...r, telefone: mascaraTelefone(r.telefone), email: r.email ?? '' })),
+    responsaveis: c.responsaveis.map(({ id: _id, cargoNome: _cargo, ...r }) => ({
+      ...r,
+      telefone: mascaraTelefone(r.telefone),
+      email: r.email ?? '',
+    })),
   };
 }
 
 const ETAPA = {
   dados: { titulo: 'Dados', campos: ['tipo', 'cpfCnpj', 'nome', 'rgIe', 'dataNascimento', 'sexo'] },
-  contato: { titulo: 'Contato', campos: ['telefone', 'whatsapp', 'email', 'clienteDesde', 'origemId', 'relacionamentoId', 'ativo', 'observacoes'] },
+  contato: {
+    titulo: 'Contato',
+    campos: ['telefone', 'whatsapp', 'email', 'clienteDesde', 'origemId', 'relacionamentoId', 'ativo', 'observacoes'],
+  },
   responsaveis: { titulo: 'Responsáveis', campos: ['responsaveis'] },
   endereco: { titulo: 'Endereço', campos: ['enderecos'] },
   veiculo: { titulo: 'Veículo', campos: [] },
@@ -115,7 +138,14 @@ const etapasDo = (tipo: 'PF' | 'PJ', novo: boolean): EtapaCliente[] => [
   ...(novo ? (['veiculo'] as const) : []),
 ];
 
-const responsavelVazio = (principal: boolean): ResponsavelInput => ({ nome: '', telefone: '', telefoneWhatsapp: false, email: '', cargoId: '', principal });
+const responsavelVazio = (principal: boolean): ResponsavelInput => ({
+  nome: '',
+  telefone: '',
+  telefoneWhatsapp: false,
+  email: '',
+  cargoId: '',
+  principal,
+});
 
 /** Falha só no veículo, depois de o cliente já ter sido gravado. */
 class FalhaVeiculo extends Error {
@@ -128,10 +158,24 @@ class FalhaVeiculo extends Error {
  * Cadastro de cliente em etapas (Dados → Contato → Endereço → Veículo opcional).
  * Na edição (`cliente`), as etapas ficam livres, não há etapa de veículo e o salvar fica sempre visível.
  */
-export function ClienteForm({ cliente, etapaInicial, aoSalvar, aoCancelar }: { cliente?: Cliente; etapaInicial?: EtapaCliente; aoSalvar: (c: Cliente) => void; aoCancelar: () => void }) {
+export function ClienteForm({
+  cliente,
+  etapaInicial,
+  aoSalvar,
+  aoCancelar,
+}: {
+  cliente?: Cliente;
+  etapaInicial?: EtapaCliente;
+  aoSalvar: (c: Cliente) => void;
+  aoCancelar: () => void;
+}) {
   const queryClient = useQueryClient();
   const livre = !!cliente;
-  const form = useForm<Entrada, unknown, Saida>({ resolver: zodResolver(clienteInputSchema), defaultValues: valoresIniciais(cliente), mode: 'onTouched' });
+  const form = useForm<Entrada, unknown, Saida>({
+    resolver: zodResolver(clienteInputSchema),
+    defaultValues: valoresIniciais(cliente),
+    mode: 'onTouched',
+  });
   const tipo = form.watch('tipo') === 'PJ' ? 'PJ' : 'PF';
   const ids = etapasDo(tipo, !livre);
   const etapas = ids.map((id) => ETAPA[id]);
@@ -141,9 +185,20 @@ export function ClienteForm({ cliente, etapaInicial, aoSalvar, aoCancelar }: { c
   const [salvo, setSalvo] = useState<Cliente | null>(null);
 
   const salvar = useMutation({
-    mutationFn: async ({ dados, veiculo }: { dados: Saida; veiculo: z.output<typeof veiculoAtualizarSchema> | null }) => {
+    mutationFn: async ({
+      dados,
+      veiculo,
+    }: {
+      dados: Saida;
+      veiculo: z.output<typeof veiculoAtualizarSchema> | null;
+    }) => {
       // Se só o veículo falhou antes, o cliente já existe: não grava de novo.
-      const c = salvo ?? (await api<Cliente>(cliente ? `/clientes/${cliente.id}` : '/clientes', { method: cliente ? 'PUT' : 'POST', body: dados }));
+      const c =
+        salvo ??
+        (await api<Cliente>(cliente ? `/clientes/${cliente.id}` : '/clientes', {
+          method: cliente ? 'PUT' : 'POST',
+          body: dados,
+        }));
       setSalvo(cliente ? null : c);
       if (veiculo) {
         try {
@@ -177,7 +232,13 @@ export function ClienteForm({ cliente, etapaInicial, aoSalvar, aoCancelar }: { c
 
   return (
     <form className="space-y-6" noValidate onSubmit={(e) => assistente.interceptarEnvio(e, livre) || enviar(e)}>
-      <Etapas titulos={etapas.map((e) => e.titulo)} atual={assistente.etapa} aoIr={assistente.irPara} livre={livre} comErro={assistente.comErro} />
+      <Etapas
+        titulos={etapas.map((e) => e.titulo)}
+        atual={assistente.etapa}
+        aoIr={assistente.irPara}
+        livre={livre}
+        comErro={assistente.comErro}
+      />
 
       {erroSalvar instanceof FalhaVeiculo ? (
         <Alerta>
@@ -194,7 +255,9 @@ export function ClienteForm({ cliente, etapaInicial, aoSalvar, aoCancelar }: { c
 
       {etapaAtual === 'dados' && <EtapaDados form={form} />}
       {etapaAtual === 'contato' && <EtapaContato form={form} cliente={cliente} />}
-      {etapaAtual === 'responsaveis' && <Responsaveis form={form} atuais={cliente?.responsaveis.map((r) => r.cargoId) ?? []} />}
+      {etapaAtual === 'responsaveis' && (
+        <Responsaveis form={form} atuais={cliente?.responsaveis.map((r) => r.cargoId) ?? []} />
+      )}
       {etapaAtual === 'endereco' && <Enderecos form={form} pf={tipo === 'PF'} />}
       {etapaAtual === 'veiculo' && (
         <div className="space-y-6">
@@ -203,8 +266,20 @@ export function ClienteForm({ cliente, etapaInicial, aoSalvar, aoCancelar }: { c
             <TextoSuave>Você pode cadastrar agora ou depois, pelo perfil do cliente.</TextoSuave>
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
-            <OpcaoGrande icone={<CarFront />} titulo="Sim, cadastrar o veículo" descricao="Placa, modelo e ano" ativa={comVeiculo === true} aoEscolher={() => setComVeiculo(true)} />
-            <OpcaoGrande icone={<User />} titulo="Agora não" descricao="Só o cadastro do cliente" ativa={comVeiculo === false} aoEscolher={() => setComVeiculo(false)} />
+            <OpcaoGrande
+              icone={<CarFront />}
+              titulo="Sim, cadastrar o veículo"
+              descricao="Placa, modelo e ano"
+              ativa={comVeiculo === true}
+              aoEscolher={() => setComVeiculo(true)}
+            />
+            <OpcaoGrande
+              icone={<User />}
+              titulo="Agora não"
+              descricao="Só o cadastro do cliente"
+              ativa={comVeiculo === false}
+              aoEscolher={() => setComVeiculo(false)}
+            />
           </div>
           {comVeiculo && (
             <div className="space-y-6 rounded-lg border border-borda bg-superficie-alt p-4">
@@ -223,13 +298,27 @@ export function ClienteForm({ cliente, etapaInicial, aoSalvar, aoCancelar }: { c
         rotuloSalvar={livre ? 'Salvar alterações' : comVeiculo ? 'Cadastrar cliente e veículo' : 'Cadastrar cliente'}
         aoCancelar={aoCancelar}
       />
-      {!livre && assistente.ultima && comVeiculo === null && <TextoSuave className="text-right text-xs">Escolha uma opção acima ou apenas cadastre o cliente.</TextoSuave>}
+      {!livre && assistente.ultima && comVeiculo === null && (
+        <TextoSuave className="text-right text-xs">Escolha uma opção acima ou apenas cadastre o cliente.</TextoSuave>
+      )}
     </form>
   );
 }
 
 /** Botão grande de escolha (tipo de cliente, cadastrar veículo agora). */
-function OpcaoGrande({ icone, titulo, descricao, ativa, aoEscolher }: { icone: ReactNode; titulo: string; descricao: string; ativa: boolean; aoEscolher: () => void }) {
+function OpcaoGrande({
+  icone,
+  titulo,
+  descricao,
+  ativa,
+  aoEscolher,
+}: {
+  icone: ReactNode;
+  titulo: string;
+  descricao: string;
+  ativa: boolean;
+  aoEscolher: () => void;
+}) {
   return (
     <button
       type="button"
@@ -239,7 +328,11 @@ function OpcaoGrande({ icone, titulo, descricao, ativa, aoEscolher }: { icone: R
         ativa ? 'border-primaria bg-primaria-suave' : 'border-borda bg-superficie hover:border-borda-forte'
       }`}
     >
-      <span className={`flex size-11 shrink-0 items-center justify-center rounded-full [&>svg]:size-5 ${ativa ? 'bg-primaria text-sobre-primaria' : 'bg-superficie-alt text-texto-suave'}`}>{icone}</span>
+      <span
+        className={`flex size-11 shrink-0 items-center justify-center rounded-full [&>svg]:size-5 ${ativa ? 'bg-primaria text-sobre-primaria' : 'bg-superficie-alt text-texto-suave'}`}
+      >
+        {icone}
+      </span>
       <span>
         <span className={`block font-medium ${ativa ? 'text-primaria' : 'text-texto'}`}>{titulo}</span>
         <span className="block text-sm text-texto-suave">{descricao}</span>
@@ -261,11 +354,27 @@ function EtapaDados({ form }: { form: Form }) {
   return (
     <div className="space-y-5">
       <div className="grid gap-3 sm:grid-cols-2">
-        <OpcaoGrande icone={<User />} titulo="Pessoa física" descricao="Cliente com CPF" ativa={pf} aoEscolher={() => escolherTipo('PF')} />
-        <OpcaoGrande icone={<Building2 />} titulo="Pessoa jurídica" descricao="Empresa com CNPJ" ativa={!pf} aoEscolher={() => escolherTipo('PJ')} />
+        <OpcaoGrande
+          icone={<User />}
+          titulo="Pessoa física"
+          descricao="Cliente com CPF"
+          ativa={pf}
+          aoEscolher={() => escolherTipo('PF')}
+        />
+        <OpcaoGrande
+          icone={<Building2 />}
+          titulo="Pessoa jurídica"
+          descricao="Empresa com CNPJ"
+          ativa={!pf}
+          aoEscolher={() => escolherTipo('PJ')}
+        />
       </div>
       <div className="grid gap-4 md:grid-cols-3">
-        <Campo rotulo={pf ? 'CPF *' : 'CNPJ *'} dica={pf ? undefined : 'Aceita o novo CNPJ com letras'} erro={erros.cpfCnpj}>
+        <Campo
+          rotulo={pf ? 'CPF *' : 'CNPJ *'}
+          dica={pf ? undefined : 'Aceita o novo CNPJ com letras'}
+          erro={erros.cpfCnpj}
+        >
           {/* CNPJ alfanumérico (Receita, jul/2026): teclado de texto e letras em maiúsculas. */}
           <InputMascara
             autoFocus
@@ -322,16 +431,38 @@ function EtapaContato({ form, cliente }: { form: Form; cliente?: Cliente }) {
       <Secao titulo="Contato">
         <div className="grid gap-4 md:grid-cols-3">
           <Campo rotulo="Telefone principal *" erro={erros.telefone}>
-            <InputMascara autoFocus type="tel" placeholder="(00) 00000-0000" registro={form.register('telefone')} mascara={mascaraTelefone} />
+            <InputMascara
+              autoFocus
+              type="tel"
+              placeholder="(00) 00000-0000"
+              registro={form.register('telefone')}
+              mascara={mascaraTelefone}
+            />
           </Campo>
           <div className="space-y-2">
             <Campo rotulo="WhatsApp *" erro={erros.whatsapp}>
-              <InputMascara type="tel" placeholder="(00) 00000-0000" readOnly={mesmoNumero} registro={form.register('whatsapp')} mascara={mascaraTelefone} />
+              <InputMascara
+                type="tel"
+                placeholder="(00) 00000-0000"
+                readOnly={mesmoNumero}
+                registro={form.register('whatsapp')}
+                mascara={mascaraTelefone}
+              />
             </Campo>
-            <Marcador rotulo="Mesmo número do telefone" checked={mesmoNumero} onChange={(e) => setMesmoNumero(e.target.checked)} />
+            <Marcador
+              rotulo="Mesmo número do telefone"
+              checked={mesmoNumero}
+              onChange={(e) => setMesmoNumero(e.target.checked)}
+            />
           </div>
           <Campo rotulo="E-mail" dica="Orçamentos, nota fiscal e comunicação" erro={erros.email}>
-            <InputMascara type="email" inputMode="email" placeholder="nome@exemplo.com" registro={form.register('email')} mascara={mascaraEmail} />
+            <InputMascara
+              type="email"
+              inputMode="email"
+              placeholder="nome@exemplo.com"
+              registro={form.register('email')}
+              mascara={mascaraEmail}
+            />
           </Campo>
         </div>
       </Secao>
@@ -340,8 +471,22 @@ function EtapaContato({ form, cliente }: { form: Form; cliente?: Cliente }) {
           <Campo rotulo="Cliente desde *" erro={erros.clienteDesde}>
             <Input type="date" max={hojeIso()} {...form.register('clienteDesde')} />
           </Campo>
-          <SeletorOpcao form={form} lista="origens" campo="origemId" rotulo="Origem do cliente" atual={cliente?.origemId} erro={erros.origemId} />
-          <SeletorOpcao form={form} lista="relacionamentos" campo="relacionamentoId" rotulo="Tipo de relacionamento" atual={cliente?.relacionamentoId} erro={erros.relacionamentoId} />
+          <SeletorOpcao
+            form={form}
+            lista="origens"
+            campo="origemId"
+            rotulo="Origem do cliente"
+            atual={cliente?.origemId}
+            erro={erros.origemId}
+          />
+          <SeletorOpcao
+            form={form}
+            lista="relacionamentos"
+            campo="relacionamentoId"
+            rotulo="Tipo de relacionamento"
+            atual={cliente?.relacionamentoId}
+            erro={erros.relacionamentoId}
+          />
           <Campo rotulo="Status *" dica="Inativo não recebe O.S. nova" erro={erros.ativo}>
             <Select {...form.register('ativo', { setValueAs: (v) => v === true || v === 'true' })}>
               <option value="true">Ativo</option>
@@ -389,7 +534,9 @@ function Responsaveis({ form, atuais }: { form: Form; atuais: string[] }) {
         </BotaoLink>
       }
     >
-      <TextoSuave>Quem aprova orçamentos, leva ou busca o veículo. O principal é o primeiro a ser contatado.</TextoSuave>
+      <TextoSuave>
+        Quem aprova orçamentos, leva ou busca o veículo. O principal é o primeiro a ser contatado.
+      </TextoSuave>
       {mensagemLista && <p className="text-sm text-perigo">{mensagemLista}</p>}
       {fields.map((f, i) => {
         const erros = form.formState.errors.responsaveis?.[i];
@@ -399,7 +546,11 @@ function Responsaveis({ form, atuais }: { form: Form; atuais: string[] }) {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex flex-wrap items-center gap-4">
                 <span className="text-sm font-medium">Responsável {i + 1}</span>
-                <Marcador rotulo="Principal" checked={!!principal} onChange={(e) => e.target.checked && marcarPrincipal(i)} />
+                <Marcador
+                  rotulo="Principal"
+                  checked={!!principal}
+                  onChange={(e) => e.target.checked && marcarPrincipal(i)}
+                />
               </div>
               {fields.length > 1 && (
                 <BotaoLink type="button" perigo onClick={() => remover(i)}>
@@ -424,12 +575,23 @@ function Responsaveis({ form, atuais }: { form: Form; atuais: string[] }) {
               </Campo>
               <div className="space-y-2">
                 <Campo rotulo="Telefone *" erro={erros?.telefone}>
-                  <InputMascara type="tel" placeholder="(00) 00000-0000" registro={form.register(`responsaveis.${i}.telefone`)} mascara={mascaraTelefone} />
+                  <InputMascara
+                    type="tel"
+                    placeholder="(00) 00000-0000"
+                    registro={form.register(`responsaveis.${i}.telefone`)}
+                    mascara={mascaraTelefone}
+                  />
                 </Campo>
                 <Marcador rotulo="Este número é WhatsApp" {...form.register(`responsaveis.${i}.telefoneWhatsapp`)} />
               </div>
               <Campo rotulo="E-mail" erro={erros?.email}>
-                <InputMascara type="email" inputMode="email" placeholder="nome@empresa.com" registro={form.register(`responsaveis.${i}.email`)} mascara={mascaraEmail} />
+                <InputMascara
+                  type="email"
+                  inputMode="email"
+                  placeholder="nome@empresa.com"
+                  registro={form.register(`responsaveis.${i}.email`)}
+                  mascara={mascaraEmail}
+                />
               </Campo>
             </div>
           </div>
@@ -499,7 +661,15 @@ function Enderecos({ form, pf }: { form: Form; pf: boolean }) {
     >
       {mensagemLista && <p className="text-sm text-perigo">{mensagemLista}</p>}
       {fields.map((f, i) => (
-        <EnderecoCampos key={f.id} form={form} indice={i} pf={pf} podeRemover={fields.length > 1} aoMarcarPrincipal={() => marcarPrincipal(i)} aoRemover={() => remover(i)} />
+        <EnderecoCampos
+          key={f.id}
+          form={form}
+          indice={i}
+          pf={pf}
+          podeRemover={fields.length > 1}
+          aoMarcarPrincipal={() => marcarPrincipal(i)}
+          aoRemover={() => remover(i)}
+        />
       ))}
     </Secao>
   );
@@ -546,7 +716,11 @@ function EnderecoCampos({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-4">
           <span className="text-sm font-medium">Endereço {indice + 1}</span>
-          <Marcador rotulo="Endereço principal" checked={!!principal} onChange={(e) => e.target.checked && aoMarcarPrincipal()} />
+          <Marcador
+            rotulo="Endereço principal"
+            checked={!!principal}
+            onChange={(e) => e.target.checked && aoMarcarPrincipal()}
+          />
         </div>
         {podeRemover && (
           <BotaoLink type="button" perigo onClick={aoRemover}>
@@ -570,8 +744,15 @@ function EnderecoCampos({
         <div className="md:col-span-2">
           <Campo
             rotulo="CEP *"
-            erro={erros?.cep ?? (cep === 'nao-encontrado' ? { message: 'CEP não encontrado: preencha o endereço manualmente' } : undefined)}
-            dica={cep === 'buscando' ? 'Buscando endereço…' : noBrasil ? 'Preenche o endereço automaticamente' : undefined}
+            erro={
+              erros?.cep ??
+              (cep === 'nao-encontrado'
+                ? { message: 'CEP não encontrado: preencha o endereço manualmente' }
+                : undefined)
+            }
+            dica={
+              cep === 'buscando' ? 'Buscando endereço…' : noBrasil ? 'Preenche o endereço automaticamente' : undefined
+            }
           >
             <InputMascara
               inputMode={noBrasil ? 'numeric' : undefined}

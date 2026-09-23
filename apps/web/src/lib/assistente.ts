@@ -7,7 +7,11 @@ export type EtapaDef = { titulo: string; campos: string[] };
  * Controla um cadastro em etapas. Cada etapa valida só os próprios campos antes de avançar.
  * `livre` (edição): qualquer etapa pode ser aberta e o salvar fica sempre disponível.
  */
-export function useAssistente<T extends FieldValues>(form: { trigger: UseFormTrigger<T>; formState: FormState<T> }, etapas: EtapaDef[], inicial = 0) {
+export function useAssistente<T extends FieldValues>(
+  form: { trigger: UseFormTrigger<T>; formState: FormState<T> },
+  etapas: EtapaDef[],
+  inicial = 0,
+) {
   const [etapa, setEtapa] = useState(Math.min(inicial, etapas.length - 1));
   const erros = Object.keys(form.formState.errors);
   const comErro = etapas.flatMap((e, i) => (e.campos.some((c) => erros.includes(c)) ? [i] : []));

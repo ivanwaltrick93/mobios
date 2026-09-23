@@ -42,7 +42,11 @@ function Moldura({ titulo, children }: { titulo: string; children: React.ReactNo
       <Cartao className={`w-full max-w-sm p-6 transition-opacity ${isPending ? 'opacity-0' : 'opacity-100'}`}>
         <div className="mb-6 text-center">
           {marca?.logoVersao ? (
-            <img src={urlLogoPublico(marca.logoVersao, marca.oficinaId)} alt={marca.nome ?? 'Logo'} className="mx-auto mb-2 max-h-20 max-w-full object-contain" />
+            <img
+              src={urlLogoPublico(marca.logoVersao, marca.oficinaId)}
+              alt={marca.nome ?? 'Logo'}
+              className="mx-auto mb-2 max-h-20 max-w-full object-contain"
+            />
           ) : (
             <div className="mb-2">
               <LogoMobiOS tamanho="lg" />
@@ -60,7 +64,9 @@ function Moldura({ titulo, children }: { titulo: string; children: React.ReactNo
 
 export function Entrar() {
   const entrar = useEntrarNaSessao();
-  const form = useForm<z.input<typeof loginSchema>, unknown, z.output<typeof loginSchema>>({ resolver: zodResolver(loginSchema) });
+  const form = useForm<z.input<typeof loginSchema>, unknown, z.output<typeof loginSchema>>({
+    resolver: zodResolver(loginSchema),
+  });
   const login = useMutation({
     mutationFn: (dados: z.output<typeof loginSchema>) => api<Sessao>('/auth/login', { method: 'POST', body: dados }),
     onSuccess: entrar,
@@ -72,7 +78,13 @@ export function Entrar() {
       <form className="space-y-4" onSubmit={form.handleSubmit((d) => login.mutate(d))}>
         <Alerta>{login.isError && aplicarErrosDaApi(login.error, form.setError)}</Alerta>
         <Campo rotulo="E-mail" erro={erros.email}>
-          <InputMascara type="email" inputMode="email" autoComplete="email" registro={form.register('email')} mascara={mascaraEmail} />
+          <InputMascara
+            type="email"
+            inputMode="email"
+            autoComplete="email"
+            registro={form.register('email')}
+            mascara={mascaraEmail}
+          />
         </Campo>
         <Campo rotulo="Senha" erro={erros.senha}>
           <Input type="password" autoComplete="current-password" {...form.register('senha')} />

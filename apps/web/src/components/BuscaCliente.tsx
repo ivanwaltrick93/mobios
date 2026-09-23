@@ -10,7 +10,8 @@ export function BuscaCliente({ aoEscolher, ignorar }: { aoEscolher: (c: ClienteR
   const [busca, setBusca] = useState('');
   const resultados = useQuery({
     queryKey: ['clientes', 'busca', busca],
-    queryFn: () => api<{ itens: ClienteResumo[]; total: number }>(`/clientes?${new URLSearchParams({ q: busca, porPagina: '8' })}`),
+    queryFn: () =>
+      api<{ itens: ClienteResumo[]; total: number }>(`/clientes?${new URLSearchParams({ q: busca, porPagina: '8' })}`),
     enabled: busca.trim().length >= 2,
     placeholderData: keepPreviousData,
   });
@@ -20,13 +21,23 @@ export function BuscaCliente({ aoEscolher, ignorar }: { aoEscolher: (c: ClienteR
     <div>
       <div className="relative">
         <Search className="pointer-events-none absolute top-2.5 left-3 size-4 text-texto-suave" />
-        <Input autoFocus className="pl-9" placeholder="Nome, placa, CPF/CNPJ ou telefone (ao menos 2 letras)" value={busca} onChange={(e) => setBusca(e.target.value)} />
+        <Input
+          autoFocus
+          className="pl-9"
+          placeholder="Nome, placa, CPF/CNPJ ou telefone (ao menos 2 letras)"
+          value={busca}
+          onChange={(e) => setBusca(e.target.value)}
+        />
       </div>
       <ul className="mt-2 divide-y divide-borda">
         {busca.trim().length >= 2 &&
           itens?.map((c) => (
             <li key={c.id}>
-              <button type="button" className="flex w-full flex-wrap items-center justify-between gap-2 px-2 py-3 text-left hover:bg-superficie-alt" onClick={() => aoEscolher(c)}>
+              <button
+                type="button"
+                className="flex w-full flex-wrap items-center justify-between gap-2 px-2 py-3 text-left hover:bg-superficie-alt"
+                onClick={() => aoEscolher(c)}
+              >
                 <span className="flex items-center gap-2 font-medium">
                   {c.nome}
                   {!c.ativo && <Selo>Inativo</Selo>}
@@ -38,7 +49,9 @@ export function BuscaCliente({ aoEscolher, ignorar }: { aoEscolher: (c: ClienteR
             </li>
           ))}
       </ul>
-      {busca.trim().length >= 2 && itens?.length === 0 && <TextoSuave className="mt-3">Nenhum cliente encontrado.</TextoSuave>}
+      {busca.trim().length >= 2 && itens?.length === 0 && (
+        <TextoSuave className="mt-3">Nenhum cliente encontrado.</TextoSuave>
+      )}
     </div>
   );
 }

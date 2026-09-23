@@ -32,32 +32,61 @@ export const marcasRoutes: FastifyPluginAsyncZod = async (app) => {
     withTenant(req.user.tid, (tx) => tx.select(colunas).from(marcas).orderBy(asc(marcas.nome))),
   );
 
-  app.post('/', { ...editar, schema: { body: marcaInputSchema, response: { 201: marcaSchema } } }, async (req, reply) => {
-    const { versao: _v, ...dados } = req.body;
-    const marca = await withTenant(req.user.tid, async (tx) => {
-      const [{ id }] = (await tx.insert(marcas).values({ ...dados, criadoPor: req.user.sub, atualizadoPor: req.user.sub }).returning({ id: marcas.id })) as [{ id: string }];
-      return carregar(tx, id);
-    });
-    return reply.code(201).send(marca);
-  });
+  app.post(
+    '/',
+    { ...editar, schema: { body: marcaInputSchema, response: { 201: marcaSchema } } },
+    async (req, reply) => {
+      const { versao: _v, ...dados } = req.body;
+      const marca = await withTenant(req.user.tid, async (tx) => {
+        const [{ id }] = (await tx
+          .insert(marcas)
+          .values({ ...dados, criadoPor: req.user.sub, atualizadoPor: req.user.sub })
+          .returning({ id: marcas.id })) as [{ id: string }];
+        return carregar(tx, id);
+      });
+      return reply.code(201).send(marca);
+    },
+  );
 
-  app.put('/:id', { ...editar, schema: { params: idParamSchema, body: marcaInputSchema, response: { 200: marcaSchema } } }, async (req) => {
-    const { versao, ...dados } = req.body;
-    return withTenant(req.user.tid, async (tx) => {
-      await atualizarVersionado(tx, marcas, req.params.id, exigirVersao(versao), { ...dados, atualizadoPor: req.user.sub }, 'Marca');
-      return carregar(tx, req.params.id);
-    });
-  });
+  app.put(
+    '/:id',
+    { ...editar, schema: { params: idParamSchema, body: marcaInputSchema, response: { 200: marcaSchema } } },
+    async (req) => {
+      const { versao, ...dados } = req.body;
+      return withTenant(req.user.tid, async (tx) => {
+        await atualizarVersionado(
+          tx,
+          marcas,
+          req.params.id,
+          exigirVersao(versao),
+          { ...dados, atualizadoPor: req.user.sub },
+          'Marca',
+        );
+        return carregar(tx, req.params.id);
+      });
+    },
+  );
 
-  app.patch('/:id/status', { ...editar, schema: { params: idParamSchema, body: statusInputSchema, response: { 200: marcaSchema } } }, async (req) =>
-    withTenant(req.user.tid, async (tx) => {
-      await alterarAtivo(tx, marcas, marcas.ativa, req.params.id, req.body.ativo, req.user.sub, 'Marca');
-      return carregar(tx, req.params.id);
-    }),
+  app.patch(
+    '/:id/status',
+    { ...editar, schema: { params: idParamSchema, body: statusInputSchema, response: { 200: marcaSchema } } },
+    async (req) =>
+      withTenant(req.user.tid, async (tx) => {
+        await alterarAtivo(tx, marcas, marcas.ativa, req.params.id, req.body.ativo, req.user.sub, 'Marca');
+        return carregar(tx, req.params.id);
+      }),
   );
 
   app.delete('/:id', { ...editar, schema: { params: idParamSchema } }, async (req, reply) => {
-    await withTenant(req.user.tid, (tx) => excluirSeNaoUsado(tx, marcas, req.params.id, 'Marca', 'Esta marca está em uso por materiais e não pode ser excluída. Inative-a.'));
+    await withTenant(req.user.tid, (tx) =>
+      excluirSeNaoUsado(
+        tx,
+        marcas,
+        req.params.id,
+        'Marca',
+        'Esta marca está em uso por materiais e não pode ser excluída. Inative-a.',
+      ),
+    );
     return reply.code(204).send();
   });
 };

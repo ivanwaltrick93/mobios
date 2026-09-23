@@ -15,7 +15,11 @@ try {
   await migrate(banco, { migrationsFolder: resolve('drizzle') });
   console.log('Migrações aplicadas.');
   const admin = await garantirAdminInicial(banco, process.env);
-  console.log(admin === 'criado' ? `Admin inicial criado: ${process.env.ADMIN_EMAIL}` : 'Usuários já existentes; admin inicial não foi criado.');
+  console.log(
+    admin === 'criado'
+      ? `Admin inicial criado: ${process.env.ADMIN_EMAIL}`
+      : 'Usuários já existentes; admin inicial não foi criado.',
+  );
 } finally {
   await client.end();
 }

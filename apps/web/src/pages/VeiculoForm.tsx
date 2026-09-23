@@ -46,9 +46,28 @@ export const valoresVeiculo = (v?: Veiculo): VeiculoEntrada =>
         principal: v.principal,
         status: v.status,
       }
-    : { placa: '', chassi: '', renavam: '', marca: '', modelo: '', versao: '', anoFabricacao: '', anoModelo: '', cor: '', combustivel: '', kmAtual: '', principal: false, status: 'ativo' };
+    : {
+        placa: '',
+        chassi: '',
+        renavam: '',
+        marca: '',
+        modelo: '',
+        versao: '',
+        anoFabricacao: '',
+        anoModelo: '',
+        cor: '',
+        combustivel: '',
+        kmAtual: '',
+        principal: false,
+        status: 'ativo',
+      };
 
-export const useFormVeiculo = (v?: Veiculo) => useForm<VeiculoEntrada, unknown, VeiculoSaida>({ resolver: zodResolver(veiculoAtualizarSchema), defaultValues: valoresVeiculo(v), mode: 'onTouched' });
+export const useFormVeiculo = (v?: Veiculo) =>
+  useForm<VeiculoEntrada, unknown, VeiculoSaida>({
+    resolver: zodResolver(veiculoAtualizarSchema),
+    defaultValues: valoresVeiculo(v),
+    mode: 'onTouched',
+  });
 
 const ETAPAS: EtapaDef[] = [
   { titulo: 'Identificação', campos: ['placa', 'chassi', 'renavam'] },
@@ -79,7 +98,12 @@ export function CamposVeiculo({ form, etapa, veiculo }: { form: FormVeiculo; eta
           <InputMascara registro={form.register('chassi')} mascara={mascaraChassi} />
         </Campo>
         <Campo rotulo="Renavam" dica="Opcional" erro={erros.renavam}>
-          <InputMascara inputMode="numeric" placeholder="11 dígitos" registro={form.register('renavam')} mascara={mascaraRenavam} />
+          <InputMascara
+            inputMode="numeric"
+            placeholder="11 dígitos"
+            registro={form.register('renavam')}
+            mascara={mascaraRenavam}
+          />
         </Campo>
       </div>
     );
@@ -91,23 +115,37 @@ export function CamposVeiculo({ form, etapa, veiculo }: { form: FormVeiculo; eta
         <Campo rotulo="Marca *" erro={erros.marca}>
           <Input list={listaMarcas} autoComplete="off" placeholder="Volkswagen, Toyota…" {...form.register('marca')} />
           <datalist id={listaMarcas}>
-            {sugestoes.data?.marcas.map((m) => <option key={m} value={m} />)}
+            {sugestoes.data?.marcas.map((m) => (
+              <option key={m} value={m} />
+            ))}
           </datalist>
         </Campo>
         <Campo rotulo="Modelo *" erro={erros.modelo}>
           <Input list={listaModelos} autoComplete="off" placeholder="Corolla, T-Cross…" {...form.register('modelo')} />
           <datalist id={listaModelos}>
-            {sugestoes.data?.modelos.map((m) => <option key={m} value={m} />)}
+            {sugestoes.data?.modelos.map((m) => (
+              <option key={m} value={m} />
+            ))}
           </datalist>
         </Campo>
         <Campo rotulo="Versão" erro={erros.versao}>
           <Input placeholder="XEi, Highline…" {...form.register('versao')} />
         </Campo>
         <Campo rotulo="Ano de fabricação *" erro={erros.anoFabricacao}>
-          <InputMascara inputMode="numeric" placeholder="2020" registro={form.register('anoFabricacao')} mascara={mascaraAno} />
+          <InputMascara
+            inputMode="numeric"
+            placeholder="2020"
+            registro={form.register('anoFabricacao')}
+            mascara={mascaraAno}
+          />
         </Campo>
         <Campo rotulo="Ano modelo *" erro={erros.anoModelo}>
-          <InputMascara inputMode="numeric" placeholder="2021" registro={form.register('anoModelo')} mascara={mascaraAno} />
+          <InputMascara
+            inputMode="numeric"
+            placeholder="2021"
+            registro={form.register('anoModelo')}
+            mascara={mascaraAno}
+          />
         </Campo>
         <Campo rotulo="Cor" erro={erros.cor}>
           <Input {...form.register('cor')} />
@@ -145,7 +183,10 @@ export function CamposVeiculo({ form, etapa, veiculo }: { form: FormVeiculo; eta
       </div>
       {veiculo && (
         <div className="md:col-span-3">
-          <TextoSuave>Última visita: {veiculo.ultimaVisita ? formatarDataIso(veiculo.ultimaVisita) : 'será registrada automaticamente pela O.S.'}</TextoSuave>
+          <TextoSuave>
+            Última visita:{' '}
+            {veiculo.ultimaVisita ? formatarDataIso(veiculo.ultimaVisita) : 'será registrada automaticamente pela O.S.'}
+          </TextoSuave>
         </div>
       )}
     </div>
@@ -153,14 +194,27 @@ export function CamposVeiculo({ form, etapa, veiculo }: { form: FormVeiculo; eta
 }
 
 /** Cadastro (em etapas) e edição de veículo de um cliente. */
-export function VeiculoForm({ clienteId, veiculo, aoSalvar, aoCancelar }: { clienteId: string; veiculo?: Veiculo; aoSalvar: (v: Veiculo) => void; aoCancelar: () => void }) {
+export function VeiculoForm({
+  clienteId,
+  veiculo,
+  aoSalvar,
+  aoCancelar,
+}: {
+  clienteId: string;
+  veiculo?: Veiculo;
+  aoSalvar: (v: Veiculo) => void;
+  aoCancelar: () => void;
+}) {
   const queryClient = useQueryClient();
   const form = useFormVeiculo(veiculo);
   const livre = !!veiculo;
   const assistente = useAssistente(form, ETAPAS);
   const salvar = useMutation({
     mutationFn: (dados: VeiculoSaida) =>
-      api<Veiculo>(veiculo ? `/veiculos/${veiculo.id}` : '/veiculos', { method: veiculo ? 'PUT' : 'POST', body: veiculo ? dados : { ...dados, clienteId } }),
+      api<Veiculo>(veiculo ? `/veiculos/${veiculo.id}` : '/veiculos', {
+        method: veiculo ? 'PUT' : 'POST',
+        body: veiculo ? dados : { ...dados, clienteId },
+      }),
     onSuccess: (salvo) => {
       queryClient.invalidateQueries({ queryKey: ['veiculos'] });
       queryClient.invalidateQueries({ queryKey: ['clientes'] });
@@ -172,10 +226,22 @@ export function VeiculoForm({ clienteId, veiculo, aoSalvar, aoCancelar }: { clie
 
   return (
     <form className="space-y-6" noValidate onSubmit={(e) => assistente.interceptarEnvio(e, livre) || enviar(e)}>
-      <Etapas titulos={ETAPAS.map((e) => e.titulo)} atual={assistente.etapa} aoIr={assistente.irPara} livre={livre} comErro={assistente.comErro} />
+      <Etapas
+        titulos={ETAPAS.map((e) => e.titulo)}
+        atual={assistente.etapa}
+        aoIr={assistente.irPara}
+        livre={livre}
+        comErro={assistente.comErro}
+      />
       <Alerta>{salvar.isError && aplicarErrosDaApi(salvar.error, form.setError)}</Alerta>
       <CamposVeiculo form={form} etapa={assistente.etapa as 0 | 1 | 2} veiculo={veiculo} />
-      <NavegacaoEtapas assistente={assistente} livre={livre} salvando={salvar.isPending} rotuloSalvar={veiculo ? 'Salvar alterações' : 'Cadastrar veículo'} aoCancelar={aoCancelar} />
+      <NavegacaoEtapas
+        assistente={assistente}
+        livre={livre}
+        salvando={salvar.isPending}
+        rotuloSalvar={veiculo ? 'Salvar alterações' : 'Cadastrar veículo'}
+        aoCancelar={aoCancelar}
+      />
     </form>
   );
 }

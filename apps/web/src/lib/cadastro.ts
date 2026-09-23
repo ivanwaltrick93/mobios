@@ -5,7 +5,8 @@ import { api } from './api';
 export const chaveOpcoes = (lista: ListaOpcoes) => ['opcoes', lista] as const;
 
 /** Itens de uma lista editável da oficina (origem, relacionamento). */
-export const useOpcoes = (lista: ListaOpcoes) => useQuery({ queryKey: chaveOpcoes(lista), queryFn: () => api<Opcao[]>(`/opcoes/${lista}`) });
+export const useOpcoes = (lista: ListaOpcoes) =>
+  useQuery({ queryKey: chaveOpcoes(lista), queryFn: () => api<Opcao[]>(`/opcoes/${lista}`) });
 
 /** Marcas e modelos já cadastrados na oficina (sugestão do formulário de veículo). */
 export const useSugestoesVeiculo = (marca: string) =>
@@ -29,7 +30,12 @@ export async function buscarCep(cep: string): Promise<EnderecoViaCep | null> {
     if (!res.ok) return null;
     const dados = await res.json();
     if (dados.erro) return null;
-    return { logradouro: dados.logradouro ?? '', bairro: dados.bairro ?? '', cidade: dados.localidade ?? '', uf: dados.uf ?? '' };
+    return {
+      logradouro: dados.logradouro ?? '',
+      bairro: dados.bairro ?? '',
+      cidade: dados.localidade ?? '',
+      uf: dados.uf ?? '',
+    };
   } catch {
     return null;
   }

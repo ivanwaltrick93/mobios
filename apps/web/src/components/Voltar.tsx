@@ -21,7 +21,12 @@ export function Voltar({ raizes }: { raizes: string[] }) {
   }
 
   return (
-    <button type="button" onClick={voltar} title={raiz ? 'Voltar ao Início' : 'Voltar à página anterior'} className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium text-primaria hover:bg-superficie-alt">
+    <button
+      type="button"
+      onClick={voltar}
+      title={raiz ? 'Voltar ao Início' : 'Voltar à página anterior'}
+      className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium text-primaria hover:bg-superficie-alt"
+    >
       <ArrowLeft className="size-4" aria-hidden />
       Voltar
     </button>

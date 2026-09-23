@@ -2,7 +2,8 @@ import { IMAGEM_TAMANHO_MAXIMO, IMAGEM_TIPOS } from '@mobios/shared';
 
 /** Checagem rápida no navegador; a API valida de novo pelos bytes do arquivo. */
 export function validarImagem(arquivo: File): string | null {
-  if (!(IMAGEM_TIPOS as readonly string[]).includes(arquivo.type)) return 'Formato não suportado. Use PNG, JPEG ou WebP.';
+  if (!(IMAGEM_TIPOS as readonly string[]).includes(arquivo.type))
+    return 'Formato não suportado. Use PNG, JPEG ou WebP.';
   return null;
 }
 

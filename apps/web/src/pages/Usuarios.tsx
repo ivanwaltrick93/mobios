@@ -7,7 +7,23 @@ import { Link } from 'react-router';
 import type { z } from 'zod';
 import { Avatar } from '../components/Avatar';
 import { FotoUsuario } from '../components/FotoUsuario';
-import { Alerta, Botao, BotaoLink, Cabecalho, Campo, Cartao, Input, InputMascara, Linha, Selo, Tabela, Td, TextoSuave, Th, Titulo } from '../components/ui';
+import {
+  Alerta,
+  Botao,
+  BotaoLink,
+  Cabecalho,
+  Campo,
+  Cartao,
+  Input,
+  InputMascara,
+  Linha,
+  Selo,
+  Tabela,
+  Td,
+  TextoSuave,
+  Th,
+  Titulo,
+} from '../components/ui';
 import { api } from '../lib/api';
 import { aplicarErrosDaApi } from '../lib/formulario';
 import { chaveSessao, useAdmin, useSessao } from '../lib/sessao';
@@ -21,7 +37,15 @@ const useFuncoes = () => useQuery({ queryKey: chaveFuncoes, queryFn: () => api<F
  * Caixas de seleção das funções ATIVAS. `fixa`: função que não pode ser desmarcada
  * (o Administrador na própria conta, para a oficina nunca ficar sem admin).
  */
-function SeletorFuncoes<T extends FieldValues>({ control, nome, fixa }: { control: Control<T>; nome: Path<T>; fixa?: string }) {
+function SeletorFuncoes<T extends FieldValues>({
+  control,
+  nome,
+  fixa,
+}: {
+  control: Control<T>;
+  nome: Path<T>;
+  fixa?: string;
+}) {
   const funcoes = useFuncoes();
   const ativas = funcoes.data?.filter((f) => f.ativa) ?? [];
   return (
@@ -30,14 +54,20 @@ function SeletorFuncoes<T extends FieldValues>({ control, nome, fixa }: { contro
       name={nome}
       render={({ field, fieldState }) => {
         const marcadas: string[] = field.value ?? [];
-        const alternar = (id: string) => field.onChange(marcadas.includes(id) ? marcadas.filter((x) => x !== id) : [...marcadas, id]);
+        const alternar = (id: string) =>
+          field.onChange(marcadas.includes(id) ? marcadas.filter((x) => x !== id) : [...marcadas, id]);
         return (
           <fieldset className="space-y-2">
             <legend className="text-sm font-medium text-texto">Funções</legend>
             <div className="flex flex-wrap gap-x-5 gap-y-2">
               {ativas.map((f) => (
                 <label key={f.id} className="flex items-center gap-2 text-sm">
-                  <input type="checkbox" checked={marcadas.includes(f.id)} disabled={f.id === fixa} onChange={() => alternar(f.id)} />
+                  <input
+                    type="checkbox"
+                    checked={marcadas.includes(f.id)}
+                    disabled={f.id === fixa}
+                    onChange={() => alternar(f.id)}
+                  />
                   {f.nome}
                   {f.admin && <span className="text-xs text-texto-suave">(acesso total)</span>}
                 </label>
@@ -93,7 +123,11 @@ export function Usuarios() {
             editando === u.id ? (
               <Linha key={u.id} className="bg-superficie-alt">
                 <Td colSpan={5} className="p-4">
-                  <EditarUsuario usuario={u} proprio={u.id === sessao.data?.usuario.id} aoConcluir={() => setEditando(null)} />
+                  <EditarUsuario
+                    usuario={u}
+                    proprio={u.id === sessao.data?.usuario.id}
+                    aoConcluir={() => setEditando(null)}
+                  />
                 </Td>
               </Linha>
             ) : (
@@ -148,7 +182,8 @@ function NovoUsuario({ aoConcluir }: { aoConcluir: () => void }) {
     defaultValues: { funcoes: [] },
   });
   const salvar = useMutation({
-    mutationFn: (dados: z.output<typeof usuarioCriarSchema>) => api<Usuario>('/usuarios', { method: 'POST', body: dados }),
+    mutationFn: (dados: z.output<typeof usuarioCriarSchema>) =>
+      api<Usuario>('/usuarios', { method: 'POST', body: dados }),
     onSuccess: aoSalvar,
   });
   const erros = form.formState.errors;
@@ -162,7 +197,13 @@ function NovoUsuario({ aoConcluir }: { aoConcluir: () => void }) {
         <Input autoComplete="off" {...form.register('nome')} />
       </Campo>
       <Campo rotulo="E-mail (login)" erro={erros.email}>
-        <InputMascara type="email" inputMode="email" placeholder="nome@exemplo.com" registro={form.register('email')} mascara={mascaraEmail} />
+        <InputMascara
+          type="email"
+          inputMode="email"
+          placeholder="nome@exemplo.com"
+          registro={form.register('email')}
+          mascara={mascaraEmail}
+        />
       </Campo>
       <div className="md:col-span-2">
         <SeletorFuncoes control={form.control} nome="funcoes" />
@@ -182,16 +223,30 @@ function NovoUsuario({ aoConcluir }: { aoConcluir: () => void }) {
   );
 }
 
-function EditarUsuario({ usuario, proprio, aoConcluir }: { usuario: Usuario; proprio: boolean; aoConcluir: () => void }) {
+function EditarUsuario({
+  usuario,
+  proprio,
+  aoConcluir,
+}: {
+  usuario: Usuario;
+  proprio: boolean;
+  aoConcluir: () => void;
+}) {
   const aoSalvar = useAoSalvar(aoConcluir);
   const funcaoAdmin = usuario.funcoes.find((f) => f.admin && f.ativa)?.id;
   const form = useForm<z.input<typeof usuarioAtualizarSchema>, unknown, z.output<typeof usuarioAtualizarSchema>>({
     resolver: zodResolver(usuarioAtualizarSchema),
     // Só funções ativas vão no formulário; vínculos com funções desativadas são mantidos pela API.
-    defaultValues: { nome: usuario.nome, funcoes: usuario.funcoes.filter((f) => f.ativa).map((f) => f.id), ativo: usuario.ativo, novaSenha: '' },
+    defaultValues: {
+      nome: usuario.nome,
+      funcoes: usuario.funcoes.filter((f) => f.ativa).map((f) => f.id),
+      ativo: usuario.ativo,
+      novaSenha: '',
+    },
   });
   const salvar = useMutation({
-    mutationFn: (dados: z.output<typeof usuarioAtualizarSchema>) => api<Usuario>(`/usuarios/${usuario.id}`, { method: 'PUT', body: dados }),
+    mutationFn: (dados: z.output<typeof usuarioAtualizarSchema>) =>
+      api<Usuario>(`/usuarios/${usuario.id}`, { method: 'PUT', body: dados }),
     onSuccess: aoSalvar,
   });
   const erros = form.formState.errors;

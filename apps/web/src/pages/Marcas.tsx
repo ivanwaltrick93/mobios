@@ -16,7 +16,9 @@ export function Marcas() {
   const queryClient = useQueryClient();
   const acao = useMutation({
     mutationFn: ({ m, tipo }: { m: Marca; tipo: 'status' | 'excluir' }) =>
-      tipo === 'excluir' ? api(`/marcas/${m.id}`, { method: 'DELETE' }) : api(`/marcas/${m.id}/status`, { method: 'PATCH', body: { ativo: !m.ativa } }),
+      tipo === 'excluir'
+        ? api(`/marcas/${m.id}`, { method: 'DELETE' })
+        : api(`/marcas/${m.id}/status`, { method: 'PATCH', body: { ativo: !m.ativa } }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['marcas'] }),
   });
 
@@ -26,7 +28,9 @@ export function Marcas() {
     <div className="space-y-6">
       <Titulo acao={editar && !edicao && <Botao onClick={() => setEdicao('nova')}>Nova marca</Botao>}>Materiais</Titulo>
       <AbasMateriais />
-      <TextoSuave>Fabricantes das peças (Bosch, Mann Filter, NGK...). Marca em uso não é excluída: é inativada.</TextoSuave>
+      <TextoSuave>
+        Fabricantes das peças (Bosch, Mann Filter, NGK...). Marca em uso não é excluída: é inativada.
+      </TextoSuave>
       {edicao === 'nova' && <EditorMarca aoConcluir={() => setEdicao(null)} />}
       <Alerta>{acao.isError && acao.error.message}</Alerta>
       {marcas.data?.length === 0 && !edicao ? (
@@ -51,8 +55,13 @@ export function Marcas() {
                 {editar && !edicao && (
                   <span className="flex gap-4">
                     <BotaoLink onClick={() => setEdicao(m)}>Editar</BotaoLink>
-                    <BotaoLink onClick={() => acao.mutate({ m, tipo: 'status' })}>{m.ativa ? 'Inativar' : 'Reativar'}</BotaoLink>
-                    <BotaoLink perigo onClick={() => confirm(`Excluir a marca ${m.nome}?`) && acao.mutate({ m, tipo: 'excluir' })}>
+                    <BotaoLink onClick={() => acao.mutate({ m, tipo: 'status' })}>
+                      {m.ativa ? 'Inativar' : 'Reativar'}
+                    </BotaoLink>
+                    <BotaoLink
+                      perigo
+                      onClick={() => confirm(`Excluir a marca ${m.nome}?`) && acao.mutate({ m, tipo: 'excluir' })}
+                    >
                       Excluir
                     </BotaoLink>
                   </span>
@@ -68,9 +77,17 @@ export function Marcas() {
 
 function EditorMarca({ marca, aoConcluir }: { marca?: Marca; aoConcluir: () => void }) {
   const queryClient = useQueryClient();
-  const [dados, setDados] = useState({ nome: marca?.nome ?? '', codigo: marca?.codigo ?? '', descricao: marca?.descricao ?? '' });
+  const [dados, setDados] = useState({
+    nome: marca?.nome ?? '',
+    codigo: marca?.codigo ?? '',
+    descricao: marca?.descricao ?? '',
+  });
   const salvar = useMutation({
-    mutationFn: () => api(marca ? `/marcas/${marca.id}` : '/marcas', { method: marca ? 'PUT' : 'POST', body: { ...dados, versao: marca?.versao } }),
+    mutationFn: () =>
+      api(marca ? `/marcas/${marca.id}` : '/marcas', {
+        method: marca ? 'PUT' : 'POST',
+        body: { ...dados, versao: marca?.versao },
+      }),
     onSuccess: () => (queryClient.invalidateQueries({ queryKey: ['marcas'] }), aoConcluir()),
   });
   const enviar = (e: FormEvent) => (e.preventDefault(), salvar.mutate());

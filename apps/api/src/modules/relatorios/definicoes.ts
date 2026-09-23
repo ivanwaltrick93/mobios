@@ -16,7 +16,14 @@ import {
 import { and, asc, count, eq, sql, type SQL } from 'drizzle-orm';
 import type { PgColumn } from 'drizzle-orm/pg-core';
 import type { Tx } from '../../db/client.js';
-import { clienteEnderecos, clientes, origensCliente, relacionamentosCliente, users, veiculos } from '../../db/schema.js';
+import {
+  clienteEnderecos,
+  clientes,
+  origensCliente,
+  relacionamentosCliente,
+  users,
+  veiculos,
+} from '../../db/schema.js';
 
 export type Filtro = { de?: string; ate?: string };
 
@@ -81,41 +88,54 @@ export const relatorios: Record<RelatorioId, Definicao> = {
           // Correlação escrita à mão (o Drizzle não qualifica colunas dentro da subconsulta).
           veiculos: sql<number>`(select count(*) from veiculos v where v.cliente_id = "clientes"."id")`.mapWith(Number),
           // Responsável principal (PJ): "nome (função)" e o telefone.
-          responsavel: sql<string | null>`(select r.nome || ' (' || c.nome || ')' from cliente_responsaveis r join cargos_responsavel c on c.id = r.cargo_id
+          responsavel: sql<
+            string | null
+          >`(select r.nome || ' (' || c.nome || ')' from cliente_responsaveis r join cargos_responsavel c on c.id = r.cargo_id
             where r.cliente_id = "clientes"."id" and r.principal)`,
-          responsavelTelefone: sql<string | null>`(select r.telefone from cliente_responsaveis r where r.cliente_id = "clientes"."id" and r.principal)`,
+          responsavelTelefone: sql<
+            string | null
+          >`(select r.telefone from cliente_responsaveis r where r.cliente_id = "clientes"."id" and r.principal)`,
         })
         .from(clientes)
         .leftJoin(origensCliente, eq(origensCliente.id, clientes.origemId))
         .leftJoin(relacionamentosCliente, eq(relacionamentosCliente.id, clientes.relacionamentoId))
-        .leftJoin(clienteEnderecos, and(eq(clienteEnderecos.clienteId, clientes.id), eq(clienteEnderecos.principal, true)))
+        .leftJoin(
+          clienteEnderecos,
+          and(eq(clienteEnderecos.clienteId, clientes.id), eq(clienteEnderecos.principal, true)),
+        )
         .where(where)
         .orderBy(asc(clientes.nome))
         .limit(limite);
       return {
         total,
-        linhas: linhas.map(({ c, origem, relacionamento, endereco: e, veiculos, responsavel, responsavelTelefone }) => ({
-          nome: c.nome,
-          tipo: c.tipo === 'PF' ? 'Pessoa física' : 'Pessoa jurídica',
-          documento: c.cpfCnpj ? formatarDocumento(c.cpfCnpj) : '',
-          rgIe: texto(c.rgIe),
-          nascimento: c.dataNascimento ? formatarDataIso(c.dataNascimento) : '',
-          sexo: c.sexo ? SEXOS[c.sexo] : '',
-          telefone: c.telefone ? formatarTelefone(c.telefone) : '',
-          whatsapp: c.whatsapp ? formatarTelefone(c.whatsapp) : '',
-          email: texto(c.email),
-          responsavel: texto(responsavel),
-          responsavelContato: responsavelTelefone ? formatarTelefone(responsavelTelefone) : '',
-          endereco: e ? [`${e.logradouro}, ${e.numero}`, e.complemento, e.bairro, formatarCep(e.cep)].filter(Boolean).join(' - ') : '',
-          cidade: e ? `${e.cidade}/${e.uf}` : '',
-          origem: texto(origem),
-          relacionamento: texto(relacionamento),
-          clienteDesde: formatarDataIso(c.clienteDesde),
-          status: c.ativo ? 'Ativo' : 'Inativo',
-          veiculos: texto(veiculos),
-          pendencias: pendenciasCliente(c, !!e, !!responsavel).join(', '),
-          cadastro: formatarData(c.criadoEm),
-        })),
+        linhas: linhas.map(
+          ({ c, origem, relacionamento, endereco: e, veiculos, responsavel, responsavelTelefone }) => ({
+            nome: c.nome,
+            tipo: c.tipo === 'PF' ? 'Pessoa física' : 'Pessoa jurídica',
+            documento: c.cpfCnpj ? formatarDocumento(c.cpfCnpj) : '',
+            rgIe: texto(c.rgIe),
+            nascimento: c.dataNascimento ? formatarDataIso(c.dataNascimento) : '',
+            sexo: c.sexo ? SEXOS[c.sexo] : '',
+            telefone: c.telefone ? formatarTelefone(c.telefone) : '',
+            whatsapp: c.whatsapp ? formatarTelefone(c.whatsapp) : '',
+            email: texto(c.email),
+            responsavel: texto(responsavel),
+            responsavelContato: responsavelTelefone ? formatarTelefone(responsavelTelefone) : '',
+            endereco: e
+              ? [`${e.logradouro}, ${e.numero}`, e.complemento, e.bairro, formatarCep(e.cep)]
+                  .filter(Boolean)
+                  .join(' - ')
+              : '',
+            cidade: e ? `${e.cidade}/${e.uf}` : '',
+            origem: texto(origem),
+            relacionamento: texto(relacionamento),
+            clienteDesde: formatarDataIso(c.clienteDesde),
+            status: c.ativo ? 'Ativo' : 'Inativo',
+            veiculos: texto(veiculos),
+            pendencias: pendenciasCliente(c, !!e, !!responsavel).join(', '),
+            cadastro: formatarData(c.criadoEm),
+          }),
+        ),
       };
     },
   },
@@ -204,7 +224,9 @@ export const relatorios: Record<RelatorioId, Definicao> = {
           ativo: users.ativo,
           criadoEm: users.criadoEm,
           // Correlação escrita à mão (o Drizzle não qualifica colunas dentro da subconsulta).
-          funcoes: sql<string | null>`(select string_agg(f.nome || case when f.ativa then '' else ' (desativada)' end, ', ' order by f.nome)
+          funcoes: sql<
+            string | null
+          >`(select string_agg(f.nome || case when f.ativa then '' else ' (desativada)' end, ', ' order by f.nome)
             from usuario_funcoes uf join funcoes f on f.id = uf.funcao_id where uf.usuario_id = "users"."id")`,
         })
         .from(users)

@@ -13,7 +13,11 @@ export function EditarVeiculo() {
   const permitido = usePode()('clientes', 'editar');
   const veiculo = useQuery({ queryKey: ['veiculos', 'item', id], queryFn: () => api<Veiculo>(`/veiculos/${id}`) });
   const clienteId = veiculo.data?.clienteId;
-  const cliente = useQuery({ queryKey: ['clientes', clienteId], queryFn: () => api<Cliente>(`/clientes/${clienteId}`), enabled: !!clienteId });
+  const cliente = useQuery({
+    queryKey: ['clientes', clienteId],
+    queryFn: () => api<Cliente>(`/clientes/${clienteId}`),
+    enabled: !!clienteId,
+  });
 
   if (!permitido) return <Alerta>Você não tem permissão para alterar veículos.</Alerta>;
   if (veiculo.isPending) return <TextoSuave>Carregando…</TextoSuave>;

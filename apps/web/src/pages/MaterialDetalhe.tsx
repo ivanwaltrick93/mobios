@@ -31,7 +31,8 @@ export function MaterialDetalhe() {
   const pode = usePode();
   const queryClient = useQueryClient();
   const pedida = params.get('aba');
-  const aba = pedida === 'precos' && pode('precos') ? 'precos' : pedida === 'estoque' && pode('estoque') ? 'estoque' : 'dados';
+  const aba =
+    pedida === 'precos' && pode('precos') ? 'precos' : pedida === 'estoque' && pode('estoque') ? 'estoque' : 'dados';
   const material = useQuery({ queryKey: ['materiais', id], queryFn: () => api<Material>(`/materiais/${id}`) });
   const status = useMutation({
     mutationFn: (ativo: boolean) => api<Material>(`/materiais/${id}/status`, { method: 'PATCH', body: { ativo } }),
@@ -55,7 +56,9 @@ export function MaterialDetalhe() {
             </div>
             <h1 className="text-2xl font-semibold text-texto">{m.descricao}</h1>
             <p className="text-sm text-texto-suave">
-              {[m.marcaNome, m.categoriaCaminho, `${m.unidade} — ${UNIDADES[m.unidade].nome}`].filter(Boolean).join(' · ')}
+              {[m.marcaNome, m.categoriaCaminho, `${m.unidade} — ${UNIDADES[m.unidade].nome}`]
+                .filter(Boolean)
+                .join(' · ')}
             </p>
           </div>
           {editar && (

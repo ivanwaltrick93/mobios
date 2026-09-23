@@ -1,4 +1,11 @@
-import { IMAGEM_TAMANHO_MAXIMO, IMAGEM_TIPOS, TEMA_VAZIO, temaInputSchema, type CampoTema, type Tema } from '@mobios/shared';
+import {
+  IMAGEM_TAMANHO_MAXIMO,
+  IMAGEM_TIPOS,
+  TEMA_VAZIO,
+  temaInputSchema,
+  type CampoTema,
+  type Tema,
+} from '@mobios/shared';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
@@ -56,7 +63,11 @@ function SeletorCor({ rotulo, dica, valor, efetivo, rotuloVazio, aoMudar }: Sele
   );
 }
 
-type Grupo = { titulo: string; descricao: string; campos: { campo: CampoTema; rotulo: string; dica: string; texto?: boolean }[] };
+type Grupo = {
+  titulo: string;
+  descricao: string;
+  campos: { campo: CampoTema; rotulo: string; dica: string; texto?: boolean }[];
+};
 
 const grupos: Grupo[] = [
   {
@@ -89,9 +100,12 @@ const grupos: Grupo[] = [
 function avisosDeContraste(cores: ReturnType<typeof resolverTema>): string[] {
   const avisos: string[] = [];
   const baixo = (a: string, b: string) => contraste(a, b) < CONTRASTE_MINIMO;
-  if (baixo(cores['--cor-botao-primario'], cores['--cor-botao-primario-texto'])) avisos.push('O texto do botão principal está difícil de ler sobre o fundo escolhido.');
-  if (baixo(cores['--cor-botao-secundario'], cores['--cor-botao-secundario-texto'])) avisos.push('O texto do botão secundário está difícil de ler sobre o fundo escolhido.');
-  if (contraste(cores['--cor-primaria'], '#ffffff') < 3) avisos.push('A cor principal está clara demais: links e destaques podem sumir sobre o fundo branco.');
+  if (baixo(cores['--cor-botao-primario'], cores['--cor-botao-primario-texto']))
+    avisos.push('O texto do botão principal está difícil de ler sobre o fundo escolhido.');
+  if (baixo(cores['--cor-botao-secundario'], cores['--cor-botao-secundario-texto']))
+    avisos.push('O texto do botão secundário está difícil de ler sobre o fundo escolhido.');
+  if (contraste(cores['--cor-primaria'], '#ffffff') < 3)
+    avisos.push('A cor principal está clara demais: links e destaques podem sumir sobre o fundo branco.');
   return avisos;
 }
 
@@ -107,7 +121,10 @@ export function Configuracoes() {
 
   // Prévia ao vivo na interface inteira; ao sair sem salvar, volta ao tema salvo.
   useEffect(() => aplicarTema(tema), [tema]);
-  useEffect(() => () => aplicarTema(queryClient.getQueryData<{ oficina: { tema: Tema } }>(chaveSessao)?.oficina.tema ?? salvo), []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(
+    () => () => aplicarTema(queryClient.getQueryData<{ oficina: { tema: Tema } }>(chaveSessao)?.oficina.tema ?? salvo),
+    [],
+  ); // eslint-disable-line react-hooks/exhaustive-deps
 
   const salvar = useMutation({
     mutationFn: () => api<Tema>('/configuracoes/aparencia', { method: 'PUT', body: temaInputSchema.parse(tema) }),
@@ -137,7 +154,8 @@ export function Configuracoes() {
       <Cartao>
         <h2 className="text-lg font-medium">Aparência</h2>
         <TextoSuave className="mb-6">
-          Style guide da oficina, aplicado a toda a equipe e também à tela de login. As mudanças aparecem na hora como prévia e só valem para todos depois de salvar.
+          Style guide da oficina, aplicado a toda a equipe e também à tela de login. As mudanças aparecem na hora como
+          prévia e só valem para todos depois de salvar.
         </TextoSuave>
 
         <div className="space-y-8">
@@ -203,7 +221,9 @@ export function Configuracoes() {
         )}
 
         <div className="mt-6 space-y-3">
-          <Alerta>{salvar.isError && (salvar.error instanceof ErroApi ? salvar.error.message : 'Erro ao salvar.')}</Alerta>
+          <Alerta>
+            {salvar.isError && (salvar.error instanceof ErroApi ? salvar.error.message : 'Erro ao salvar.')}
+          </Alerta>
           {salvar.isSuccess && !alterado && <p className="text-sm text-sucesso">Aparência salva.</p>}
           <div className="flex flex-wrap gap-2">
             <Botao disabled={!alterado || salvar.isPending} onClick={() => salvar.mutate()}>
@@ -229,8 +249,14 @@ function LogoOficina({ versao, nome }: { versao: string | null; nome: string }) 
 
   const enviar = useMutation({
     mutationFn: async (logo: File) => {
-      const res = await fetch('/api/configuracoes/logo', { method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': logo.type }, body: logo });
-      if (!res.ok) throw new ErroApi(res.status, (await res.json().catch(() => ({}))).erro ?? 'Não foi possível enviar o logo');
+      const res = await fetch('/api/configuracoes/logo', {
+        method: 'PUT',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': logo.type },
+        body: logo,
+      });
+      if (!res.ok)
+        throw new ErroApi(res.status, (await res.json().catch(() => ({}))).erro ?? 'Não foi possível enviar o logo');
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: chaveSessao }),
     onError: (e) => setErro(e.message),
@@ -245,7 +271,8 @@ function LogoOficina({ versao, nome }: { versao: string | null; nome: string }) 
     setErro(null);
     if (!logo) return;
     // Checagem rápida no navegador; a API valida de novo pelos bytes do arquivo.
-    if (!(IMAGEM_TIPOS as readonly string[]).includes(logo.type)) return setErro('Formato não suportado. Use PNG, JPEG ou WebP.');
+    if (!(IMAGEM_TIPOS as readonly string[]).includes(logo.type))
+      return setErro('Formato não suportado. Use PNG, JPEG ou WebP.');
     if (logo.size > IMAGEM_TAMANHO_MAXIMO) return setErro('Arquivo grande demais. O limite é 1 MB.');
     enviar.mutate(logo);
   }
@@ -253,7 +280,9 @@ function LogoOficina({ versao, nome }: { versao: string | null; nome: string }) 
   return (
     <Cartao>
       <h2 className="text-lg font-medium">Logo da oficina</h2>
-      <TextoSuave className="mb-6">Aparece no menu lateral para toda a equipe. PNG, JPEG ou WebP, até 1 MB. Fundo transparente fica melhor.</TextoSuave>
+      <TextoSuave className="mb-6">
+        Aparece no menu lateral para toda a equipe. PNG, JPEG ou WebP, até 1 MB. Fundo transparente fica melhor.
+      </TextoSuave>
 
       <div className="flex flex-wrap items-center gap-6">
         <div className="flex h-24 w-48 items-center justify-center rounded-md border border-dashed border-borda-forte bg-menu p-3">
@@ -264,12 +293,22 @@ function LogoOficina({ versao, nome }: { versao: string | null; nome: string }) 
           )}
         </div>
         <div className="flex flex-wrap gap-2">
-          <input ref={arquivo} type="file" accept={IMAGEM_TIPOS.join(',')} className="hidden" onChange={(e) => (escolher(e.target.files?.[0]), (e.target.value = ''))} />
+          <input
+            ref={arquivo}
+            type="file"
+            accept={IMAGEM_TIPOS.join(',')}
+            className="hidden"
+            onChange={(e) => (escolher(e.target.files?.[0]), (e.target.value = ''))}
+          />
           <Botao disabled={enviar.isPending} onClick={() => arquivo.current?.click()}>
             {enviar.isPending ? 'Enviando…' : versao ? 'Trocar logo' : 'Enviar logo'}
           </Botao>
           {versao && (
-            <Botao variante="secundario" disabled={remover.isPending} onClick={() => confirm('Remover o logo da oficina?') && remover.mutate()}>
+            <Botao
+              variante="secundario"
+              disabled={remover.isPending}
+              onClick={() => confirm('Remover o logo da oficina?') && remover.mutate()}
+            >
               Remover
             </Botao>
           )}

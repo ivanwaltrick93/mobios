@@ -1,0 +1,8 @@
+# Gerados ou de terceiros
+node_modules/
+dist/
+coverage/
+pnpm-lock.yaml
+apps/api/drizzle/
+# Documentação é escrita à mão (tabelas largas, quebras intencionais)
+*.md

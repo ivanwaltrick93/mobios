@@ -1,22 +1,53 @@
-import { formatarDataIso, formatarMoeda, hojeIso, mascaraMoeda, moedaParaCentavos, SITUACOES_PRECO, type Material, type Preco, type SituacaoPreco, type TabelaPreco } from '@mobios/shared';
+import {
+  formatarDataIso,
+  formatarMoeda,
+  hojeIso,
+  mascaraMoeda,
+  moedaParaCentavos,
+  SITUACOES_PRECO,
+  type Material,
+  type Preco,
+  type SituacaoPreco,
+  type TabelaPreco,
+} from '@mobios/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { History, Tag } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router';
-import { Alerta, Botao, BotaoLink, Campo, Cartao, classesBotao, Input, Selo, TextoSuave, Vazio } from '../components/ui';
+import {
+  Alerta,
+  Botao,
+  BotaoLink,
+  Campo,
+  Cartao,
+  classesBotao,
+  Input,
+  Selo,
+  TextoSuave,
+  Vazio,
+} from '../components/ui';
 import { api } from '../lib/api';
 import { useTabelasPreco } from '../lib/materiais';
 import { usePode } from '../lib/sessao';
 
-const tomSituacao: Record<SituacaoPreco, 'sucesso' | 'primario' | 'neutro' | 'alerta'> = { vigente: 'sucesso', futuro: 'primario', encerrado: 'neutro', cancelado: 'alerta' };
-const periodo = (p: Preco) => `${formatarDataIso(p.dataInicio)} → ${p.dataFim ? formatarDataIso(p.dataFim) : 'sem fim'}`;
+const tomSituacao: Record<SituacaoPreco, 'sucesso' | 'primario' | 'neutro' | 'alerta'> = {
+  vigente: 'sucesso',
+  futuro: 'primario',
+  encerrado: 'neutro',
+  cancelado: 'alerta',
+};
+const periodo = (p: Preco) =>
+  `${formatarDataIso(p.dataInicio)} → ${p.dataFim ? formatarDataIso(p.dataFim) : 'sem fim'}`;
 
 /** Aba Preços do material: por tabela, o preço vigente, os programados e o histórico (nada é apagado). */
 export function PrecosMaterial({ material }: { material: Material }) {
   const pode = usePode();
   const editar = pode('precos', 'editar');
   const tabelas = useTabelasPreco();
-  const precos = useQuery({ queryKey: ['precos', material.id], queryFn: () => api<Preco[]>(`/precos?materialId=${material.id}`) });
+  const precos = useQuery({
+    queryKey: ['precos', material.id],
+    queryFn: () => api<Preco[]>(`/precos?materialId=${material.id}`),
+  });
 
   if (tabelas.isPending || precos.isPending) return <TextoSuave>Carregando…</TextoSuave>;
   if (tabelas.isError) return <Alerta>{tabelas.error.message}</Alerta>;
@@ -41,19 +72,39 @@ export function PrecosMaterial({ material }: { material: Material }) {
   }
   return (
     <div className="space-y-4">
-      {!material.ativo && <Alerta>Material inativo: não recebe preços novos, mas o histórico continua disponível.</Alerta>}
+      {!material.ativo && (
+        <Alerta>Material inativo: não recebe preços novos, mas o histórico continua disponível.</Alerta>
+      )}
       {lista.map((t) => (
-        <PrecosDaTabela key={t.id} material={material} tabela={t} precos={precos.data?.filter((p) => p.tabelaPrecoId === t.id) ?? []} editar={editar} />
+        <PrecosDaTabela
+          key={t.id}
+          material={material}
+          tabela={t}
+          precos={precos.data?.filter((p) => p.tabelaPrecoId === t.id) ?? []}
+          editar={editar}
+        />
       ))}
     </div>
   );
 }
 
-function PrecosDaTabela({ material, tabela, precos, editar }: { material: Material; tabela: TabelaPreco; precos: Preco[]; editar: boolean }) {
+function PrecosDaTabela({
+  material,
+  tabela,
+  precos,
+  editar,
+}: {
+  material: Material;
+  tabela: TabelaPreco;
+  precos: Preco[];
+  editar: boolean;
+}) {
   const [nova, setNova] = useState(false);
   const [historico, setHistorico] = useState(false);
   const vigente = precos.find((p) => p.situacao === 'vigente');
-  const futuros = precos.filter((p) => p.situacao === 'futuro').sort((a, b) => a.dataInicio.localeCompare(b.dataInicio));
+  const futuros = precos
+    .filter((p) => p.situacao === 'futuro')
+    .sort((a, b) => a.dataInicio.localeCompare(b.dataInicio));
   const passados = precos.filter((p) => p.situacao === 'encerrado' || p.situacao === 'cancelado');
   const podeNova = editar && material.ativo && tabela.ativa;
 
@@ -92,7 +143,8 @@ function PrecosDaTabela({ material, tabela, precos, editar }: { material: Materi
       {passados.length > 0 && (
         <div>
           <BotaoLink onClick={() => setHistorico((h) => !h)} className="inline-flex items-center gap-1">
-            <History className="size-4" aria-hidden /> {historico ? 'Ocultar histórico' : `Ver histórico (${passados.length})`}
+            <History className="size-4" aria-hidden />{' '}
+            {historico ? 'Ocultar histórico' : `Ver histórico (${passados.length})`}
           </BotaoLink>
           {historico && (
             <div className="mt-2 space-y-2">
@@ -116,14 +168,33 @@ function useInvalidarPrecos(materialId: string) {
 }
 
 /** Nova vigência: a atual é encerrada na véspera; nada do histórico é apagado. */
-function NovaVigencia({ material, tabela, vigente, aoConcluir }: { material: Material; tabela: TabelaPreco; vigente?: Preco; aoConcluir: () => void }) {
+function NovaVigencia({
+  material,
+  tabela,
+  vigente,
+  aoConcluir,
+}: {
+  material: Material;
+  tabela: TabelaPreco;
+  vigente?: Preco;
+  aoConcluir: () => void;
+}) {
   const invalidar = useInvalidarPrecos(material.id);
   const [valor, setValor] = useState('');
   const [inicio, setInicio] = useState(hojeIso());
   const [fim, setFim] = useState('');
   const salvar = useMutation({
     mutationFn: () =>
-      api<Preco>('/precos', { method: 'POST', body: { materialId: material.id, tabelaPrecoId: tabela.id, precoCentavos: moedaParaCentavos(valor), dataInicio: inicio, dataFim: fim || null } }),
+      api<Preco>('/precos', {
+        method: 'POST',
+        body: {
+          materialId: material.id,
+          tabelaPrecoId: tabela.id,
+          precoCentavos: moedaParaCentavos(valor),
+          dataInicio: inicio,
+          dataFim: fim || null,
+        },
+      }),
     onSuccess: () => (invalidar(), aoConcluir()),
   });
   const enviar = (e: FormEvent) => (e.preventDefault(), salvar.mutate());
@@ -132,7 +203,13 @@ function NovaVigencia({ material, tabela, vigente, aoConcluir }: { material: Mat
     <form onSubmit={enviar} className="space-y-3 rounded-md border border-borda bg-superficie-alt p-4">
       <div className="grid gap-3 sm:grid-cols-3">
         <Campo rotulo="Preço (R$) *">
-          <Input autoFocus inputMode="numeric" placeholder="0,00" value={valor} onChange={(e) => setValor(mascaraMoeda(e.target.value))} />
+          <Input
+            autoFocus
+            inputMode="numeric"
+            placeholder="0,00"
+            value={valor}
+            onChange={(e) => setValor(mascaraMoeda(e.target.value))}
+          />
         </Campo>
         <Campo rotulo="Início da vigência *" dica="Hoje ou depois">
           <Input type="date" min={hojeIso()} value={inicio} onChange={(e) => setInicio(e.target.value)} />
@@ -142,7 +219,10 @@ function NovaVigencia({ material, tabela, vigente, aoConcluir }: { material: Mat
         </Campo>
       </div>
       {vigente && inicio > vigente.dataInicio && (
-        <TextoSuave className="text-xs">O preço vigente ({formatarMoeda(vigente.precoCentavos)}) será encerrado automaticamente na véspera do novo início.</TextoSuave>
+        <TextoSuave className="text-xs">
+          O preço vigente ({formatarMoeda(vigente.precoCentavos)}) será encerrado automaticamente na véspera do novo
+          início.
+        </TextoSuave>
       )}
       <Alerta>{salvar.isError && salvar.error.message}</Alerta>
       <div className="flex gap-2">
@@ -189,7 +269,11 @@ function AcoesPreco({ preco }: { preco: Preco }) {
   const [motivo, setMotivo] = useState('');
   const executar = useMutation({
     mutationFn: () => {
-      if (acao === 'editar') return api(`/precos/${preco.id}`, { method: 'PUT', body: { precoCentavos: moedaParaCentavos(valor), dataFim: data || null } });
+      if (acao === 'editar')
+        return api(`/precos/${preco.id}`, {
+          method: 'PUT',
+          body: { precoCentavos: moedaParaCentavos(valor), dataFim: data || null },
+        });
       if (acao === 'encerrar') return api(`/precos/${preco.id}/encerrar`, { method: 'POST', body: { dataFim: data } });
       return api(`/precos/${preco.id}/cancelar`, { method: 'POST', body: { motivo } });
     },
@@ -201,7 +285,9 @@ function AcoesPreco({ preco }: { preco: Preco }) {
     <div className="mt-2 space-y-2">
       <div className="flex flex-wrap gap-4 text-sm">
         {futuro && <BotaoLink onClick={() => setAcao('editar')}>Editar</BotaoLink>}
-        {(futuro || preco.situacao === 'vigente') && <BotaoLink onClick={() => (setData(preco.dataFim ?? hojeIso()), setAcao('encerrar'))}>Encerrar</BotaoLink>}
+        {(futuro || preco.situacao === 'vigente') && (
+          <BotaoLink onClick={() => (setData(preco.dataFim ?? hojeIso()), setAcao('encerrar'))}>Encerrar</BotaoLink>
+        )}
         {futuro && (
           <BotaoLink perigo onClick={() => setAcao('cancelar')}>
             Cancelar preço
@@ -232,7 +318,12 @@ function AcoesPreco({ preco }: { preco: Preco }) {
           {acao === 'encerrar' && (
             <div className="w-44">
               <Campo rotulo="Último dia do preço">
-                <Input type="date" min={hojeIso() > preco.dataInicio ? hojeIso() : preco.dataInicio} value={data} onChange={(e) => setData(e.target.value)} />
+                <Input
+                  type="date"
+                  min={hojeIso() > preco.dataInicio ? hojeIso() : preco.dataInicio}
+                  value={data}
+                  onChange={(e) => setData(e.target.value)}
+                />
               </Campo>
             </div>
           )}
@@ -258,12 +349,27 @@ function AcoesPreco({ preco }: { preco: Preco }) {
   );
 }
 
-const NOMES_EVENTO: Record<string, string> = { criado: 'Criado', alterado: 'Alterado', encerrado: 'Encerrado', cancelado: 'Cancelado', reaberto: 'Reaberto' };
+const NOMES_EVENTO: Record<string, string> = {
+  criado: 'Criado',
+  alterado: 'Alterado',
+  encerrado: 'Encerrado',
+  cancelado: 'Cancelado',
+  reaberto: 'Reaberto',
+};
 
 function Eventos({ precoId }: { precoId: string }) {
   const eventos = useQuery({
     queryKey: ['precos', 'eventos', precoId],
-    queryFn: () => api<{ evento: string; antes: Record<string, unknown> | null; depois: Record<string, unknown> | null; usuario: string | null; criadoEm: string }[]>(`/precos/${precoId}/eventos`),
+    queryFn: () =>
+      api<
+        {
+          evento: string;
+          antes: Record<string, unknown> | null;
+          depois: Record<string, unknown> | null;
+          usuario: string | null;
+          criadoEm: string;
+        }[]
+      >(`/precos/${precoId}/eventos`),
   });
   const resumo = (d: Record<string, unknown> | null) =>
     d
@@ -279,7 +385,8 @@ function Eventos({ precoId }: { precoId: string }) {
     <ul className="space-y-1 rounded-md bg-superficie-alt p-3 text-xs">
       {eventos.data?.map((e, i) => (
         <li key={i}>
-          <strong>{NOMES_EVENTO[e.evento] ?? e.evento}</strong> em {new Date(e.criadoEm).toLocaleString('pt-BR')} por {e.usuario ?? '—'}
+          <strong>{NOMES_EVENTO[e.evento] ?? e.evento}</strong> em {new Date(e.criadoEm).toLocaleString('pt-BR')} por{' '}
+          {e.usuario ?? '—'}
           {e.depois && <span className="text-texto-suave"> — {resumo(e.depois)}</span>}
         </li>
       ))}
