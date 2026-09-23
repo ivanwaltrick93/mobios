@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { acessosSchema, funcaoResumoSchema } from './acessos.js';
-import { cepValido, chassiValido, cnpjValido, cpfValido, normalizarChassi, normalizarPlaca, placaValida, renavamValido, somenteDigitos, telefoneValido } from './documentos.js';
+import { cepValido, chassiValido, cnpjValido, cpfValido, normalizarChassi, normalizarDocumento, normalizarPlaca, placaValida, renavamValido, somenteDigitos, telefoneValido } from './documentos.js';
 import { hojeIso } from './formatos.js';
 
 // Mensagens padrão do Zod em português, no front e no back.
@@ -118,16 +118,19 @@ export type UsuarioAtualizarInput = z.input<typeof usuarioAtualizarSchema>;
 export const LISTAS_OPCOES = {
   origens: { titulo: 'Origem do cliente', descricao: 'Como o cliente conheceu a oficina.' },
   relacionamentos: { titulo: 'Tipo de relacionamento', descricao: 'Perfil comercial do cliente.' },
+  cargos: { titulo: 'Função do responsável (PJ)', descricao: 'Papel da pessoa que responde pela empresa cliente.' },
 } as const;
 export type ListaOpcoes = keyof typeof LISTAS_OPCOES;
-export const listaOpcoesSchema = z.enum(['origens', 'relacionamentos']);
+export const listaOpcoesSchema = z.enum(['origens', 'relacionamentos', 'cargos']);
 
-/** Itens criados em toda oficina nova (a migração 0009 aplica o mesmo às que já existiam). */
+/** Itens criados em toda oficina nova (as migrações 0009 e 0011 aplicam o mesmo às que já existiam). */
 export const OPCOES_PADRAO: Record<ListaOpcoes, string[]> = {
   origens: ['Indicação', 'Site', 'Campanha', 'Loja', 'Concessionária'],
   relacionamentos: ['Consumidor final', 'Empresa', 'Frota', 'Seguradora'],
+  cargos: ['Sócio / Proprietário', 'Gestor de frota', 'Financeiro', 'Compras', 'Motorista'],
 };
 
+/** `clientes`: quantos clientes usam o item (no caso de função do responsável, clientes com algum responsável nela). */
 export const opcaoSchema = z.object({ id: z.uuid(), nome: z.string(), ativa: z.boolean(), clientes: z.number() });
 export type Opcao = z.infer<typeof opcaoSchema>;
 
@@ -201,6 +204,17 @@ export const enderecoInputSchema = z
   .transform((e) => (e.pais.toLowerCase() === PAIS_PADRAO.toLowerCase() ? { ...e, cep: somenteDigitos(e.cep), pais: PAIS_PADRAO } : e));
 export type EnderecoInput = z.input<typeof enderecoInputSchema>;
 
+/** Pessoa que responde pela empresa cliente (PJ). */
+export const responsavelInputSchema = z.object({
+  nome: z.string({ error: 'Informe o nome' }).trim().min(2, 'Informe o nome').max(120, 'Nome longo demais'),
+  telefone: telefoneSchema('telefone'),
+  telefoneWhatsapp: z.boolean().default(false),
+  email: z.union([z.literal(''), emailSchema]).nullish().transform((v) => v || null),
+  cargoId: z.uuid('Escolha a função'),
+  principal: z.boolean().default(false),
+});
+export type ResponsavelInput = z.input<typeof responsavelInputSchema>;
+
 export const clienteInputSchema = z
   .object({
     tipo: z.enum(['PF', 'PJ']).default('PF'),
@@ -211,7 +225,7 @@ export const clienteInputSchema = z
       .trim()
       .min(1, 'Informe o documento')
       .superRefine((v, ctx) => {
-        const n = somenteDigitos(v).length;
+        const n = normalizarDocumento(v).length;
         if (n === 11 ? !cpfValido(v) : n === 14 ? !cnpjValido(v) : true) {
           ctx.addIssue({ code: 'custom', message: n === 11 ? 'CPF inválido' : n === 14 ? 'CNPJ inválido' : 'Documento inválido' });
         }
@@ -232,19 +246,25 @@ export const clienteInputSchema = z
       .min(1, 'Cadastre ao menos um endereço')
       .max(20, 'Máximo de 20 endereços')
       .refine((lista) => lista.filter((e) => e.principal).length <= 1, 'Marque apenas um endereço como principal'),
+    responsaveis: z
+      .array(responsavelInputSchema)
+      .max(20, 'Máximo de 20 responsáveis')
+      .refine((lista) => lista.filter((r) => r.principal).length <= 1, 'Marque apenas um responsável como principal')
+      .default([]),
   })
   .superRefine((c, ctx) => {
     // O documento já é válido (campo); aqui só confere se combina com o tipo de cliente.
-    const digitos = somenteDigitos(c.cpfCnpj).length;
-    if (c.tipo === 'PF' && digitos !== 11) ctx.addIssue({ code: 'custom', path: ['cpfCnpj'], message: 'Pessoa física: informe um CPF' });
-    if (c.tipo === 'PJ' && digitos !== 14) ctx.addIssue({ code: 'custom', path: ['cpfCnpj'], message: 'Pessoa jurídica: informe um CNPJ' });
+    const tamanho = normalizarDocumento(c.cpfCnpj).length;
+    if (c.tipo === 'PF' && tamanho !== 11) ctx.addIssue({ code: 'custom', path: ['cpfCnpj'], message: 'Pessoa física: informe um CPF' });
+    if (c.tipo === 'PJ' && tamanho !== 14) ctx.addIssue({ code: 'custom', path: ['cpfCnpj'], message: 'Pessoa jurídica: informe um CNPJ' });
+    if (c.tipo === 'PJ' && c.responsaveis.length === 0) ctx.addIssue({ code: 'custom', path: ['responsaveis'], message: 'Cadastre ao menos um responsável pela empresa' });
   })
   .transform((c) => {
     const pf = c.tipo === 'PF';
     const temPrincipal = c.enderecos.some((e) => e.principal);
     return {
       ...c,
-      cpfCnpj: somenteDigitos(c.cpfCnpj),
+      cpfCnpj: normalizarDocumento(c.cpfCnpj),
       // Nascimento e sexo só fazem sentido para PF; finalidades de faturamento/entrega/cobrança, só para PJ.
       dataNascimento: pf ? c.dataNascimento : null,
       sexo: pf ? c.sexo : null,
@@ -255,6 +275,8 @@ export const clienteInputSchema = z
         entrega: !pf && e.entrega,
         cobranca: !pf && e.cobranca,
       })),
+      // Responsáveis só existem na PJ; sem principal marcado, o primeiro assume.
+      responsaveis: pf ? [] : c.responsaveis.map((r, i) => ({ ...r, principal: c.responsaveis.some((x) => x.principal) ? r.principal : i === 0 })),
     };
   });
 export type ClienteInput = z.input<typeof clienteInputSchema>;
@@ -278,16 +300,33 @@ export const enderecoSchema = z.object({
 });
 export type Endereco = z.infer<typeof enderecoSchema>;
 
+export const responsavelSchema = z.object({
+  id: z.uuid(),
+  nome: z.string(),
+  telefone: z.string(),
+  telefoneWhatsapp: z.boolean(),
+  email: z.string().nullable(),
+  cargoId: z.uuid(),
+  cargoNome: z.string(),
+  principal: z.boolean(),
+});
+export type Responsavel = z.infer<typeof responsavelSchema>;
+
 /**
  * Campos obrigatórios que faltam no cadastro (registros anteriores às regras atuais).
  * Cadastro incompleto não impede consultar, mas impede abrir O.S. até ser completado.
  */
-export function pendenciasCliente(c: { cpfCnpj: string | null; telefone: string | null; whatsapp: string | null }, temEndereco: boolean): string[] {
+export function pendenciasCliente(
+  c: { tipo: 'PF' | 'PJ'; cpfCnpj: string | null; telefone: string | null; whatsapp: string | null },
+  temEndereco: boolean,
+  temResponsavel: boolean,
+): string[] {
   const faltando: string[] = [];
   if (!c.cpfCnpj) faltando.push('CPF/CNPJ');
   if (!c.telefone) faltando.push('telefone');
   if (!c.whatsapp) faltando.push('WhatsApp');
   if (!temEndereco) faltando.push('endereço');
+  if (c.tipo === 'PJ' && !temResponsavel) faltando.push('responsável');
   return faltando;
 }
 
@@ -318,6 +357,7 @@ export const clienteSchema = clienteResumoSchema.extend({
   relacionamentoId: z.uuid().nullable(),
   relacionamentoNome: z.string().nullable(),
   enderecos: z.array(enderecoSchema),
+  responsaveis: z.array(responsavelSchema),
   criadoEm: z.coerce.date(),
 });
 export type Cliente = z.infer<typeof clienteSchema>;
@@ -333,7 +373,8 @@ const anoAtual = new Date().getFullYear();
 /** Número inteiro opcional vindo de formulário: campo vazio vira null (e não 0). */
 const inteiroOpcional = (min: number, max?: number) =>
   z.preprocess(
-    (v) => (v === '' || v == null ? null : v),
+    // Aceita o valor com máscara (ex.: km "125.000").
+    (v) => (v === '' || v == null ? null : typeof v === 'string' ? v.replace(/\D/g, '') || null : v),
     z.coerce
       .number()
       .int()

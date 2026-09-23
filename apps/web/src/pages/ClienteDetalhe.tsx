@@ -145,6 +145,42 @@ export function ClienteDetalhe() {
               <Dado rotulo="Endereço principal">{c.enderecos[0] && `${c.enderecos[0].cidade}/${c.enderecos[0].uf}`}</Dado>
             </Bloco>
           </div>
+          {!pf && (
+            <Cartao className="p-5">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-sm font-semibold">Responsáveis pela empresa</h3>
+                {podeEditar && (
+                  <Link to={`/clientes/${id}/editar?etapa=responsaveis`} className="text-sm text-primaria hover:underline">
+                    {c.responsaveis.length ? 'Editar' : 'Cadastrar responsável'}
+                  </Link>
+                )}
+              </div>
+              {c.responsaveis.length === 0 ? (
+                <TextoSuave>Nenhum responsável cadastrado.</TextoSuave>
+              ) : (
+                <ul className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {c.responsaveis.map((r) => (
+                    <li key={r.id} className="flex gap-3 rounded-md border border-borda p-3">
+                      <Iniciais nome={r.nome} tamanho="sm" />
+                      <div className="min-w-0 space-y-0.5 text-sm">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="font-medium text-texto">{r.nome}</span>
+                          {r.principal && <Selo tom="primario">Principal</Selo>}
+                        </div>
+                        <div className="text-xs text-texto-suave">{r.cargoNome}</div>
+                        {r.telefoneWhatsapp ? <LinkWhatsApp numero={r.telefone} /> : <div>{formatarTelefone(r.telefone)}</div>}
+                        {r.email && (
+                          <a href={`mailto:${r.email}`} className="block truncate text-primaria hover:underline">
+                            {r.email}
+                          </a>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Cartao>
+          )}
           {c.observacoes && (
             <Cartao className="p-5">
               <h3 className="mb-2 text-sm font-semibold">Observações</h3>
@@ -181,7 +217,7 @@ export function ClienteDetalhe() {
             </ul>
           )}
           {podeEditar && (
-            <Link to={`/clientes/${id}/editar?etapa=2`} className={classesBotao('secundario')}>
+            <Link to={`/clientes/${id}/editar?etapa=endereco`} className={classesBotao('secundario')}>
               <Pencil className="mr-1.5 size-4" aria-hidden /> {c.enderecos.length ? 'Editar endereços' : 'Cadastrar endereço'}
             </Link>
           )}

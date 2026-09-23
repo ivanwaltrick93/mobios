@@ -1,5 +1,17 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { COMBUSTIVEIS, formatarDataIso, STATUS_VEICULO, veiculoAtualizarSchema, type Veiculo } from '@mobios/shared';
+import {
+  COMBUSTIVEIS,
+  formatarDataIso,
+  mascaraAno,
+  mascaraChassi,
+  mascaraKm,
+  mascaraPlaca,
+  mascaraRenavam,
+  normalizarPlaca,
+  STATUS_VEICULO,
+  veiculoAtualizarSchema,
+  type Veiculo,
+} from '@mobios/shared';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, ArrowRight } from 'lucide-react';
 import { useId } from 'react';
@@ -7,7 +19,7 @@ import { useForm, type UseFormReturn } from 'react-hook-form';
 import type { z } from 'zod';
 import { Etapas } from '../components/Etapas';
 import { Placa } from '../components/Placa';
-import { Alerta, Botao, Campo, Input, Marcador, Select, TextoSuave } from '../components/ui';
+import { Alerta, Botao, Campo, Input, InputMascara, Marcador, Select, TextoSuave } from '../components/ui';
 import { api } from '../lib/api';
 import { useAssistente, type EtapaDef } from '../lib/assistente';
 import { useSugestoesVeiculo } from '../lib/cadastro';
@@ -20,7 +32,7 @@ export type FormVeiculo = UseFormReturn<VeiculoEntrada, unknown, VeiculoSaida>;
 export const valoresVeiculo = (v?: Veiculo): VeiculoEntrada =>
   v
     ? {
-        placa: v.placa,
+        placa: mascaraPlaca(v.placa),
         renavam: v.renavam ?? '',
         chassi: v.chassi ?? '',
         marca: v.marca,
@@ -30,7 +42,7 @@ export const valoresVeiculo = (v?: Veiculo): VeiculoEntrada =>
         anoModelo: v.anoModelo ?? '',
         cor: v.cor ?? '',
         combustivel: v.combustivel ?? '',
-        kmAtual: v.kmAtual ?? '',
+        kmAtual: v.kmAtual == null ? '' : mascaraKm(String(v.kmAtual)),
         principal: v.principal,
         status: v.status,
       }
@@ -50,7 +62,7 @@ export function CamposVeiculo({ form, etapa, veiculo }: { form: FormVeiculo; eta
   const sugestoes = useSugestoesVeiculo(form.watch('marca') ?? '');
   const listaMarcas = useId();
   const listaModelos = useId();
-  const placa = form.watch('placa') ?? '';
+  const placa = normalizarPlaca(form.watch('placa') ?? '');
 
   if (etapa === 0) {
     return (
@@ -58,16 +70,16 @@ export function CamposVeiculo({ form, etapa, veiculo }: { form: FormVeiculo; eta
         <div className="md:col-span-2 flex flex-wrap items-end gap-4">
           <div className="w-48">
             <Campo rotulo="Placa *" erro={erros.placa}>
-              <Input className="uppercase" autoFocus placeholder="ABC1D23" maxLength={8} {...form.register('placa')} />
+              <InputMascara autoFocus placeholder="ABC1D23" registro={form.register('placa')} mascara={mascaraPlaca} />
             </Campo>
           </div>
-          {placa.replace(/[^a-z0-9]/gi, '').length === 7 && <Placa placa={placa.replace(/[^a-z0-9]/gi, '').toUpperCase()} tamanho="lg" />}
+          {placa.length === 7 && <Placa placa={placa} tamanho="lg" />}
         </div>
         <Campo rotulo="Chassi / VIN" dica="Opcional · 17 caracteres" erro={erros.chassi}>
-          <Input className="uppercase" maxLength={20} {...form.register('chassi')} />
+          <InputMascara registro={form.register('chassi')} mascara={mascaraChassi} />
         </Campo>
         <Campo rotulo="Renavam" dica="Opcional" erro={erros.renavam}>
-          <Input inputMode="numeric" maxLength={11} {...form.register('renavam')} />
+          <InputMascara inputMode="numeric" placeholder="11 dígitos" registro={form.register('renavam')} mascara={mascaraRenavam} />
         </Campo>
       </div>
     );
@@ -92,10 +104,10 @@ export function CamposVeiculo({ form, etapa, veiculo }: { form: FormVeiculo; eta
           <Input placeholder="XEi, Highline…" {...form.register('versao')} />
         </Campo>
         <Campo rotulo="Ano de fabricação *" erro={erros.anoFabricacao}>
-          <Input type="number" inputMode="numeric" placeholder="2020" {...form.register('anoFabricacao')} />
+          <InputMascara inputMode="numeric" placeholder="2020" registro={form.register('anoFabricacao')} mascara={mascaraAno} />
         </Campo>
         <Campo rotulo="Ano modelo *" erro={erros.anoModelo}>
-          <Input type="number" inputMode="numeric" placeholder="2021" {...form.register('anoModelo')} />
+          <InputMascara inputMode="numeric" placeholder="2021" registro={form.register('anoModelo')} mascara={mascaraAno} />
         </Campo>
         <Campo rotulo="Cor" erro={erros.cor}>
           <Input {...form.register('cor')} />
@@ -117,7 +129,7 @@ export function CamposVeiculo({ form, etapa, veiculo }: { form: FormVeiculo; eta
   return (
     <div className="grid gap-4 md:grid-cols-3">
       <Campo rotulo="Quilometragem atual" dica="Opcional aqui; obrigatória na O.S." erro={erros.kmAtual}>
-        <Input type="number" inputMode="numeric" {...form.register('kmAtual')} />
+        <InputMascara inputMode="numeric" placeholder="0" registro={form.register('kmAtual')} mascara={mascaraKm} />
       </Campo>
       <Campo rotulo="Status *" dica="Vendido/Inativo não recebe O.S. nova" erro={erros.status}>
         <Select {...form.register('status')}>

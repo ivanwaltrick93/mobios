@@ -72,6 +72,7 @@ Em [`components/ui.tsx`](../apps/web/src/components/ui.tsx). Use-os em vez de re
 | `Botao` (`primario` = confirmar / `secundario` = cancelar, voltar / `perigo` = excluir), `BotaoLink` | Ações. Use sempre a variante pela função do botão, para o tema da oficina valer |
 | `Campo` + `Input` / `Select` / `AreaTexto` | Formulários, com rótulo, dica e erro |
 | `Marcador` | Caixa de seleção com rótulo ao lado |
+| `InputMascara` + `mascara*` (`packages/shared/src/mascaras.ts`) | Campo com máscara ao digitar (CPF/CNPJ, telefone, CEP, placa, e-mail...). Só formata: a validação e a limpeza da pontuação ficam no schema |
 | `Secao` | Bloco de formulário com título (Identificação, Contato, Endereços...) e ação opcional |
 | `Alerta` | Mensagem de erro |
 | `Selo` (`sucesso` / `neutro` / `primario` / `alerta`) | Status curtos; `alerta` para pendências (ex.: "Cadastro incompleto") |

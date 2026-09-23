@@ -223,12 +223,21 @@ describe('clientes e veículos', () => {
 
   it('PJ: endereços com finalidades; edição regrava os endereços e mantém um principal', async () => {
     const { chamar } = await novaOficina('Oficina PJ');
+    const cargos: { id: string; nome: string }[] = (await chamar('GET', '/api/opcoes/cargos')).json();
+    const cargo = (nome: string) => cargos.find((c) => c.nome === nome)!.id;
+    const CARLOS = { nome: 'Carlos Gestor', telefone: '(48) 99888-7777', telefoneWhatsapp: true, cargoId: cargo('Gestor de frota') };
+    const pjDados = (d: object) => cliente({ tipo: 'PJ', responsaveis: [CARLOS], ...d });
+
+    // Responsável é obrigatório na PJ; o primeiro vira principal.
+    const semResponsavel = await chamar('POST', '/api/clientes', cliente({ tipo: 'PJ', cpfCnpj: '11.444.777/0001-61' }));
+    expect(semResponsavel.json().campos.responsaveis).toBe('Cadastre ao menos um responsável pela empresa');
+    expect((await chamar('POST', '/api/clientes', pjDados({ cpfCnpj: '11.444.777/0001-61', responsaveis: [{ ...CARLOS, cargoId: '' }] }))).json().campos['responsaveis.0.cargoId']).toBeDefined();
+
     const pj = (
       await chamar(
         'POST',
         '/api/clientes',
-        cliente({
-          tipo: 'PJ',
+        pjDados({
           nome: 'Transportes Exemplo Ltda',
           cpfCnpj: '11.222.333/0001-81',
           rgIe: 'ISENTO',
@@ -239,16 +248,43 @@ describe('clientes e veículos', () => {
         }),
       )
     ).json();
+    expect(pj.responsaveis).toEqual([
+      { id: expect.any(String), nome: 'Carlos Gestor', telefone: '48998887777', telefoneWhatsapp: true, email: null, cargoId: cargo('Gestor de frota'), cargoNome: 'Gestor de frota', principal: true },
+    ]);
+    expect(pj.pendencias).toEqual([]);
     expect(pj.enderecos.map((e: { logradouro: string; principal: boolean; faturamento: boolean; entrega: boolean; cobranca: boolean }) => [e.logradouro, e.principal, e.faturamento, e.entrega, e.cobranca])).toEqual([
       ['Rodovia SC-401', true, false, true, false],
       ['Rua Felipe Schmidt', false, true, false, true],
     ]);
-    const dois = await chamar('PUT', `/api/clientes/${pj.id}`, cliente({ tipo: 'PJ', cpfCnpj: '11222333000181', enderecos: [ENDERECO, { ...ENDERECO, principal: true }, { ...ENDERECO, principal: true }] }));
+    const dois = await chamar('PUT', `/api/clientes/${pj.id}`, pjDados({ cpfCnpj: '11222333000181', enderecos: [ENDERECO, { ...ENDERECO, principal: true }, { ...ENDERECO, principal: true }] }));
     expect(dois.json().campos.enderecos).toBe('Marque apenas um endereço como principal');
 
-    const editado = (await chamar('PUT', `/api/clientes/${pj.id}`, cliente({ tipo: 'PJ', nome: 'Transportes Exemplo', cpfCnpj: '11222333000181', ativo: false }))).json();
+    // CNPJ alfanumérico: gravado sem pontuação, em maiúsculas; a busca acha com ou sem máscara.
+    const alfa = await chamar('POST', '/api/clientes', pjDados({ nome: 'Nova Empresa', cpfCnpj: '12.abc.345/01de-35' }));
+    expect(alfa.json().cpfCnpj).toBe('12ABC34501DE35');
+    expect((await chamar('GET', '/api/clientes?q=12.ABC.345')).json().itens.map((c: { nome: string }) => c.nome)).toEqual(['Nova Empresa']);
+    expect((await chamar('POST', '/api/clientes', pjDados({ cpfCnpj: '12ABC34501DE35' }))).json().erro).toBe('Já existe um cliente com este CPF/CNPJ');
+    expect((await chamar('POST', '/api/clientes', pjDados({ cpfCnpj: '12ABC34501DE36' }))).json().campos.cpfCnpj).toBe('CNPJ inválido');
+
+    const editado = (await chamar('PUT', `/api/clientes/${pj.id}`, pjDados({ nome: 'Transportes Exemplo', cpfCnpj: '11222333000181', ativo: false }))).json();
     expect(editado).toMatchObject({ nome: 'Transportes Exemplo', ativo: false, enderecos: [{ logradouro: 'Rua Felipe Schmidt', principal: true }] });
     expect(editado.enderecos).toHaveLength(1);
+
+    // Vários responsáveis, um principal; função desativada continua valendo para quem já a usava.
+    const motorista = { nome: 'Dani Motorista', telefone: '(48) 3222-0000', email: 'Dani@Empresa.com', cargoId: cargo('Motorista'), principal: true };
+    const dupla = (await chamar('PUT', `/api/clientes/${pj.id}`, pjDados({ cpfCnpj: '11222333000181', responsaveis: [CARLOS, motorista] }))).json();
+    expect(dupla.responsaveis.map((r: { nome: string; principal: boolean; email: string | null }) => [r.nome, r.principal, r.email])).toEqual([
+      ['Dani Motorista', true, 'dani@empresa.com'],
+      ['Carlos Gestor', false, null],
+    ]);
+    const admin = { chamar };
+    await admin.chamar('PUT', `/api/opcoes/cargos/${cargo('Motorista')}`, { nome: 'Motorista', ativa: false });
+    expect((await chamar('PUT', `/api/clientes/${pj.id}`, pjDados({ cpfCnpj: '11222333000181', responsaveis: [CARLOS, motorista] }))).statusCode).toBe(200);
+    expect((await chamar('POST', '/api/clientes', pjDados({ cpfCnpj: '11.444.777/0001-61', responsaveis: [motorista] }))).statusCode).toBe(400);
+    expect((await chamar('GET', '/api/opcoes/cargos')).json().find((c: { nome: string }) => c.nome === 'Motorista')).toMatchObject({ ativa: false, clientes: 1 });
+
+    // PF não guarda responsáveis.
+    expect((await chamar('POST', '/api/clientes', cliente({ responsaveis: [CARLOS] }))).json().responsaveis).toEqual([]);
   });
 
   it('listas de origem e relacionamento: editáveis pelo admin, só itens ativos na escolha', async () => {
@@ -311,13 +347,16 @@ describe('clientes e veículos', () => {
     const admin = await novaOficina('Oficina Legado');
     const { oficina } = (await admin.chamar('GET', '/api/auth/sessao')).json();
     const [antigo] = await withTenant(oficina.id, (tx) => tx.execute(sql`insert into clientes (nome) values ('Cliente Antigo') returning id`));
+    const [empresa] = await withTenant(oficina.id, (tx) => tx.execute(sql`insert into clientes (nome, tipo) values ('Empresa Antiga', 'PJ') returning id`));
+    expect((await admin.chamar('GET', `/api/clientes/${empresa!.id}`)).json().pendencias).toEqual(['CPF/CNPJ', 'telefone', 'WhatsApp', 'endereço', 'responsável']);
     await withTenant(oficina.id, (tx) => tx.execute(sql`insert into veiculos (cliente_id, placa, marca, modelo, principal) values (${antigo!.id}, 'OLD1A23', 'Fiat', 'Uno', true)`));
     expect((await admin.chamar('GET', `/api/clientes/${antigo!.id}`)).json().pendencias).toEqual(['CPF/CNPJ', 'telefone', 'WhatsApp', 'endereço']);
     expect((await admin.chamar('GET', `/api/veiculos?clienteId=${antigo!.id}`)).json()[0].pendencias).toEqual(['ano de fabricação', 'ano modelo']);
     const alertas = (await admin.chamar('GET', '/api/painel')).json().alertas.map((a: { mensagem: string }) => a.mensagem);
     expect(alertas).toEqual([
-      '1 cliente(s) com cadastro incompleto: complete antes de abrir O.S.',
+      '2 cliente(s) com cadastro incompleto: complete antes de abrir O.S.',
       '1 veículo(s) com cadastro incompleto (ano de fabricação ou modelo): complete antes de abrir O.S.',
+      '1 cliente(s) sem veículo cadastrado.',
     ]);
   });
 });
@@ -718,7 +757,7 @@ describe('isolamento entre oficinas (RLS)', () => {
   });
 
   it('sem tenant definido, o banco não devolve nenhuma linha', async () => {
-    for (const tabela of ['clientes', 'veiculos', 'users', 'tenant_logos', 'tenant_aparencia', 'funcoes', 'funcao_permissoes', 'usuario_funcoes', 'usuario_fotos', 'cliente_enderecos', 'origens_cliente', 'relacionamentos_cliente']) {
+    for (const tabela of ['clientes', 'veiculos', 'users', 'tenant_logos', 'tenant_aparencia', 'funcoes', 'funcao_permissoes', 'usuario_funcoes', 'usuario_fotos', 'cliente_enderecos', 'origens_cliente', 'relacionamentos_cliente', 'cliente_responsaveis', 'cargos_responsavel']) {
       const linhas = await db.execute(sql`select count(*)::int as n from ${sql.identifier(tabela)}`);
       expect(linhas[0]!.n, tabela).toBe(0);
     }

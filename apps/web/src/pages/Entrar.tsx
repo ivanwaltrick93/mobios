@@ -1,12 +1,12 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { loginSchema, TEMA_VAZIO, type AparenciaPublica, type Sessao } from '@mobios/shared';
+import { loginSchema, mascaraEmail, TEMA_VAZIO, type AparenciaPublica, type Sessao } from '@mobios/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { useNavigate, useSearchParams } from 'react-router';
 import type { z } from 'zod';
 import { LogoMobiOS, Rodape } from '../components/Marca';
-import { Alerta, Botao, Campo, Cartao, Input } from '../components/ui';
+import { Alerta, Botao, Campo, Cartao, Input, InputMascara } from '../components/ui';
 import { api } from '../lib/api';
 import { aplicarErrosDaApi } from '../lib/formulario';
 import { chaveSessao } from '../lib/sessao';
@@ -72,7 +72,7 @@ export function Entrar() {
       <form className="space-y-4" onSubmit={form.handleSubmit((d) => login.mutate(d))}>
         <Alerta>{login.isError && aplicarErrosDaApi(login.error, form.setError)}</Alerta>
         <Campo rotulo="E-mail" erro={erros.email}>
-          <Input type="email" autoComplete="email" {...form.register('email')} />
+          <InputMascara type="email" inputMode="email" autoComplete="email" registro={form.register('email')} mascara={mascaraEmail} />
         </Campo>
         <Campo rotulo="Senha" erro={erros.senha}>
           <Input type="password" autoComplete="current-password" {...form.register('senha')} />

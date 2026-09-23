@@ -78,6 +78,13 @@
       "when": 1790131594722,
       "tag": "0010_remove_ano_veiculo",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1790133571531,
+      "tag": "0011_responsaveis_pj",
+      "breakpoints": true
     }
   ]
 }

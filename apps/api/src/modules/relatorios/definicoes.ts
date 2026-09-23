@@ -57,6 +57,8 @@ export const relatorios: Record<RelatorioId, Definicao> = {
       { chave: 'telefone', titulo: 'Telefone' },
       { chave: 'whatsapp', titulo: 'WhatsApp' },
       { chave: 'email', titulo: 'E-mail' },
+      { chave: 'responsavel', titulo: 'Responsável (PJ)' },
+      { chave: 'responsavelContato', titulo: 'Contato do responsável' },
       { chave: 'endereco', titulo: 'Endereço principal' },
       { chave: 'cidade', titulo: 'Cidade/UF' },
       { chave: 'origem', titulo: 'Origem' },
@@ -78,6 +80,10 @@ export const relatorios: Record<RelatorioId, Definicao> = {
           endereco: clienteEnderecos,
           // Correlação escrita à mão (o Drizzle não qualifica colunas dentro da subconsulta).
           veiculos: sql<number>`(select count(*) from veiculos v where v.cliente_id = "clientes"."id")`.mapWith(Number),
+          // Responsável principal (PJ): "nome (função)" e o telefone.
+          responsavel: sql<string | null>`(select r.nome || ' (' || c.nome || ')' from cliente_responsaveis r join cargos_responsavel c on c.id = r.cargo_id
+            where r.cliente_id = "clientes"."id" and r.principal)`,
+          responsavelTelefone: sql<string | null>`(select r.telefone from cliente_responsaveis r where r.cliente_id = "clientes"."id" and r.principal)`,
         })
         .from(clientes)
         .leftJoin(origensCliente, eq(origensCliente.id, clientes.origemId))
@@ -88,7 +94,7 @@ export const relatorios: Record<RelatorioId, Definicao> = {
         .limit(limite);
       return {
         total,
-        linhas: linhas.map(({ c, origem, relacionamento, endereco: e, veiculos }) => ({
+        linhas: linhas.map(({ c, origem, relacionamento, endereco: e, veiculos, responsavel, responsavelTelefone }) => ({
           nome: c.nome,
           tipo: c.tipo === 'PF' ? 'Pessoa física' : 'Pessoa jurídica',
           documento: c.cpfCnpj ? formatarDocumento(c.cpfCnpj) : '',
@@ -98,6 +104,8 @@ export const relatorios: Record<RelatorioId, Definicao> = {
           telefone: c.telefone ? formatarTelefone(c.telefone) : '',
           whatsapp: c.whatsapp ? formatarTelefone(c.whatsapp) : '',
           email: texto(c.email),
+          responsavel: texto(responsavel),
+          responsavelContato: responsavelTelefone ? formatarTelefone(responsavelTelefone) : '',
           endereco: e ? [`${e.logradouro}, ${e.numero}`, e.complemento, e.bairro, formatarCep(e.cep)].filter(Boolean).join(' - ') : '',
           cidade: e ? `${e.cidade}/${e.uf}` : '',
           origem: texto(origem),
@@ -105,7 +113,7 @@ export const relatorios: Record<RelatorioId, Definicao> = {
           clienteDesde: formatarDataIso(c.clienteDesde),
           status: c.ativo ? 'Ativo' : 'Inativo',
           veiculos: texto(veiculos),
-          pendencias: pendenciasCliente(c, !!e).join(', '),
+          pendencias: pendenciasCliente(c, !!e, !!responsavel).join(', '),
           cadastro: formatarData(c.criadoEm),
         })),
       };

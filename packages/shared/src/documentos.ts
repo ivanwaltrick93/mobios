@@ -1,7 +1,11 @@
 export const somenteDigitos = (valor: string) => valor.replace(/\D/g, '');
 
+/** CPF/CNPJ sem pontuação e em maiúsculas (o CNPJ pode ter letras, ver cnpjValido). */
+export const normalizarDocumento = (valor: string) => valor.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+
+/** Valor do caractere no cálculo do DV: código ASCII − 48 ('0'–'9' → 0–9, 'A' → 17 … 'Z' → 42). */
 function digitoVerificador(base: string, pesos: number[]): number {
-  const soma = pesos.reduce((acc, peso, i) => acc + Number(base[i]) * peso, 0);
+  const soma = pesos.reduce((acc, peso, i) => acc + (base.charCodeAt(i) - 48) * peso, 0);
   const resto = soma % 11;
   return resto < 2 ? 0 : 11 - resto;
 }
@@ -14,9 +18,14 @@ export function cpfValido(valor: string): boolean {
   return cpf.endsWith(`${d1}${d2}`);
 }
 
+/**
+ * CNPJ numérico ou alfanumérico (IN RFB 2.229/2024, emitido a partir de julho/2026):
+ * 12 posições com letras maiúsculas ou números + 2 dígitos verificadores numéricos,
+ * calculados pelo mesmo módulo 11, com o valor de cada caractere = ASCII − 48.
+ */
 export function cnpjValido(valor: string): boolean {
-  const cnpj = somenteDigitos(valor);
-  if (cnpj.length !== 14 || /^(\d)\1{13}$/.test(cnpj)) return false;
+  const cnpj = normalizarDocumento(valor);
+  if (!/^[0-9A-Z]{12}\d{2}$/.test(cnpj) || /^(\d)\1{13}$/.test(cnpj)) return false;
   const d1 = digitoVerificador(cnpj, [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
   const d2 = digitoVerificador(cnpj, [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
   return cnpj.endsWith(`${d1}${d2}`);

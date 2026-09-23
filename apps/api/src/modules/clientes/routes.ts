@@ -3,6 +3,7 @@ import {
   clienteResumoSchema,
   clienteSchema,
   idParamSchema,
+  normalizarDocumento,
   normalizarPlaca,
   paginacaoSchema,
   pendenciasCliente,
@@ -14,11 +15,12 @@ import { asc, count, eq, ilike, or, sql } from 'drizzle-orm';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { withTenant, type Tx } from '../../db/client.js';
-import { clienteEnderecos, clientes, origensCliente, relacionamentosCliente } from '../../db/schema.js';
+import { cargosResponsavel, clienteEnderecos, clienteResponsaveis, clientes, origensCliente, relacionamentosCliente } from '../../db/schema.js';
 import { ErroHttp, naoEncontrado } from '../../lib/erros.js';
 
 // Correlação escrita à mão: dentro da subconsulta o Drizzle não qualifica as colunas.
 const temEndereco = sql<boolean>`exists (select 1 from cliente_enderecos e where e.cliente_id = "clientes"."id")`;
+const temResponsavel = sql<boolean>`exists (select 1 from cliente_responsaveis r where r.cliente_id = "clientes"."id")`;
 
 type VeiculoResumo = ClienteResumo['veiculos'][number];
 
@@ -37,6 +39,7 @@ const colunasResumo = {
   whatsapp: clientes.whatsapp,
   ativo: clientes.ativo,
   temEndereco,
+  temResponsavel,
   veiculos: veiculosResumo,
   totalVeiculos,
 };
@@ -58,9 +61,10 @@ const colunasEndereco = {
   cobranca: clienteEnderecos.cobranca,
 };
 
-const comPendencias = <T extends { cpfCnpj: string | null; telefone: string | null; whatsapp: string | null; temEndereco: boolean }>({ temEndereco, ...c }: T) => ({
+type BasePendencias = { tipo: 'PF' | 'PJ'; cpfCnpj: string | null; telefone: string | null; whatsapp: string | null; temEndereco: boolean; temResponsavel: boolean };
+const comPendencias = <T extends BasePendencias>({ temEndereco, temResponsavel, ...c }: T) => ({
   ...c,
-  pendencias: pendenciasCliente(c, temEndereco),
+  pendencias: pendenciasCliente(c, temEndereco, temResponsavel),
 });
 
 async function carregarCliente(tx: Tx, id: string): Promise<Cliente> {
@@ -89,15 +93,30 @@ async function carregarCliente(tx: Tx, id: string): Promise<Cliente> {
     .from(clienteEnderecos)
     .where(eq(clienteEnderecos.clienteId, id))
     .orderBy(sql`${clienteEnderecos.principal} desc`, asc(clienteEnderecos.criadoEm), asc(clienteEnderecos.id));
-  return { ...comPendencias(linha), enderecos };
+  const responsaveis = await tx
+    .select({
+      id: clienteResponsaveis.id,
+      nome: clienteResponsaveis.nome,
+      telefone: clienteResponsaveis.telefone,
+      telefoneWhatsapp: clienteResponsaveis.telefoneWhatsapp,
+      email: clienteResponsaveis.email,
+      cargoId: clienteResponsaveis.cargoId,
+      cargoNome: cargosResponsavel.nome,
+      principal: clienteResponsaveis.principal,
+    })
+    .from(clienteResponsaveis)
+    .innerJoin(cargosResponsavel, eq(cargosResponsavel.id, clienteResponsaveis.cargoId))
+    .where(eq(clienteResponsaveis.clienteId, id))
+    .orderBy(sql`${clienteResponsaveis.principal} desc`, asc(clienteResponsaveis.nome), asc(clienteResponsaveis.id));
+  return { ...comPendencias(linha), enderecos, responsaveis };
 }
 
 /**
  * Item de lista (origem/relacionamento) precisa estar ativo para ser escolhido.
  * Na edição, o cliente pode manter o item que já tinha, mesmo que tenha sido desativado depois.
  */
-async function validarOpcao(tx: Tx, tabela: typeof origensCliente, id: string | null, atual: string | null, campo: string) {
-  if (!id || id === atual) return;
+async function validarOpcao(tx: Tx, tabela: typeof origensCliente, id: string | null, atual: string | null | string[], campo: string) {
+  if (!id || (Array.isArray(atual) ? atual.includes(id) : id === atual)) return;
   const [opcao] = await tx.select({ ativa: tabela.ativa }).from(tabela).where(eq(tabela.id, id));
   if (!opcao?.ativa) throw new ErroHttp(400, `${campo}: escolha um item ativo da lista`);
 }
@@ -106,6 +125,17 @@ async function gravarEnderecos(tx: Tx, clienteId: string, enderecos: ClienteDado
   // Os endereços são regravados juntos com o cliente (mesma transação): nada referencia endereço por id.
   await tx.delete(clienteEnderecos).where(eq(clienteEnderecos.clienteId, clienteId));
   await tx.insert(clienteEnderecos).values(enderecos.map((e) => ({ ...e, clienteId })));
+}
+
+/**
+ * Responsáveis (PJ) também são regravados juntos com o cliente. A função de cada um precisa estar ativa,
+ * exceto as que o cliente já usava (podem ter sido desativadas depois).
+ */
+async function gravarResponsaveis(tx: Tx, clienteId: string, responsaveis: ClienteDados['responsaveis']) {
+  const atuais = (await tx.select({ cargoId: clienteResponsaveis.cargoId }).from(clienteResponsaveis).where(eq(clienteResponsaveis.clienteId, clienteId))).map((r) => r.cargoId);
+  for (const cargoId of new Set(responsaveis.map((r) => r.cargoId))) await validarOpcao(tx, cargosResponsavel, cargoId, atuais, 'Função do responsável');
+  await tx.delete(clienteResponsaveis).where(eq(clienteResponsaveis.clienteId, clienteId));
+  if (responsaveis.length) await tx.insert(clienteResponsaveis).values(responsaveis.map((r) => ({ ...r, clienteId })));
 }
 
 // O tenant_id não aparece em nenhum filtro abaixo: quem garante o isolamento é o RLS via withTenant().
@@ -120,12 +150,15 @@ export const clientesRoutes: FastifyPluginAsyncZod = async (app) => {
     async (req) => {
       const { q, pagina, porPagina } = req.query;
       const digitos = q?.replace(/\D/g, '');
+      const documento = q ? normalizarDocumento(q) : '';
       // Placa sem hífen e em maiúsculas: no balcão o cliente chega com o carro, e a placa leva ao dono.
       const placa = q ? normalizarPlaca(q) : '';
       const filtro = q
         ? or(
             ilike(clientes.nome, `%${q}%`),
-            ...(digitos ? [ilike(clientes.cpfCnpj, `%${digitos}%`), ilike(clientes.telefone, `%${digitos}%`), ilike(clientes.whatsapp, `%${digitos}%`)] : []),
+            // Documento guardado sem pontuação e em maiúsculas (o CNPJ pode ter letras).
+            ...(documento ? [ilike(clientes.cpfCnpj, `%${documento}%`)] : []),
+            ...(digitos ? [ilike(clientes.telefone, `%${digitos}%`), ilike(clientes.whatsapp, `%${digitos}%`)] : []),
             ...(placa.length >= 3 ? [sql`exists (select 1 from veiculos v where v.cliente_id = "clientes"."id" and v.placa like ${`%${placa}%`})`] : []),
           )
         : undefined;
@@ -142,19 +175,20 @@ export const clientesRoutes: FastifyPluginAsyncZod = async (app) => {
   );
 
   app.post('/', { ...editar, schema: { body: clienteInputSchema, response: { 201: clienteSchema } } }, async (req, reply) => {
-    const { enderecos, ...dados } = req.body;
+    const { enderecos, responsaveis, ...dados } = req.body;
     const cliente = await withTenant(req.user.tid, async (tx) => {
       await validarOpcao(tx, origensCliente, dados.origemId, null, 'Origem do cliente');
       await validarOpcao(tx, relacionamentosCliente, dados.relacionamentoId, null, 'Tipo de relacionamento');
       const [{ id }] = (await tx.insert(clientes).values(dados).returning({ id: clientes.id })) as [{ id: string }];
       await gravarEnderecos(tx, id, enderecos);
+      await gravarResponsaveis(tx, id, responsaveis);
       return carregarCliente(tx, id);
     });
     return reply.code(201).send(cliente);
   });
 
   app.put('/:id', { ...editar, schema: { params: idParamSchema, body: clienteInputSchema, response: { 200: clienteSchema } } }, async (req) => {
-    const { enderecos, ...dados } = req.body;
+    const { enderecos, responsaveis, ...dados } = req.body;
     return withTenant(req.user.tid, async (tx) => {
       const [atual] = await tx
         .select({ origemId: clientes.origemId, relacionamentoId: clientes.relacionamentoId })
@@ -166,6 +200,7 @@ export const clientesRoutes: FastifyPluginAsyncZod = async (app) => {
       await validarOpcao(tx, relacionamentosCliente, dados.relacionamentoId, atual.relacionamentoId, 'Tipo de relacionamento');
       await tx.update(clientes).set(dados).where(eq(clientes.id, req.params.id));
       await gravarEnderecos(tx, req.params.id, enderecos);
+      await gravarResponsaveis(tx, req.params.id, responsaveis);
       return carregarCliente(tx, req.params.id);
     });
   });

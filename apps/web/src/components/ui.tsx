@@ -2,6 +2,7 @@
  * Componentes base do style guide. Use sempre estes em vez de classes soltas:
  * cores só por tokens (bg-primaria, text-texto-suave...), definidos em src/index.css.
  */
+import type { UseFormRegisterReturn } from 'react-hook-form';
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TdHTMLAttributes, TextareaHTMLAttributes, ThHTMLAttributes } from 'react';
 
 const base =
@@ -25,6 +26,23 @@ export const Input = ({ className = '', ...props }: InputHTMLAttributes<HTMLInpu
 export const Select = ({ className = '', ...props }: SelectHTMLAttributes<HTMLSelectElement>) => (
   <select className={`${base} ${className}`} {...props} />
 );
+/**
+ * Campo com máscara aplicada enquanto se digita (CPF, CNPJ, telefone, CEP, placa...).
+ * Use com `register`: `<InputMascara registro={form.register('telefone')} mascara={mascaraTelefone} />`.
+ * A máscara só formata; quem valida e tira a pontuação é o schema.
+ */
+export const InputMascara = ({ registro, mascara, ...props }: InputHTMLAttributes<HTMLInputElement> & { registro: UseFormRegisterReturn; mascara: (v: string) => string }) => (
+  <Input
+    autoComplete="off"
+    {...props}
+    {...registro}
+    onChange={(e) => {
+      e.target.value = mascara(e.target.value);
+      registro.onChange(e);
+    }}
+  />
+);
+
 export const AreaTexto = ({ className = '', ...props }: TextareaHTMLAttributes<HTMLTextAreaElement>) => (
   <textarea rows={3} className={`${base} ${className}`} {...props} />
 );

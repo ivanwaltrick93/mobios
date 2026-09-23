@@ -23,7 +23,8 @@ export const painelRoutes: FastifyPluginAsyncZod = async (app) => {
           hoje: sql<number>`count(*) filter (where ${hoje(clientes.criadoEm)})`.mapWith(Number),
           // Faltando campo obrigatório (cadastros antigos): não poderão abrir O.S. até serem completados.
           incompletos: sql<number>`count(*) filter (where ${clientes.cpfCnpj} is null or ${clientes.telefone} is null or ${clientes.whatsapp} is null
-            or not exists (select 1 from cliente_enderecos e where e.cliente_id = "clientes"."id"))`.mapWith(Number),
+            or not exists (select 1 from cliente_enderecos e where e.cliente_id = "clientes"."id")
+            or (${clientes.tipo} = 'PJ' and not exists (select 1 from cliente_responsaveis r where r.cliente_id = "clientes"."id")))`.mapWith(Number),
           // Correlação escrita à mão: dentro da subconsulta o Drizzle não qualifica as colunas
           // e "id" seria o do veículo, não o do cliente.
           semVeiculo: sql<number>`count(*) filter (where not exists (select 1 from veiculos v where v.cliente_id = "clientes"."id"))`.mapWith(Number),

@@ -1,5 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { usuarioAtualizarSchema, usuarioCriarSchema, type Funcao, type Usuario } from '@mobios/shared';
+import { mascaraEmail, usuarioAtualizarSchema, usuarioCriarSchema, type Funcao, type Usuario } from '@mobios/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Controller, useForm, type Control, type FieldValues, type Path } from 'react-hook-form';
@@ -7,7 +7,7 @@ import { Link } from 'react-router';
 import type { z } from 'zod';
 import { Avatar } from '../components/Avatar';
 import { FotoUsuario } from '../components/FotoUsuario';
-import { Alerta, Botao, BotaoLink, Cabecalho, Campo, Cartao, Input, Linha, Selo, Tabela, Td, TextoSuave, Th, Titulo } from '../components/ui';
+import { Alerta, Botao, BotaoLink, Cabecalho, Campo, Cartao, Input, InputMascara, Linha, Selo, Tabela, Td, TextoSuave, Th, Titulo } from '../components/ui';
 import { api } from '../lib/api';
 import { aplicarErrosDaApi } from '../lib/formulario';
 import { chaveSessao, useAdmin, useSessao } from '../lib/sessao';
@@ -162,7 +162,7 @@ function NovoUsuario({ aoConcluir }: { aoConcluir: () => void }) {
         <Input autoComplete="off" {...form.register('nome')} />
       </Campo>
       <Campo rotulo="E-mail (login)" erro={erros.email}>
-        <Input type="email" autoComplete="off" {...form.register('email')} />
+        <InputMascara type="email" inputMode="email" placeholder="nome@exemplo.com" registro={form.register('email')} mascara={mascaraEmail} />
       </Campo>
       <div className="md:col-span-2">
         <SeletorFuncoes control={form.control} nome="funcoes" />

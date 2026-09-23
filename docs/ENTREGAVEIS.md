@@ -101,9 +101,9 @@ flowchart LR
 
 | Código | Entregável | Proposta |
 |---|---|---|
-| CAD-01 | Clientes PF/PJ: CPF/CNPJ validado, RG/IE, nascimento e sexo (só PF), telefone e WhatsApp obrigatórios, e-mail, observações, cliente desde, origem, tipo de relacionamento, status Ativo/Inativo | ✅ |
+| CAD-01 | Clientes PF/PJ: CPF/CNPJ validado (inclusive o **CNPJ alfanumérico** da Receita, jul/2026), RG/IE, nascimento e sexo (só PF), telefone e WhatsApp obrigatórios, e-mail, observações, cliente desde, origem, tipo de relacionamento, status Ativo/Inativo | ✅ |
 | CAD-02 | Endereços do cliente (ao menos um, um principal), com preenchimento pelo CEP (ViaCEP); na PJ, cada endereço pode ser também de faturamento, entrega e/ou cobrança | ✅ |
-| CAD-03 | Vários contatos por cliente (ex.: frota de empresa: quem aprova, quem busca o carro) | 🟡 |
+| CAD-03 | Responsáveis da PJ (obrigatório ao menos um, um principal): nome, função (lista editável em Configurações → Cadastros), telefone (marcando se é WhatsApp) e e-mail | ✅ |
 | CAD-04 | Veículos: placa antiga/Mercosul, chassi/VIN (opcional, 17 caracteres) e Renavam validados quando informados, marca/modelo com sugestões da própria oficina, versão, ano fabricação/modelo, cor, combustível, km, veículo principal, status Ativo/Vendido/Inativo, data da última visita (preenchida pela O.S.) | ✅ |
 | CAD-05 | Marca e modelo por lista padronizada (tabela FIPE) em vez de texto livre | 🟡 |
 | CAD-06 | Histórico do veículo: todas as O.S., km a cada visita, peças trocadas | 🟢 (chega com OS) |
@@ -114,7 +114,8 @@ flowchart LR
 | CAD-11 | Formas de pagamento e taxas (ex.: crédito 3,5%, prazo de recebimento) | 🟢 |
 | CAD-12 | Transferir veículo de um cliente para outro (venda do carro), levando o histórico | ✅ |
 | CAD-13 | Importar clientes e veículos de planilha (migração de outro sistema) | 🟡 |
-| CAD-14 | Listas editáveis por oficina: origem do cliente e tipo de relacionamento (Configurações → Cadastros) | ✅ |
+| CAD-14 | Listas editáveis por oficina: origem do cliente, tipo de relacionamento e função do responsável (Configurações → Cadastros) | ✅ |
+| CAD-15 | Máscaras de digitação: CPF, CNPJ (inclusive alfanumérico), telefone, CEP, e-mail, placa, chassi, Renavam, anos e km | ✅ |
 
 **Regras do cadastro, decididas pelo dono do produto em 22/09/2026:**
 - Placa (obrigatória) e chassi (opcional) são únicos na oficina. Na venda para outro cliente, o veículo é **transferido** (CAD-12) e não recadastrado. As O.S. guardam o cliente da época, então o histórico do ex-dono continua com ele.

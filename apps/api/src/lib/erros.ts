@@ -28,6 +28,7 @@ const mensagensUnicidade: Record<string, string> = {
   funcoes_nome_unico: 'Já existe uma função com este nome',
   origens_cliente_nome_unico: 'Já existe um item com este nome',
   relacionamentos_cliente_nome_unico: 'Já existe um item com este nome',
+  cargos_responsavel_nome_unico: 'Já existe um item com este nome',
   veiculos_tenant_id_chassi_index: 'Já existe um veículo com este chassi',
 };
 

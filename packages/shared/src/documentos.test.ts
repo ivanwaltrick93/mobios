@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { formatarDocumento } from './formatos.js';
 import { chassiValido, cnpjValido, cpfValido, normalizarPlaca, placaValida, renavamValido, telefoneValido } from './documentos.js';
 
 describe('documentos', () => {
@@ -11,6 +12,15 @@ describe('documentos', () => {
   it('valida CNPJ', () => {
     expect(cnpjValido('11.222.333/0001-81')).toBe(true);
     expect(cnpjValido('11.222.333/0001-80')).toBe(false);
+  });
+
+  it('valida o CNPJ alfanumérico (Receita, jul/2026)', () => {
+    expect(cnpjValido('12.ABC.345/01DE-35')).toBe(true); // exemplo oficial da Receita
+    expect(cnpjValido('12abc34501de35')).toBe(true);
+    expect(cnpjValido('12.ABC.345/01DE-36')).toBe(false);
+    expect(cnpjValido('12.ABC.345/01DE-3A')).toBe(false); // DV é sempre numérico
+    expect(formatarDocumento('12ABC34501DE35')).toBe('12.ABC.345/01DE-35');
+    expect(formatarDocumento('11222333000181')).toBe('11.222.333/0001-81');
   });
 
   it('valida placas antiga e Mercosul', () => {
@@ -73,15 +83,23 @@ describe('clienteInputSchema', async () => {
     whatsapp: '(48) 99999-0000',
     clienteDesde: '2024-01-10',
     enderecos: [endereco],
+    responsaveis: [{ nome: 'Carlos', telefone: '(48) 99888-7777', cargoId: '4d3c1a2b-9f8e-4d7c-8b6a-5f4e3d2c1b0a' }],
   } as const;
 
   it('normaliza documento, telefones e endereço; o primeiro endereço vira principal', () => {
     const r = clienteInputSchema.parse({ ...base, enderecos: [{ ...endereco, faturamento: true }, { ...endereco, tipo: 'outro' }] });
+    expect(clienteInputSchema.parse({ ...base, cpfCnpj: '12.abc.345/01de-35' }).cpfCnpj).toBe('12ABC34501DE35');
     expect(r).toMatchObject({ cpfCnpj: '11222333000181', telefone: '4832221000', whatsapp: '48999990000', origemId: null, sexo: null });
     expect(r.enderecos.map((e) => [e.principal, e.faturamento, e.cep, e.uf, e.pais])).toEqual([
       [true, true, '88015100', 'SC', 'Brasil'],
       [false, false, '88015100', 'SC', 'Brasil'],
     ]);
+  });
+
+  it('PJ exige responsável (o primeiro vira principal); PF descarta responsáveis', () => {
+    expect(clienteInputSchema.safeParse({ ...base, responsaveis: [] }).success).toBe(false);
+    expect(clienteInputSchema.parse(base).responsaveis[0]).toMatchObject({ telefone: '48998887777', principal: true, telefoneWhatsapp: false, email: null });
+    expect(clienteInputSchema.parse({ ...base, tipo: 'PF', cpfCnpj: '529.982.247-25' }).responsaveis).toEqual([]);
   });
 
   it('exige endereço, WhatsApp e documento válido', () => {

@@ -3,18 +3,21 @@ import { asc, eq, sql } from 'drizzle-orm';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { withTenant } from '../../db/client.js';
-import { origensCliente, relacionamentosCliente } from '../../db/schema.js';
+import { cargosResponsavel, origensCliente, relacionamentosCliente } from '../../db/schema.js';
 import { naoEncontrado } from '../../lib/erros.js';
 
 /** Tabela de cada lista e a coluna de clientes que aponta para ela. */
 const listas = {
-  origens: { tabela: origensCliente, nomeTabela: 'origens_cliente', coluna: 'origem_id' },
-  relacionamentos: { tabela: relacionamentosCliente, nomeTabela: 'relacionamentos_cliente', coluna: 'relacionamento_id' },
+  origens: { tabela: origensCliente, nomeTabela: 'origens_cliente', uso: 'clientes', coluna: 'origem_id' },
+  relacionamentos: { tabela: relacionamentosCliente, nomeTabela: 'relacionamentos_cliente', uso: 'clientes', coluna: 'relacionamento_id' },
+  // Função do responsável: conta os clientes (PJ) com algum responsável nela.
+  cargos: { tabela: cargosResponsavel, nomeTabela: 'cargos_responsavel', uso: 'cliente_responsaveis', coluna: 'cargo_id' },
 } satisfies Record<ListaOpcoes, unknown>;
 
 /** Quantos clientes usam o item. Correlação escrita à mão: o Drizzle não qualifica colunas dentro da subconsulta. */
 const usoPorClientes = (lista: ListaOpcoes) =>
-  sql<number>`(select count(*) from clientes c where c.${sql.identifier(listas[lista].coluna)} = ${sql.identifier(listas[lista].nomeTabela)}."id")`.mapWith(Number);
+  sql<number>`(select count(distinct ${sql.raw(listas[lista].uso === 'clientes' ? 'u.id' : 'u.cliente_id')}) from ${sql.identifier(listas[lista].uso)} u
+    where u.${sql.identifier(listas[lista].coluna)} = ${sql.identifier(listas[lista].nomeTabela)}."id")`.mapWith(Number);
 
 const listaParam = z.object({ lista: listaOpcoesSchema });
 

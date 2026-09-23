@@ -93,6 +93,7 @@ const listaDeOpcoes = (tabela: string) =>
 
 export const origensCliente = listaDeOpcoes('origens_cliente');
 export const relacionamentosCliente = listaDeOpcoes('relacionamentos_cliente');
+export const cargosResponsavel = listaDeOpcoes('cargos_responsavel');
 
 /**
  * Colunas obrigatórias no formulário (documento, telefones, endereço) ficam anuláveis no banco:
@@ -159,6 +160,31 @@ export const clienteEnderecos = pgTable(
     index().on(t.clienteId),
     uniqueIndex('cliente_enderecos_principal_unico').on(t.clienteId).where(sql`${t.principal}`),
     isolamentoPorTenant('cliente_enderecos'),
+  ],
+);
+
+/** Pessoas que respondem pela empresa cliente (só PJ; ao menos uma, uma principal). */
+export const clienteResponsaveis = pgTable(
+  'cliente_responsaveis',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: tenantId(),
+    clienteId: uuid().notNull(),
+    nome: text().notNull(),
+    telefone: text().notNull(),
+    telefoneWhatsapp: boolean().notNull().default(false),
+    email: text(),
+    cargoId: uuid().notNull(),
+    principal: boolean().notNull().default(false),
+    ...timestamps,
+  },
+  (t) => [
+    foreignKey({ columns: [t.tenantId, t.clienteId], foreignColumns: [clientes.tenantId, clientes.id] }).onDelete('cascade'),
+    foreignKey({ columns: [t.tenantId, t.cargoId], foreignColumns: [cargosResponsavel.tenantId, cargosResponsavel.id] }),
+    index().on(t.clienteId),
+    index().on(t.cargoId),
+    uniqueIndex('cliente_responsaveis_principal_unico').on(t.clienteId).where(sql`${t.principal}`),
+    isolamentoPorTenant('cliente_responsaveis'),
   ],
 );
 
