@@ -2,6 +2,7 @@ import { LOGO_TAMANHO_MAXIMO, LOGO_TIPOS, TEMA_VAZIO, temaInputSchema, type Camp
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { LogoMobiOS } from '../components/Marca';
 import { Alerta, Botao, BotaoLink, Campo, Cartao, Input, Selo, TextoSuave, Titulo } from '../components/ui';
 import { api, ErroApi } from '../lib/api';
 import { chaveSessao, useSessao } from '../lib/sessao';
@@ -177,7 +178,9 @@ export function Configuracoes() {
               {oficina.logoVersao ? (
                 <img src={urlLogo(oficina.logoVersao)} alt="" className="mx-auto mb-1 max-h-10 object-contain" />
               ) : (
-                <div className="font-bold text-primaria">MobiOS</div>
+                <div className="flex justify-center">
+                  <LogoMobiOS />
+                </div>
               )}
               <div className="mb-3 text-xs text-texto-suave">{oficina.nome}</div>
               <div className="mb-2 h-6 rounded border border-borda-forte" />

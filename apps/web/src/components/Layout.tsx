@@ -5,6 +5,7 @@ import { Navigate, NavLink, Outlet, useNavigate } from 'react-router';
 import { api } from '../lib/api';
 import { useSessao } from '../lib/sessao';
 import { aplicarTema, urlLogo } from '../lib/tema';
+import { LogoMobiOS, Rodape } from './Marca';
 
 const menu: { para: string; rotulo: string; papeis?: Papel[] }[] = [
   { para: '/', rotulo: 'Início' },
@@ -47,7 +48,7 @@ export function Layout() {
           {oficina.logoVersao ? (
             <img src={urlLogo(oficina.logoVersao)} alt={oficina.nome} className="mb-1 max-h-14 max-w-full object-contain" />
           ) : (
-            <div className="text-lg font-bold">MobiOS</div>
+            <LogoMobiOS herdarCor />
           )}
           <div className="truncate text-xs opacity-75">{oficina.nome}</div>
         </div>
@@ -70,7 +71,7 @@ export function Layout() {
             ))}
         </nav>
       </aside>
-      <div className="flex-1">
+      <div className="flex flex-1 flex-col">
         <header className="flex items-center justify-end gap-3 border-b border-borda bg-superficie px-6 py-3 text-sm">
           <span className="text-texto">
             {usuario.nome} <span className="text-texto-suave">· {nomesPapel[usuario.papel]}</span>
@@ -79,9 +80,10 @@ export function Layout() {
             Sair
           </button>
         </header>
-        <main className="mx-auto max-w-5xl p-4 md:p-8">
+        <main className="mx-auto w-full max-w-5xl flex-1 p-4 md:p-8">
           <Outlet />
         </main>
+        <Rodape />
       </div>
     </div>
   );

@@ -1,3 +1,5 @@
+<p align="center"><img src="apps/web/public/mobios-logo.svg" alt="MobiOS" width="260"></p>
+
 # MobiOS
 
 Gestão de Ordens de Serviço para oficinas mecânicas. Web, multi-tenant (SaaS) e open core.

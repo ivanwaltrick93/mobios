@@ -47,6 +47,19 @@ Calculadas com `color-mix()` a partir das parametrizáveis, então acompanham a 
 | `--cor-perigo` (+ `-suave`, `-hover`, `sobre-perigo`) | `bg-perigo`, `text-perigo`, `bg-perigo-suave` | Erros, exclusão |
 | `--cor-alerta` | `text-alerta` | Avisos |
 
+## Marca MobiOS
+
+Engrenagem com "M" vazado, em [`components/Marca.tsx`](../apps/web/src/components/Marca.tsx):
+
+| Uso | Onde |
+|---|---|
+| `MarcaMobiOS` | Só o símbolo. Usa `currentColor`, então segue a cor do texto em volta |
+| `LogoMobiOS` | Símbolo + nome. Aparece no menu e no login quando a oficina não tem logo próprio (`herdarCor` no menu, para manter o contraste com o fundo do menu) |
+| `Rodape` | "ANO - MobiOS Oficina - Sistema de Gestão Empresarial", em todas as telas |
+| `public/favicon.svg`, `public/mobios-logo.svg` | Arquivos fixos na cor padrão (#1d4ed8): ícone da aba e README |
+
+O logo da **oficina** (Configurações → Logo) tem prioridade sobre a marca MobiOS no menu e no login; o rodapé sempre mostra a marca MobiOS.
+
 ## Componentes
 
 Em [`components/ui.tsx`](../apps/web/src/components/ui.tsx). Use-os em vez de repetir classes:
