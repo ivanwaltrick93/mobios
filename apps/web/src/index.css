@@ -37,6 +37,13 @@
   --cor-sobre-perigo: #ffffff;
   --cor-alerta: #b45309;
 
+  /* Placa de veículo (padrão Mercosul, fixo) */
+  --cor-placa-fundo: #ffffff;
+  --cor-placa-texto: #111827;
+  --cor-placa-borda: #1f2937;
+  --cor-placa-faixa: #1e3a8a;
+  --cor-placa-faixa-texto: #ffffff;
+
   /* Derivadas: não configurar diretamente */
   --cor-primaria-hover: color-mix(in oklab, var(--cor-primaria), black 15%);
   --cor-primaria-suave: color-mix(in oklab, var(--cor-primaria) 10%, var(--cor-superficie));
@@ -83,6 +90,11 @@
   --color-sobre-perigo: var(--cor-sobre-perigo);
   --color-alerta: var(--cor-alerta);
   --color-alerta-suave: var(--cor-alerta-suave);
+  --color-placa-fundo: var(--cor-placa-fundo);
+  --color-placa-texto: var(--cor-placa-texto);
+  --color-placa-borda: var(--cor-placa-borda);
+  --color-placa-faixa: var(--cor-placa-faixa);
+  --color-placa-faixa-texto: var(--cor-placa-faixa-texto);
 }
 
 body {

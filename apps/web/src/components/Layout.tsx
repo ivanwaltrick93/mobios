@@ -1,7 +1,7 @@
 import { temAcesso, type ModuloId } from '@mobios/shared';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
-import { Link, Navigate, NavLink, Outlet, useNavigate } from 'react-router';
+import { Link, Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 import { api } from '../lib/api';
 import { useSessao } from '../lib/sessao';
 import { aplicarTema, urlLogo } from '../lib/tema';
@@ -9,9 +9,10 @@ import { Avatar } from './Avatar';
 import { LogoMobiOS, Rodape } from './Marca';
 
 // Itens aparecem conforme o acesso do usuário ao módulo (Configurações → Funções e permissões).
-const menu: { para: string; rotulo: string; modulo?: ModuloId; somenteAdmin?: boolean }[] = [
+/** `tambem`: outras rotas que acendem o item (ex.: telas de veículo ficam em "Clientes e veículos"). */
+const menu: { para: string; rotulo: string; modulo?: ModuloId; somenteAdmin?: boolean; tambem?: string[] }[] = [
   { para: '/', rotulo: 'Início' },
-  { para: '/clientes', rotulo: 'Clientes e veículos', modulo: 'clientes' },
+  { para: '/clientes', rotulo: 'Clientes e veículos', modulo: 'clientes', tambem: ['/veiculos'] },
   { para: '/os', rotulo: 'Ordens de serviço', modulo: 'os' },
   { para: '/estoque', rotulo: 'Estoque', modulo: 'estoque' },
   { para: '/financeiro', rotulo: 'Financeiro', modulo: 'financeiro' },
@@ -24,6 +25,7 @@ export function Layout() {
   const sessao = useSessao();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const tema = sessao.data?.oficina.tema;
 
   useEffect(() => {
@@ -64,7 +66,7 @@ export function Layout() {
                 end={item.para === '/'}
                 className={({ isActive }) =>
                   `whitespace-nowrap rounded-md border-l-4 px-3 py-2 text-sm ${
-                    isActive ? 'border-primaria bg-menu-ativo font-semibold' : 'border-transparent opacity-85 hover:bg-menu-ativo hover:opacity-100'
+                    isActive || item.tambem?.some((r) => pathname.startsWith(r)) ? 'border-primaria bg-menu-ativo font-semibold' : 'border-transparent opacity-85 hover:bg-menu-ativo hover:opacity-100'
                   }`
                 }
               >

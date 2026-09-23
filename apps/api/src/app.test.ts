@@ -41,6 +41,45 @@ async function novaOficina(nome: string) {
   return { ...sessao, email, funcao };
 }
 
+// ---------- Dados válidos de cadastro (cada chamada gera documento, placa e chassi únicos) ----------
+
+const aleatorio = (conjunto: string, n: number) => Array.from({ length: n }, () => conjunto[Math.floor(Math.random() * conjunto.length)]).join('');
+
+function cpfAleatorio() {
+  const d = Array.from({ length: 9 }, () => Math.floor(Math.random() * 10));
+  const dv = (base: number[]) => {
+    const resto = base.reduce((acc, n, i) => acc + n * (base.length + 1 - i), 0) % 11;
+    return resto < 2 ? 0 : 11 - resto;
+  };
+  d.push(dv(d));
+  d.push(dv(d));
+  return d.join('');
+}
+
+const ENDERECO = { tipo: 'residencial', cep: '88015-100', logradouro: 'Rua Felipe Schmidt', numero: '100', bairro: 'Centro', cidade: 'Florianópolis', uf: 'SC' };
+
+const cliente = (dados: object = {}) => ({
+  tipo: 'PF',
+  nome: 'Cliente Teste',
+  cpfCnpj: cpfAleatorio(),
+  telefone: '(48) 3222-1000',
+  whatsapp: '(48) 99999-0000',
+  clienteDesde: '2024-01-10',
+  enderecos: [ENDERECO],
+  ...dados,
+});
+
+const veiculo = (clienteId: string, dados: object = {}) => ({
+  clienteId,
+  placa: `${aleatorio('ABCDEFGHJKLMNPRSTUVWXYZ', 3)}${aleatorio('0123456789', 1)}${aleatorio('ABCDEFGHJ', 1)}${aleatorio('0123456789', 2)}`,
+  chassi: aleatorio('ABCDEFGHJKLMNPRSTUVWXYZ0123456789', 17),
+  marca: 'Fiat',
+  modelo: 'Uno',
+  anoFabricacao: 2020,
+  anoModelo: 2020,
+  ...dados,
+});
+
 describe('auth', () => {
   it('faz login do admin, com e-mail em qualquer caixa', async () => {
     const { email } = await novaOficina('Auto Center Teste');
@@ -140,24 +179,146 @@ describe('usuários', () => {
 });
 
 describe('clientes e veículos', () => {
-  it('valida CPF e placa', async () => {
+  it('valida documento, contato, endereço e placa', async () => {
     const { chamar } = await novaOficina('Oficina Validação');
-    const cpf = await chamar('POST', '/api/clientes', { nome: 'João', cpfCnpj: '123.456.789-00' });
+    const cpf = await chamar('POST', '/api/clientes', cliente({ cpfCnpj: '123.456.789-00' }));
     expect(cpf.statusCode).toBe(400);
     expect(cpf.json().campos.cpfCnpj).toBe('CPF inválido');
+    expect((await chamar('POST', '/api/clientes', cliente({ cpfCnpj: '11.222.333/0001-81' }))).json().campos.cpfCnpj).toBe('Pessoa física: informe um CPF');
+    const semEndereco = await chamar('POST', '/api/clientes', cliente({ enderecos: [] }));
+    expect(semEndereco.statusCode).toBe(400);
+    expect(semEndereco.json().campos.enderecos).toBe('Cadastre ao menos um endereço');
+    expect((await chamar('POST', '/api/clientes', cliente({ whatsapp: '' }))).json().campos.whatsapp).toBeDefined();
+    expect((await chamar('POST', '/api/clientes', cliente({ enderecos: [{ ...ENDERECO, cep: '1' }] }))).json().campos['enderecos.0.cep']).toBe('CEP inválido');
 
-    const cliente = (await chamar('POST', '/api/clientes', { nome: 'João', cpfCnpj: '529.982.247-25' })).json();
-    expect(cliente.cpfCnpj).toBe('52998224725');
+    const criado = await chamar('POST', '/api/clientes', cliente({ nome: 'João', cpfCnpj: '529.982.247-25', dataNascimento: '1990-05-01', sexo: 'masculino' }));
+    expect(criado.statusCode).toBe(201);
+    const joao = criado.json();
+    expect(joao).toMatchObject({
+      cpfCnpj: '52998224725',
+      telefone: '4832221000',
+      whatsapp: '48999990000',
+      dataNascimento: '1990-05-01',
+      clienteDesde: '2024-01-10',
+      ativo: true,
+      pendencias: [],
+      enderecos: [{ cep: '88015100', uf: 'SC', pais: 'Brasil', principal: true, faturamento: false }],
+    });
+    const dup = await chamar('POST', '/api/clientes', cliente({ cpfCnpj: '529.982.247-25' }));
+    expect(dup.statusCode).toBe(409);
 
-    const placa = await chamar('POST', '/api/veiculos', { clienteId: cliente.id, placa: 'XX-1', marca: 'Fiat', modelo: 'Uno' });
-    expect(placa.statusCode).toBe(400);
+    expect((await chamar('POST', '/api/veiculos', veiculo(joao.id, { placa: 'XX-1' }))).statusCode).toBe(400);
+    expect((await chamar('POST', '/api/veiculos', veiculo(joao.id, { chassi: '123' }))).statusCode).toBe(400);
+    expect((await chamar('POST', '/api/veiculos', veiculo(joao.id, { anoModelo: 2025 }))).json().campos.anoModelo).toBeDefined();
+    const v = await chamar('POST', '/api/veiculos', veiculo(joao.id, { placa: 'bra-2e19', chassi: '9bwzzz377vt004251', renavam: '63938648428', combustivel: 'flex' }));
+    expect(v.statusCode).toBe(201);
+    expect(v.json()).toMatchObject({ placa: 'BRA2E19', chassi: '9BWZZZ377VT004251', principal: true, status: 'ativo', ultimaVisita: null, pendencias: [] });
+    expect((await chamar('POST', '/api/veiculos', veiculo(joao.id, { chassi: '9BWZZZ377VT004251' }))).json().erro).toBe('Já existe um veículo com este chassi');
+    // Chassi é opcional (vários veículos sem chassi não colidem no índice único).
+    expect((await chamar('POST', '/api/veiculos', veiculo(joao.id, { chassi: '' }))).json()).toMatchObject({ chassi: null, principal: false, pendencias: [] });
+    expect((await chamar('POST', '/api/veiculos', veiculo(joao.id, { chassi: '' }))).statusCode).toBe(201);
 
-    const veiculo = await chamar('POST', '/api/veiculos', { clienteId: cliente.id, placa: 'bra-2e19', marca: 'Fiat', modelo: 'Uno', ano: 2020 });
-    expect(veiculo.statusCode).toBe(201);
-    expect(veiculo.json().placa).toBe('BRA2E19');
+    expect((await chamar('DELETE', `/api/clientes/${joao.id}`)).statusCode).toBe(409);
+  });
 
-    const comVeiculo = await chamar('DELETE', `/api/clientes/${cliente.id}`);
-    expect(comVeiculo.statusCode).toBe(409);
+  it('PJ: endereços com finalidades; edição regrava os endereços e mantém um principal', async () => {
+    const { chamar } = await novaOficina('Oficina PJ');
+    const pj = (
+      await chamar(
+        'POST',
+        '/api/clientes',
+        cliente({
+          tipo: 'PJ',
+          nome: 'Transportes Exemplo Ltda',
+          cpfCnpj: '11.222.333/0001-81',
+          rgIe: 'ISENTO',
+          enderecos: [
+            { ...ENDERECO, tipo: 'comercial', faturamento: true, cobranca: true },
+            { ...ENDERECO, tipo: 'outro', logradouro: 'Rodovia SC-401', principal: true, entrega: true },
+          ],
+        }),
+      )
+    ).json();
+    expect(pj.enderecos.map((e: { logradouro: string; principal: boolean; faturamento: boolean; entrega: boolean; cobranca: boolean }) => [e.logradouro, e.principal, e.faturamento, e.entrega, e.cobranca])).toEqual([
+      ['Rodovia SC-401', true, false, true, false],
+      ['Rua Felipe Schmidt', false, true, false, true],
+    ]);
+    const dois = await chamar('PUT', `/api/clientes/${pj.id}`, cliente({ tipo: 'PJ', cpfCnpj: '11222333000181', enderecos: [ENDERECO, { ...ENDERECO, principal: true }, { ...ENDERECO, principal: true }] }));
+    expect(dois.json().campos.enderecos).toBe('Marque apenas um endereço como principal');
+
+    const editado = (await chamar('PUT', `/api/clientes/${pj.id}`, cliente({ tipo: 'PJ', nome: 'Transportes Exemplo', cpfCnpj: '11222333000181', ativo: false }))).json();
+    expect(editado).toMatchObject({ nome: 'Transportes Exemplo', ativo: false, enderecos: [{ logradouro: 'Rua Felipe Schmidt', principal: true }] });
+    expect(editado.enderecos).toHaveLength(1);
+  });
+
+  it('listas de origem e relacionamento: editáveis pelo admin, só itens ativos na escolha', async () => {
+    const admin = await novaOficina('Oficina Listas');
+    const origens = (await admin.chamar('GET', '/api/opcoes/origens')).json();
+    expect(origens.map((o: { nome: string }) => o.nome)).toEqual(['Campanha', 'Concessionária', 'Indicação', 'Loja', 'Site']);
+    expect((await admin.chamar('GET', '/api/opcoes/relacionamentos')).json().map((o: { nome: string }) => o.nome)).toEqual(['Consumidor final', 'Empresa', 'Frota', 'Seguradora']);
+
+    const whats = (await admin.chamar('POST', '/api/opcoes/origens', { nome: 'WhatsApp', ativa: true })).json();
+    expect((await admin.chamar('POST', '/api/opcoes/origens', { nome: 'whatsapp', ativa: true })).json().erro).toBe('Já existe um item com este nome');
+    const c = (await admin.chamar('POST', '/api/clientes', cliente({ origemId: whats.id }))).json();
+    expect(c).toMatchObject({ origemId: whats.id, origemNome: 'WhatsApp' });
+
+    // Desativado: some da escolha para clientes novos, mas quem já tinha mantém.
+    const desativada = (await admin.chamar('PUT', `/api/opcoes/origens/${whats.id}`, { nome: 'WhatsApp', ativa: false })).json();
+    expect(desativada).toMatchObject({ ativa: false, clientes: 1 });
+    expect((await admin.chamar('POST', '/api/clientes', cliente({ origemId: whats.id }))).statusCode).toBe(400);
+    expect((await admin.chamar('PUT', `/api/clientes/${c.id}`, cliente({ cpfCnpj: c.cpfCnpj, origemId: whats.id }))).statusCode).toBe(200);
+
+    // Outra oficina não usa os itens desta; só o admin altera as listas.
+    const outra = await novaOficina('Outra Oficina Listas');
+    expect((await outra.chamar('POST', '/api/clientes', cliente({ relacionamentoId: origens[0].id }))).statusCode).toBe(400);
+    const email = emailAleatorio();
+    await admin.chamar('POST', '/api/usuarios', { nome: 'Atendente', email, funcoes: [await admin.funcao('Atendente')], senha: SENHA });
+    const atendente = await entrar(email);
+    expect((await atendente.chamar('GET', '/api/opcoes/origens')).statusCode).toBe(200);
+    expect((await atendente.chamar('POST', '/api/opcoes/origens', { nome: 'Rádio', ativa: true })).statusCode).toBe(403);
+  });
+
+  it('veículo principal, sugestões de marca/modelo e transferência para outro cliente', async () => {
+    const { chamar } = await novaOficina('Oficina Frota');
+    const ana = (await chamar('POST', '/api/clientes', cliente({ nome: 'Ana' }))).json();
+    const bia = (await chamar('POST', '/api/clientes', cliente({ nome: 'Bia' }))).json();
+    const gol = (await chamar('POST', '/api/veiculos', veiculo(ana.id, { marca: 'Volkswagen', modelo: 'Gol' }))).json();
+    const polo = (await chamar('POST', '/api/veiculos', veiculo(ana.id, { marca: 'Volkswagen', modelo: 'Polo', principal: true }))).json();
+    const principais = async (id: string) =>
+      (await chamar('GET', `/api/veiculos?clienteId=${id}`)).json().map((v: { modelo: string; principal: boolean }) => `${v.modelo}${v.principal ? '*' : ''}`);
+    expect(await principais(ana.id)).toEqual(['Polo*', 'Gol']);
+
+    // Desmarcar o principal passa a vez a outro veículo do cliente.
+    await chamar('PUT', `/api/veiculos/${polo.id}`, { ...veiculo(ana.id, { placa: polo.placa, chassi: polo.chassi, marca: 'Volkswagen', modelo: 'Polo' }), principal: false });
+    expect(await principais(ana.id)).toEqual(['Gol*', 'Polo']);
+
+    expect((await chamar('GET', '/api/veiculos/sugestoes?marca=volkswagen')).json()).toEqual({ marcas: ['Volkswagen'], modelos: ['Gol', 'Polo'] });
+
+    // Lista com os veículos de cada cliente; a busca encontra o dono pela placa (com ou sem hífen).
+    const busca = (await chamar('GET', `/api/clientes?q=${encodeURIComponent(`${gol.placa.slice(0, 3)}-${gol.placa.slice(3)}`.toLowerCase())}`)).json();
+    expect(busca.itens.map((c: { nome: string }) => c.nome)).toEqual(['Ana']);
+    expect(busca.itens[0]).toMatchObject({ totalVeiculos: 2, veiculos: [{ modelo: 'Gol' }, { modelo: 'Polo' }] });
+
+    // Venda para a Bia: mesmo registro, novo dono, volta a ativo.
+    await chamar('PUT', `/api/veiculos/${gol.id}`, { ...veiculo(ana.id, { placa: gol.placa, chassi: gol.chassi, marca: 'Volkswagen', modelo: 'Gol' }), principal: true, status: 'vendido' });
+    const transferido = await chamar('POST', `/api/veiculos/${gol.id}/transferir`, { clienteId: bia.id });
+    expect(transferido.json()).toMatchObject({ id: gol.id, clienteId: bia.id, status: 'ativo', principal: true });
+    expect(await principais(ana.id)).toEqual(['Polo*']);
+    expect((await chamar('POST', `/api/veiculos/${gol.id}/transferir`, { clienteId: bia.id })).statusCode).toBe(400);
+  });
+
+  it('cadastros antigos aparecem como incompletos', async () => {
+    const admin = await novaOficina('Oficina Legado');
+    const { oficina } = (await admin.chamar('GET', '/api/auth/sessao')).json();
+    const [antigo] = await withTenant(oficina.id, (tx) => tx.execute(sql`insert into clientes (nome) values ('Cliente Antigo') returning id`));
+    await withTenant(oficina.id, (tx) => tx.execute(sql`insert into veiculos (cliente_id, placa, marca, modelo, principal) values (${antigo!.id}, 'OLD1A23', 'Fiat', 'Uno', true)`));
+    expect((await admin.chamar('GET', `/api/clientes/${antigo!.id}`)).json().pendencias).toEqual(['CPF/CNPJ', 'telefone', 'WhatsApp', 'endereço']);
+    expect((await admin.chamar('GET', `/api/veiculos?clienteId=${antigo!.id}`)).json()[0].pendencias).toEqual(['ano de fabricação', 'ano modelo']);
+    const alertas = (await admin.chamar('GET', '/api/painel')).json().alertas.map((a: { mensagem: string }) => a.mensagem);
+    expect(alertas).toEqual([
+      '1 cliente(s) com cadastro incompleto: complete antes de abrir O.S.',
+      '1 veículo(s) com cadastro incompleto (ano de fabricação ou modelo): complete antes de abrir O.S.',
+    ]);
   });
 });
 
@@ -173,9 +334,9 @@ describe('personas e permissões', () => {
     const indicadores = async (s: Awaited<ReturnType<typeof entrar>>) => (await s.chamar('GET', '/api/painel')).json().indicadores.map((i: { id: string }) => i.id);
 
     // Atendente: cadastra clientes e veículos (abre O.S. e vende no balcão); sem relatórios e configurações.
-    const cliente = await atendente.chamar('POST', '/api/clientes', { nome: 'Cliente do Balcão' });
-    expect(cliente.statusCode).toBe(201);
-    expect((await atendente.chamar('POST', '/api/veiculos', { clienteId: cliente.json().id, placa: 'BAL1C00', marca: 'Fiat', modelo: 'Uno' })).statusCode).toBe(201);
+    const balcao = await atendente.chamar('POST', '/api/clientes', cliente({ nome: 'Cliente do Balcão' }));
+    expect(balcao.statusCode).toBe(201);
+    expect((await atendente.chamar('POST', '/api/veiculos', veiculo(balcao.json().id))).statusCode).toBe(201);
     expect((await atendente.chamar('GET', '/api/relatorios')).statusCode).toBe(403);
     expect((await atendente.chamar('GET', '/api/usuarios')).statusCode).toBe(403);
     expect((await atendente.chamar('PUT', '/api/configuracoes/aparencia', TEMA_VAZIO)).statusCode).toBe(403);
@@ -183,16 +344,16 @@ describe('personas e permissões', () => {
 
     // Mecânico: consulta clientes/veículos, não cadastra nem altera; sem relatórios e faturamento.
     expect((await mecanico.chamar('GET', '/api/clientes')).statusCode).toBe(200);
-    expect((await mecanico.chamar('GET', `/api/veiculos?clienteId=${cliente.json().id}`)).json()).toHaveLength(1);
+    expect((await mecanico.chamar('GET', `/api/veiculos?clienteId=${balcao.json().id}`)).json()).toHaveLength(1);
     expect((await mecanico.chamar('POST', '/api/clientes', { nome: 'Não pode' })).statusCode).toBe(403);
-    expect((await mecanico.chamar('PUT', `/api/clientes/${cliente.json().id}`, { nome: 'Não pode' })).statusCode).toBe(403);
-    expect((await mecanico.chamar('POST', '/api/veiculos', { clienteId: cliente.json().id, placa: 'MEC1A00', marca: 'VW', modelo: 'Gol' })).statusCode).toBe(403);
+    expect((await mecanico.chamar('PUT', `/api/clientes/${balcao.json().id}`, { nome: 'Não pode' })).statusCode).toBe(403);
+    expect((await mecanico.chamar('POST', '/api/veiculos', { clienteId: balcao.json().id, placa: 'MEC1A00', marca: 'VW', modelo: 'Gol' })).statusCode).toBe(403);
     expect((await mecanico.chamar('GET', '/api/relatorios')).statusCode).toBe(403);
     expect(await indicadores(mecanico)).not.toContain('faturado_hoje');
 
     // Financeiro: relatórios e faturamento; consulta cadastros sem alterar.
     expect((await financeiro.chamar('GET', '/api/relatorios/clientes')).statusCode).toBe(200);
-    expect((await financeiro.chamar('DELETE', `/api/clientes/${cliente.json().id}`)).statusCode).toBe(403);
+    expect((await financeiro.chamar('DELETE', `/api/clientes/${balcao.json().id}`)).statusCode).toBe(403);
     expect(await indicadores(financeiro)).toContain('faturado_hoje');
 
     // Admin: tudo.
@@ -202,40 +363,47 @@ describe('personas e permissões', () => {
 });
 
 describe('funções e permissões configuráveis', () => {
-  const acessos = (a: Partial<Record<string, string | null>> = {}) => ({ clientes: null, os: null, estoque: null, financeiro: null, relatorios: null, ...a });
+  const acessos = (a: Partial<Record<string, string | null>> = {}) => ({ clientes: null, os: null, pecas_os: null, estoque: null, recebimentos: null, financeiro: null, relatorios: null, ...a });
 
   it('toda oficina nasce com Administrador fixo e as funções padrão aprovadas', async () => {
     const admin = await novaOficina('Oficina Funções Padrão');
     const lista = (await admin.chamar('GET', '/api/funcoes')).json();
     expect(lista.map((f: { nome: string; admin: boolean }) => [f.nome, f.admin])).toEqual([
       ['Administrador', true],
+      ['Almoxarife', false],
       ['Atendente', false],
       ['Financeiro', false],
       ['Mecânico', false],
     ]);
     const porNome = Object.fromEntries(lista.map((f: { nome: string }) => [f.nome, f]));
-    expect(porNome.Administrador.acessos).toEqual(acessos({ clientes: 'editar', os: 'editar', estoque: 'editar', financeiro: 'editar', relatorios: 'consultar' }));
-    expect(porNome.Atendente.acessos).toEqual(acessos({ clientes: 'editar', os: 'editar', estoque: 'editar' }));
+    expect(porNome.Administrador.acessos).toEqual(
+      acessos({ clientes: 'editar', os: 'editar', pecas_os: 'editar', estoque: 'editar', recebimentos: 'editar', financeiro: 'editar', relatorios: 'consultar' }),
+    );
+    expect(porNome.Atendente.acessos).toEqual(acessos({ clientes: 'editar', os: 'editar', pecas_os: 'editar', estoque: 'editar', recebimentos: 'editar' }));
     expect(porNome['Mecânico'].acessos).toEqual(acessos({ clientes: 'consultar', os: 'editar', estoque: 'consultar' }));
-    expect(porNome.Financeiro.acessos).toEqual(acessos({ clientes: 'consultar', os: 'consultar', financeiro: 'editar', relatorios: 'consultar' }));
+    // Almoxarife: adiciona peças pela O.S. aberta; só consulta clientes, veículos, O.S. e estoque.
+    expect(porNome.Almoxarife.acessos).toEqual(acessos({ clientes: 'consultar', os: 'consultar', pecas_os: 'editar', estoque: 'consultar' }));
+    // Pagamento: só quem tem Recebimentos (Atendente e Financeiro); o Mecânico não.
+    expect(porNome.Financeiro.acessos).toEqual(acessos({ clientes: 'consultar', os: 'consultar', recebimentos: 'editar', financeiro: 'editar', relatorios: 'consultar' }));
     expect(porNome.Administrador.usuarios).toBe(1);
+    expect(porNome.Almoxarife.usuarios).toBe(0);
   });
 
   it('admin cria função; mudanças de nível valem na hora para quem já está logado', async () => {
-    const admin = await novaOficina('Oficina Almoxarife');
-    const criada = await admin.chamar('POST', '/api/funcoes', { nome: 'Almoxarife', ativa: true, acessos: acessos({ clientes: 'consultar' }) });
+    const admin = await novaOficina('Oficina Função Nova');
+    const criada = await admin.chamar('POST', '/api/funcoes', { nome: 'Estagiário', ativa: true, acessos: acessos({ clientes: 'consultar' }) });
     expect(criada.statusCode).toBe(201);
     const almox = criada.json();
 
     const email = emailAleatorio();
-    await admin.chamar('POST', '/api/usuarios', { nome: 'Almox', email, funcoes: [almox.id], senha: SENHA });
+    await admin.chamar('POST', '/api/usuarios', { nome: 'Estagiário', email, funcoes: [almox.id], senha: SENHA });
     const usuario = await entrar(email);
     expect(usuario.res.json().acessos).toEqual(acessos({ clientes: 'consultar' }));
     expect((await usuario.chamar('POST', '/api/clientes', { nome: 'Não pode' })).statusCode).toBe(403);
     expect((await usuario.chamar('GET', '/api/relatorios')).statusCode).toBe(403);
 
-    await admin.chamar('PUT', `/api/funcoes/${almox.id}`, { nome: 'Almoxarife', ativa: true, acessos: acessos({ clientes: 'editar', relatorios: 'consultar' }) });
-    expect((await usuario.chamar('POST', '/api/clientes', { nome: 'Agora pode' })).statusCode).toBe(201);
+    await admin.chamar('PUT', `/api/funcoes/${almox.id}`, { nome: 'Estagiário', ativa: true, acessos: acessos({ clientes: 'editar', relatorios: 'consultar' }) });
+    expect((await usuario.chamar('POST', '/api/clientes', cliente({ nome: 'Agora pode' }))).statusCode).toBe(201);
     expect((await usuario.chamar('GET', '/api/relatorios')).statusCode).toBe(200);
     expect((await usuario.chamar('GET', '/api/auth/sessao')).json().acessos.clientes).toBe('editar');
   });
@@ -245,7 +413,7 @@ describe('funções e permissões configuráveis', () => {
     const email = emailAleatorio();
     await admin.chamar('POST', '/api/usuarios', { nome: 'Dupla', email, funcoes: [await admin.funcao('Mecânico'), await admin.funcao('Financeiro')], senha: SENHA });
     const dupla = await entrar(email);
-    expect(dupla.res.json().acessos).toEqual(acessos({ clientes: 'consultar', os: 'editar', estoque: 'consultar', financeiro: 'editar', relatorios: 'consultar' }));
+    expect(dupla.res.json().acessos).toEqual(acessos({ clientes: 'consultar', os: 'editar', estoque: 'consultar', recebimentos: 'editar', financeiro: 'editar', relatorios: 'consultar' }));
     expect(dupla.res.json().usuario.funcoes.map((f: { nome: string }) => f.nome)).toEqual(['Financeiro', 'Mecânico']);
   });
 
@@ -405,18 +573,15 @@ describe('painel', () => {
     ]);
     expect(vazio.alertas).toEqual([]);
 
-    const c = (await a.chamar('POST', '/api/clientes', { nome: 'Sem Telefone' })).json();
-    await a.chamar('POST', '/api/clientes', { nome: 'Com Telefone', telefone: '48999990000' });
-    await a.chamar('POST', '/api/veiculos', { clienteId: c.id, placa: 'ABC1D23', marca: 'Fiat', modelo: 'Uno' });
+    const c = (await a.chamar('POST', '/api/clientes', cliente({ nome: 'Com Veículo' }))).json();
+    await a.chamar('POST', '/api/clientes', cliente({ nome: 'Sem Veículo' }));
+    await a.chamar('POST', '/api/veiculos', veiculo(c.id));
 
     const painel = (await a.chamar('GET', '/api/painel')).json();
     const porId = Object.fromEntries(painel.indicadores.map((i: { id: string }) => [i.id, i]));
     expect(porId.clientes).toMatchObject({ valor: 2, detalhe: '2 cadastrado(s) hoje' });
     expect(porId.veiculos).toMatchObject({ valor: 1, detalhe: '1 cadastrado(s) hoje' });
-    expect(painel.alertas.map((x: { mensagem: string }) => x.mensagem)).toEqual([
-      '1 cliente(s) sem telefone: não será possível avisar quando o veículo ficar pronto.',
-      '1 cliente(s) sem veículo cadastrado.',
-    ]);
+    expect(painel.alertas.map((x: { mensagem: string }) => x.mensagem)).toEqual(['1 cliente(s) sem veículo cadastrado.']);
 
     const b = await novaOficina('Outra Oficina Painel');
     expect((await b.chamar('GET', '/api/painel')).json().indicadores[2].valor).toBe(0);
@@ -477,15 +642,27 @@ describe('fotos da equipe', () => {
 describe('relatórios', () => {
   it('lista, filtra por período e exporta CSV para Excel', async () => {
     const admin = await novaOficina('Oficina Relatórios');
-    const c = (await admin.chamar('POST', '/api/clientes', { nome: 'Maria; Silva', cpfCnpj: '529.982.247-25', telefone: '=1+1' })).json();
-    await admin.chamar('POST', '/api/veiculos', { clienteId: c.id, placa: 'ABC1234', marca: 'VW', modelo: 'Gol', kmAtual: 125000 });
+    const c = (await admin.chamar('POST', '/api/clientes', cliente({ nome: 'Maria; Silva', cpfCnpj: '529.982.247-25', rgIe: '=1+1' }))).json();
+    await admin.chamar('POST', '/api/veiculos', veiculo(c.id, { placa: 'ABC1234', chassi: '9BWZZZ377VT004251', marca: 'VW', modelo: 'Gol', kmAtual: 125000 }));
 
     const ids = (await admin.chamar('GET', '/api/relatorios')).json().map((r: { id: string }) => r.id);
     expect(ids).toEqual(['clientes', 'veiculos', 'usuarios']);
 
     const previa = (await admin.chamar('GET', '/api/relatorios/clientes')).json();
     expect(previa.total).toBe(1);
-    expect(previa.linhas[0]).toMatchObject({ nome: 'Maria; Silva', documento: '529.982.247-25', veiculos: '1', tipo: 'Pessoa física' });
+    expect(previa.linhas[0]).toMatchObject({
+      nome: 'Maria; Silva',
+      documento: '529.982.247-25',
+      veiculos: '1',
+      tipo: 'Pessoa física',
+      whatsapp: '(48) 99999-0000',
+      endereco: 'Rua Felipe Schmidt, 100 - Centro - 88015-100',
+      cidade: 'Florianópolis/SC',
+      clienteDesde: '10/01/2024',
+      status: 'Ativo',
+      pendencias: '',
+    });
+    expect((await admin.chamar('GET', '/api/relatorios/clientes/csv')).rawPayload.toString('utf8')).toContain(";'=1+1;");
 
     const hoje = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
     expect((await admin.chamar('GET', `/api/relatorios/clientes?de=${hoje}&ate=${hoje}`)).json().total).toBe(1);
@@ -497,13 +674,13 @@ describe('relatórios', () => {
     expect(csv.headers['content-disposition']).toMatch(/attachment; filename="veiculos-\d{4}-\d{2}-\d{2}\.csv"/);
     const texto = csv.rawPayload.toString('utf8');
     expect(texto.startsWith('\uFEFFPlaca;Marca;')).toBe(true);
-    expect(texto).toContain('ABC-1234;VW;Gol;;;125.000;;"Maria; Silva";\'=1+1;');
+    expect(texto).toContain('ABC-1234;VW;Gol;;2020;2020;;;125.000;9BWZZZ377VT004251;;Ativo;Sim;;"Maria; Silva";(48) 99999-0000;;');
   });
 
   it('respeita a função e o isolamento por oficina', async () => {
     const a = await novaOficina('Oficina Rel A');
     const b = await novaOficina('Oficina Rel B');
-    await a.chamar('POST', '/api/clientes', { nome: 'Cliente Secreto da A' });
+    await a.chamar('POST', '/api/clientes', cliente({ nome: 'Cliente Secreto da A' }));
     expect((await b.chamar('GET', '/api/relatorios/clientes')).json().total).toBe(0);
     expect((await b.chamar('GET', '/api/relatorios/clientes/csv')).rawPayload.toString()).not.toContain('Secreto');
 
@@ -525,15 +702,15 @@ describe('isolamento entre oficinas (RLS)', () => {
     const a = await novaOficina('Oficina A');
     const b = await novaOficina('Oficina B');
 
-    const clienteA = (await a.chamar('POST', '/api/clientes', { nome: 'Cliente da A' })).json();
+    const clienteA = (await a.chamar('POST', '/api/clientes', cliente({ nome: 'Cliente da A' }))).json();
 
     expect((await b.chamar('GET', '/api/clientes')).json()).toEqual({ itens: [], total: 0 });
     expect((await b.chamar('GET', `/api/clientes/${clienteA.id}`)).statusCode).toBe(404);
-    expect((await b.chamar('PUT', `/api/clientes/${clienteA.id}`, { nome: 'Invadido' })).statusCode).toBe(404);
+    expect((await b.chamar('PUT', `/api/clientes/${clienteA.id}`, cliente({ nome: 'Invadido' }))).statusCode).toBe(404);
     expect((await b.chamar('DELETE', `/api/clientes/${clienteA.id}`)).statusCode).toBe(404);
 
     // FK composta impede vincular um veículo ao cliente de outra oficina.
-    const invasao = await b.chamar('POST', '/api/veiculos', { clienteId: clienteA.id, placa: 'ABC1234', marca: 'VW', modelo: 'Gol' });
+    const invasao = await b.chamar('POST', '/api/veiculos', veiculo(clienteA.id));
     expect(invasao.statusCode).toBe(409);
 
     const listaA = (await a.chamar('GET', '/api/clientes')).json();
@@ -541,7 +718,7 @@ describe('isolamento entre oficinas (RLS)', () => {
   });
 
   it('sem tenant definido, o banco não devolve nenhuma linha', async () => {
-    for (const tabela of ['clientes', 'veiculos', 'users', 'tenant_logos', 'tenant_aparencia', 'funcoes', 'funcao_permissoes', 'usuario_funcoes', 'usuario_fotos']) {
+    for (const tabela of ['clientes', 'veiculos', 'users', 'tenant_logos', 'tenant_aparencia', 'funcoes', 'funcao_permissoes', 'usuario_funcoes', 'usuario_fotos', 'cliente_enderecos', 'origens_cliente', 'relacionamentos_cliente']) {
       const linhas = await db.execute(sql`select count(*)::int as n from ${sql.identifier(tabela)}`);
       expect(linhas[0]!.n, tabela).toBe(0);
     }

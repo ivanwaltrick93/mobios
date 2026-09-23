@@ -1,10 +1,10 @@
 import { hash } from '@node-rs/argon2';
-import { FUNCOES_PADRAO, NOME_FUNCAO_ADMIN, usuarioCriarSchema } from '@mobios/shared';
+import { FUNCOES_PADRAO, NOME_FUNCAO_ADMIN, OPCOES_PADRAO, usuarioCriarSchema } from '@mobios/shared';
 import { count, sql } from 'drizzle-orm';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { gravarAcessos, gravarFuncoesDoUsuario } from '../lib/acessos.js';
 import type { Tx } from './client.js';
-import { funcoes, tenants, users } from './schema.js';
+import { funcoes, origensCliente, relacionamentosCliente, tenants, users } from './schema.js';
 
 type Banco = PostgresJsDatabase<Record<string, unknown>>;
 
@@ -22,6 +22,10 @@ export async function criarOficinaComAdmin(banco: Banco, dados: { oficina: strin
       const [funcao] = await tx.insert(funcoes).values({ nome: padrao.nome }).returning();
       await gravarAcessos(tx as unknown as Tx, funcao!.id, padrao.acessos);
     }
+
+    // Listas editáveis do cadastro de clientes.
+    await tx.insert(origensCliente).values(OPCOES_PADRAO.origens.map((nome) => ({ nome })));
+    await tx.insert(relacionamentosCliente).values(OPCOES_PADRAO.relacionamentos.map((nome) => ({ nome })));
 
     const [user] = await tx.insert(users).values({ nome: admin.nome, email: admin.email, senhaHash }).returning();
     await gravarFuncoesDoUsuario(tx as unknown as Tx, user!.id, [funcaoAdmin!.id]);

@@ -1,8 +1,22 @@
-import { formatarData, formatarDocumento, formatarPlaca, type RelatorioDescricao, type RelatorioId } from '@mobios/shared';
-import { asc, count, eq, sql, type SQL } from 'drizzle-orm';
+import {
+  COMBUSTIVEIS,
+  formatarCep,
+  formatarData,
+  formatarDataIso,
+  formatarDocumento,
+  formatarPlaca,
+  formatarTelefone,
+  pendenciasCliente,
+  pendenciasVeiculo,
+  SEXOS,
+  STATUS_VEICULO,
+  type RelatorioDescricao,
+  type RelatorioId,
+} from '@mobios/shared';
+import { and, asc, count, eq, sql, type SQL } from 'drizzle-orm';
 import type { PgColumn } from 'drizzle-orm/pg-core';
 import type { Tx } from '../../db/client.js';
-import { clientes, users, veiculos } from '../../db/schema.js';
+import { clienteEnderecos, clientes, origensCliente, relacionamentosCliente, users, veiculos } from '../../db/schema.js';
 
 export type Filtro = { de?: string; ate?: string };
 
@@ -31,15 +45,26 @@ export const relatorios: Record<RelatorioId, Definicao> = {
   clientes: {
     id: 'clientes',
     titulo: 'Clientes',
-    descricao: 'Cadastro de clientes com contato e quantidade de veículos.',
+    descricao: 'Cadastro completo de clientes, com endereço principal e quantidade de veículos.',
     somenteAdmin: false,
     colunas: [
-      { chave: 'nome', titulo: 'Nome' },
+      { chave: 'nome', titulo: 'Nome / Razão social' },
       { chave: 'tipo', titulo: 'Tipo' },
       { chave: 'documento', titulo: 'CPF/CNPJ' },
+      { chave: 'rgIe', titulo: 'RG/IE' },
+      { chave: 'nascimento', titulo: 'Nascimento' },
+      { chave: 'sexo', titulo: 'Sexo' },
       { chave: 'telefone', titulo: 'Telefone' },
+      { chave: 'whatsapp', titulo: 'WhatsApp' },
       { chave: 'email', titulo: 'E-mail' },
+      { chave: 'endereco', titulo: 'Endereço principal' },
+      { chave: 'cidade', titulo: 'Cidade/UF' },
+      { chave: 'origem', titulo: 'Origem' },
+      { chave: 'relacionamento', titulo: 'Relacionamento' },
+      { chave: 'clienteDesde', titulo: 'Cliente desde' },
+      { chave: 'status', titulo: 'Status' },
       { chave: 'veiculos', titulo: 'Veículos' },
+      { chave: 'pendencias', titulo: 'Pendências no cadastro' },
       { chave: 'cadastro', titulo: 'Cadastrado em' },
     ],
     async consultar(tx, filtro, limite) {
@@ -47,29 +72,40 @@ export const relatorios: Record<RelatorioId, Definicao> = {
       const [{ total }] = (await tx.select({ total: count() }).from(clientes).where(where)) as [{ total: number }];
       const linhas = await tx
         .select({
-          nome: clientes.nome,
-          tipo: clientes.tipo,
-          cpfCnpj: clientes.cpfCnpj,
-          telefone: clientes.telefone,
-          email: clientes.email,
-          criadoEm: clientes.criadoEm,
-          veiculos: count(veiculos.id),
+          c: clientes,
+          origem: origensCliente.nome,
+          relacionamento: relacionamentosCliente.nome,
+          endereco: clienteEnderecos,
+          // Correlação escrita à mão (o Drizzle não qualifica colunas dentro da subconsulta).
+          veiculos: sql<number>`(select count(*) from veiculos v where v.cliente_id = "clientes"."id")`.mapWith(Number),
         })
         .from(clientes)
-        .leftJoin(veiculos, eq(veiculos.clienteId, clientes.id))
+        .leftJoin(origensCliente, eq(origensCliente.id, clientes.origemId))
+        .leftJoin(relacionamentosCliente, eq(relacionamentosCliente.id, clientes.relacionamentoId))
+        .leftJoin(clienteEnderecos, and(eq(clienteEnderecos.clienteId, clientes.id), eq(clienteEnderecos.principal, true)))
         .where(where)
-        .groupBy(clientes.id)
         .orderBy(asc(clientes.nome))
         .limit(limite);
       return {
         total,
-        linhas: linhas.map((c) => ({
+        linhas: linhas.map(({ c, origem, relacionamento, endereco: e, veiculos }) => ({
           nome: c.nome,
           tipo: c.tipo === 'PF' ? 'Pessoa física' : 'Pessoa jurídica',
           documento: c.cpfCnpj ? formatarDocumento(c.cpfCnpj) : '',
-          telefone: texto(c.telefone),
+          rgIe: texto(c.rgIe),
+          nascimento: c.dataNascimento ? formatarDataIso(c.dataNascimento) : '',
+          sexo: c.sexo ? SEXOS[c.sexo] : '',
+          telefone: c.telefone ? formatarTelefone(c.telefone) : '',
+          whatsapp: c.whatsapp ? formatarTelefone(c.whatsapp) : '',
           email: texto(c.email),
-          veiculos: texto(c.veiculos),
+          endereco: e ? [`${e.logradouro}, ${e.numero}`, e.complemento, e.bairro, formatarCep(e.cep)].filter(Boolean).join(' - ') : '',
+          cidade: e ? `${e.cidade}/${e.uf}` : '',
+          origem: texto(origem),
+          relacionamento: texto(relacionamento),
+          clienteDesde: formatarDataIso(c.clienteDesde),
+          status: c.ativo ? 'Ativo' : 'Inativo',
+          veiculos: texto(veiculos),
+          pendencias: pendenciasCliente(c, !!e).join(', '),
           cadastro: formatarData(c.criadoEm),
         })),
       };
@@ -85,19 +121,27 @@ export const relatorios: Record<RelatorioId, Definicao> = {
       { chave: 'placa', titulo: 'Placa' },
       { chave: 'marca', titulo: 'Marca' },
       { chave: 'modelo', titulo: 'Modelo' },
-      { chave: 'ano', titulo: 'Ano' },
+      { chave: 'versao', titulo: 'Versão' },
+      { chave: 'anoFabricacao', titulo: 'Ano fabricação' },
+      { chave: 'anoModelo', titulo: 'Ano modelo' },
       { chave: 'cor', titulo: 'Cor' },
+      { chave: 'combustivel', titulo: 'Combustível' },
       { chave: 'km', titulo: 'Km atual' },
       { chave: 'chassi', titulo: 'Chassi' },
+      { chave: 'renavam', titulo: 'Renavam' },
+      { chave: 'status', titulo: 'Status' },
+      { chave: 'principal', titulo: 'Principal' },
+      { chave: 'ultimaVisita', titulo: 'Última visita' },
       { chave: 'cliente', titulo: 'Cliente' },
-      { chave: 'telefone', titulo: 'Telefone do cliente' },
+      { chave: 'whatsapp', titulo: 'WhatsApp do cliente' },
+      { chave: 'pendencias', titulo: 'Pendências no cadastro' },
       { chave: 'cadastro', titulo: 'Cadastrado em' },
     ],
     async consultar(tx, filtro, limite) {
       const where = periodo(veiculos.criadoEm, filtro);
       const [{ total }] = (await tx.select({ total: count() }).from(veiculos).where(where)) as [{ total: number }];
       const linhas = await tx
-        .select({ v: veiculos, cliente: clientes.nome, telefone: clientes.telefone })
+        .select({ v: veiculos, cliente: clientes.nome, whatsapp: clientes.whatsapp })
         .from(veiculos)
         .innerJoin(clientes, eq(clientes.id, veiculos.clienteId))
         .where(where)
@@ -105,16 +149,24 @@ export const relatorios: Record<RelatorioId, Definicao> = {
         .limit(limite);
       return {
         total,
-        linhas: linhas.map(({ v, cliente, telefone }) => ({
+        linhas: linhas.map(({ v, cliente, whatsapp }) => ({
           placa: formatarPlaca(v.placa),
           marca: v.marca,
           modelo: v.modelo,
-          ano: texto(v.ano),
+          versao: texto(v.versao),
+          anoFabricacao: texto(v.anoFabricacao),
+          anoModelo: texto(v.anoModelo),
           cor: texto(v.cor),
+          combustivel: v.combustivel ? COMBUSTIVEIS[v.combustivel] : '',
           km: v.kmAtual == null ? '' : v.kmAtual.toLocaleString('pt-BR'),
           chassi: texto(v.chassi),
+          renavam: texto(v.renavam),
+          status: STATUS_VEICULO[v.status],
+          principal: v.principal ? 'Sim' : 'Não',
+          ultimaVisita: v.ultimaVisita ? formatarDataIso(v.ultimaVisita) : '',
           cliente,
-          telefone: texto(telefone),
+          whatsapp: whatsapp ? formatarTelefone(whatsapp) : '',
+          pendencias: pendenciasVeiculo(v).join(', '),
           cadastro: formatarData(v.criadoEm),
         })),
       };

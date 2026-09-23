@@ -45,7 +45,8 @@ Calculadas com `color-mix()` a partir das parametrizáveis, então acompanham a 
 | `--cor-texto` / `--cor-texto-suave` | `text-texto` / `text-texto-suave` | Texto principal / secundário |
 | `--cor-sucesso` (+ `-suave`) | `text-sucesso`, `bg-sucesso-suave` | Confirmações, status "Ativo" |
 | `--cor-perigo` (+ `-suave`, `-hover`, `sobre-perigo`) | `bg-perigo`, `text-perigo`, `bg-perigo-suave` | Erros, exclusão |
-| `--cor-alerta` | `text-alerta` | Avisos |
+| `--cor-alerta` (+ `-suave`) | `text-alerta`, `bg-alerta-suave` | Avisos, "cadastro incompleto" |
+| `--cor-placa-*` (fundo, texto, borda, faixa, faixa-texto) | `bg-placa-faixa`... | Desenho da placa Mercosul (componente `Placa`); fixas, não seguem o tema |
 
 ## Marca MobiOS
 
@@ -69,12 +70,24 @@ Em [`components/ui.tsx`](../apps/web/src/components/ui.tsx). Use-os em vez de re
 | `Titulo` | Título da página, com ação opcional à direita |
 | `Cartao` | Bloco de conteúdo (`className` substitui o padding padrão) |
 | `Botao` (`primario` = confirmar / `secundario` = cancelar, voltar / `perigo` = excluir), `BotaoLink` | Ações. Use sempre a variante pela função do botão, para o tema da oficina valer |
-| `Campo` + `Input` / `Select` | Formulários, com rótulo, dica e erro |
+| `Campo` + `Input` / `Select` / `AreaTexto` | Formulários, com rótulo, dica e erro |
+| `Marcador` | Caixa de seleção com rótulo ao lado |
+| `Secao` | Bloco de formulário com título (Identificação, Contato, Endereços...) e ação opcional |
 | `Alerta` | Mensagem de erro |
-| `Selo` (`sucesso` / `neutro` / `primario`) | Status curtos |
+| `Selo` (`sucesso` / `neutro` / `primario` / `alerta`) | Status curtos; `alerta` para pendências (ex.: "Cadastro incompleto") |
 | `Tabela`, `Cabecalho`, `Th`, `Linha`, `Td`, `LinhaVazia` | Listagens |
 | `TextoSuave` | Texto secundário |
-| `Avatar` (`sm` / `md` / `lg`) | Foto do usuário em círculo; sem foto, iniciais na cor principal |
+| `Avatar` (`sm` / `md` / `perfil` / `lg`), `Iniciais` | Foto do usuário em círculo; sem foto (ou para clientes), iniciais na cor principal |
+| `Placa` (`sm` / `md` / `lg`) | Placa do veículo desenhada no padrão Mercosul |
+| `Abas` | Abas de uma página (ex.: perfil do cliente), com contagem opcional |
+| `Etapas` + `useAssistente` (`lib/assistente.ts`) | Cadastro em etapas: cada etapa valida só os seus campos; na edição, etapas livres e "Salvar" sempre visível |
+| `Vazio` | Estado vazio com ícone, mensagem e ação (nunca uma tabela vazia) |
+
+## Padrões de tela
+
+- **Listas de cadastro** em cartões (quem é, como falar, o que tem), não em tabelas. Tabelas ficam para relatórios.
+- **Detalhe** como perfil: cabeçalho com ações rápidas (WhatsApp, Editar) e abas.
+- **Cadastro novo** em etapas curtas, com botões grandes para escolhas (ex.: Pessoa física / jurídica).
 
 ## Regras
 

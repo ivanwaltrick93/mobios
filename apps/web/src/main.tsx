@@ -14,6 +14,9 @@ import { NovoVeiculo } from './pages/NovoVeiculo';
 import { Perfil } from './pages/Perfil';
 import { Entrar } from './pages/Entrar';
 import { Configuracoes } from './pages/Configuracoes';
+import { EditarCliente } from './pages/EditarCliente';
+import { EditarVeiculo } from './pages/EditarVeiculo';
+import { ListasCadastro } from './pages/ListasCadastro';
 import { Relatorios } from './pages/Relatorios';
 import { Usuarios } from './pages/Usuarios';
 
@@ -29,6 +32,8 @@ const router = createBrowserRouter([
       { path: '/veiculos/novo', element: <NovoVeiculo /> },
       { path: '/clientes', element: <Clientes /> },
       { path: '/clientes/:id', element: <ClienteDetalhe /> },
+      { path: '/clientes/:id/editar', element: <EditarCliente /> },
+      { path: '/veiculos/:id/editar', element: <EditarVeiculo /> },
       { path: '/os', element: <EmBreve titulo="Ordens de serviço" /> },
       { path: '/estoque', element: <EmBreve titulo="Estoque" /> },
       { path: '/financeiro', element: <EmBreve titulo="Financeiro" /> },
@@ -37,6 +42,7 @@ const router = createBrowserRouter([
       { path: '/perfil', element: <Perfil /> },
       { path: '/configuracoes', element: <Configuracoes /> },
       { path: '/configuracoes/funcoes', element: <Funcoes /> },
+      { path: '/configuracoes/cadastros', element: <ListasCadastro /> },
     ],
   },
 ]);

@@ -2,7 +2,7 @@
  * Componentes base do style guide. Use sempre estes em vez de classes soltas:
  * cores só por tokens (bg-primaria, text-texto-suave...), definidos em src/index.css.
  */
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TdHTMLAttributes, ThHTMLAttributes } from 'react';
+import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TdHTMLAttributes, TextareaHTMLAttributes, ThHTMLAttributes } from 'react';
 
 const base =
   'block w-full rounded-md border border-borda-forte bg-superficie px-3 py-2 text-sm text-texto shadow-sm placeholder:text-texto-suave focus:border-primaria focus:outline-none focus:ring-1 focus:ring-primaria disabled:bg-superficie-alt';
@@ -24,6 +24,28 @@ export const Input = ({ className = '', ...props }: InputHTMLAttributes<HTMLInpu
 );
 export const Select = ({ className = '', ...props }: SelectHTMLAttributes<HTMLSelectElement>) => (
   <select className={`${base} ${className}`} {...props} />
+);
+export const AreaTexto = ({ className = '', ...props }: TextareaHTMLAttributes<HTMLTextAreaElement>) => (
+  <textarea rows={3} className={`${base} ${className}`} {...props} />
+);
+
+/** Caixa de seleção com rótulo ao lado (use com `register`). */
+export const Marcador = ({ rotulo, ...props }: InputHTMLAttributes<HTMLInputElement> & { rotulo: ReactNode }) => (
+  <label className="flex items-center gap-2 text-sm text-texto">
+    <input type="checkbox" className="size-4 accent-primaria" {...props} />
+    {rotulo}
+  </label>
+);
+
+/** Bloco de formulário com título (ex.: "Contato", "Endereços"). */
+export const Secao = ({ titulo, acao, children }: { titulo: string; acao?: ReactNode; children: ReactNode }) => (
+  <section className="space-y-4 border-t border-borda pt-5 first:border-0 first:pt-0">
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <h3 className="text-sm font-semibold uppercase tracking-wide text-texto-suave">{titulo}</h3>
+      {acao}
+    </div>
+    {children}
+  </section>
 );
 
 type Variante = 'primario' | 'secundario' | 'perigo';
@@ -67,16 +89,19 @@ export const TextoSuave = ({ children, className = '' }: { children: ReactNode; 
   <p className={`text-sm text-texto-suave ${className}`}>{children}</p>
 );
 
-type Tom = 'sucesso' | 'neutro' | 'primario';
+type Tom = 'sucesso' | 'neutro' | 'primario' | 'alerta';
 
 const coresSelo: Record<Tom, string> = {
   sucesso: 'bg-sucesso-suave text-sucesso',
   neutro: 'bg-superficie-alt text-texto-suave',
   primario: 'bg-primaria-suave text-primaria',
+  alerta: 'bg-alerta-suave text-alerta',
 };
 
-export const Selo = ({ tom = 'neutro', children }: { tom?: Tom; children: ReactNode }) => (
-  <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${coresSelo[tom]}`}>{children}</span>
+export const Selo = ({ tom = 'neutro', titulo, children }: { tom?: Tom; titulo?: string; children: ReactNode }) => (
+  <span title={titulo} className={`inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${coresSelo[tom]}`}>
+    {children}
+  </span>
 );
 
 // ---------- Tabela ----------
@@ -111,4 +136,41 @@ export const LinhaVazia = ({ colunas, children }: { colunas: number; children: R
       {children}
     </td>
   </tr>
+);
+
+// ---------- Abas ----------
+
+/** Abas de uma página (ex.: perfil do cliente). `contagem` aparece ao lado do rótulo. */
+export function Abas<T extends string>({ abas, atual, aoTrocar }: { abas: { id: T; rotulo: string; contagem?: number }[]; atual: T; aoTrocar: (id: T) => void }) {
+  return (
+    <nav className="flex gap-1 overflow-x-auto border-b border-borda" role="tablist">
+      {abas.map((a) => (
+        <button
+          key={a.id}
+          type="button"
+          role="tab"
+          aria-selected={a.id === atual}
+          onClick={() => aoTrocar(a.id)}
+          className={`-mb-px flex items-center gap-2 whitespace-nowrap border-b-2 px-4 py-2.5 text-sm transition ${
+            a.id === atual ? 'border-primaria font-medium text-primaria' : 'border-transparent text-texto-suave hover:text-texto'
+          }`}
+        >
+          {a.rotulo}
+          {a.contagem != null && (
+            <span className={`rounded-full px-1.5 text-xs ${a.id === atual ? 'bg-primaria-suave' : 'bg-superficie-alt'}`}>{a.contagem}</span>
+          )}
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+/** Estado vazio amigável: ícone, mensagem e ação opcional. */
+export const Vazio = ({ icone, titulo, children, acao }: { icone: ReactNode; titulo: string; children?: ReactNode; acao?: ReactNode }) => (
+  <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-borda-forte px-6 py-12 text-center">
+    <span className="text-texto-suave [&>svg]:size-10">{icone}</span>
+    <p className="font-medium text-texto">{titulo}</p>
+    {children && <p className="max-w-md text-sm text-texto-suave">{children}</p>}
+    {acao && <div className="mt-2">{acao}</div>}
+  </div>
 );

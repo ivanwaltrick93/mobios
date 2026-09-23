@@ -9,6 +9,7 @@ import { clientesRoutes } from './modules/clientes/routes.js';
 import { configuracoesRoutes } from './modules/configuracoes/routes.js';
 import { fotosRoutes } from './modules/fotos/routes.js';
 import { funcoesRoutes } from './modules/funcoes/routes.js';
+import { opcoesRoutes } from './modules/opcoes/routes.js';
 import { painelRoutes } from './modules/painel/routes.js';
 import { publicoRoutes } from './modules/publico/routes.js';
 import { relatoriosRoutes } from './modules/relatorios/routes.js';
@@ -35,6 +36,7 @@ export async function criarApp() {
   await app.register(fotosRoutes, { prefix: '/api/fotos' });
   await app.register(clientesRoutes, { prefix: '/api/clientes' });
   await app.register(veiculosRoutes, { prefix: '/api/veiculos' });
+  await app.register(opcoesRoutes, { prefix: '/api/opcoes' });
   await app.register(configuracoesRoutes, { prefix: '/api/configuracoes' });
   await app.register(relatoriosRoutes, { prefix: '/api/relatorios' });
   await app.register(painelRoutes, { prefix: '/api/painel' });

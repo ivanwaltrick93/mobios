@@ -12,7 +12,7 @@ Leia `docs/ARQUITETURA.md` antes de mudanças estruturais. Escopo e prioridades 
 ## Banco de dados
 - Toda tabela tem PK `id uuid` (`uuid().primaryKey().defaultRandom()`), chave natural com índice único quando existir, e índice em toda FK e em colunas de filtro/ordenação frequentes.
 - Nunca selecione `senha_hash` fora do login. Usuários não são excluídos: `ativo = false`.
-- Acesso: funções configuráveis por oficina, com nível por módulo (`packages/shared/src/acessos.ts`, `docs/ENTREGAVEIS.md` §1.1). API: `app.autenticar` e depois `app.exigirAcesso('modulo', 'editar')` ou `app.exigirAdmin`; tela: `usePode()('modulo', 'editar')` / `useAdmin()`. Módulo novo: acrescente em `MODULOS` e no enum `modulo` (migração). Nunca compare nomes de função no código.
+- Acesso: funções configuráveis por oficina, com nível por módulo (`packages/shared/src/acessos.ts`, `docs/ENTREGAVEIS.md` §1.1). API: `app.autenticar` e depois `app.exigirAcesso('modulo', 'editar')` ou `app.exigirAdmin`; tela: `usePode()('modulo', 'editar')` / `useAdmin()`. Módulo novo: acrescente em `MODULOS`; na migração, **recrie** o enum `modulo` (renomear o antigo, criar o novo, `ALTER COLUMN ... USING modulo::text::modulo`, apagar o antigo), pois `ADD VALUE` não pode ser usado na mesma transação (ver `drizzle/0008`). Nunca compare nomes de função no código.
 
 ## Escalabilidade horizontal (não negociável)
 A API deve funcionar com N réplicas atrás de um balanceador (futuro Kubernetes + HPA). Detalhes em `docs/ARQUITETURA.md` §9.

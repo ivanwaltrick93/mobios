@@ -3,6 +3,7 @@ import { NavLink } from 'react-router';
 const abas = [
   { para: '/configuracoes', rotulo: 'Aparência e logo' },
   { para: '/configuracoes/funcoes', rotulo: 'Funções e permissões' },
+  { para: '/configuracoes/cadastros', rotulo: 'Cadastros' },
 ];
 
 export function AbasConfiguracoes() {

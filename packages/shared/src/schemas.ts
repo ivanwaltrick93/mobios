@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { acessosSchema, funcaoResumoSchema } from './acessos.js';
-import { cnpjValido, cpfValido, normalizarPlaca, placaValida, somenteDigitos } from './documentos.js';
+import { cepValido, chassiValido, cnpjValido, cpfValido, normalizarChassi, normalizarPlaca, placaValida, renavamValido, somenteDigitos, telefoneValido } from './documentos.js';
+import { hojeIso } from './formatos.js';
 
 // Mensagens padrão do Zod em português, no front e no back.
 z.config(z.locales.pt());
@@ -112,38 +113,220 @@ export const usuarioAtualizarSchema = z.object({
 });
 export type UsuarioAtualizarInput = z.input<typeof usuarioAtualizarSchema>;
 
+// ---------- Listas configuráveis por oficina (Configurações → Cadastros) ----------
+
+export const LISTAS_OPCOES = {
+  origens: { titulo: 'Origem do cliente', descricao: 'Como o cliente conheceu a oficina.' },
+  relacionamentos: { titulo: 'Tipo de relacionamento', descricao: 'Perfil comercial do cliente.' },
+} as const;
+export type ListaOpcoes = keyof typeof LISTAS_OPCOES;
+export const listaOpcoesSchema = z.enum(['origens', 'relacionamentos']);
+
+/** Itens criados em toda oficina nova (a migração 0009 aplica o mesmo às que já existiam). */
+export const OPCOES_PADRAO: Record<ListaOpcoes, string[]> = {
+  origens: ['Indicação', 'Site', 'Campanha', 'Loja', 'Concessionária'],
+  relacionamentos: ['Consumidor final', 'Empresa', 'Frota', 'Seguradora'],
+};
+
+export const opcaoSchema = z.object({ id: z.uuid(), nome: z.string(), ativa: z.boolean(), clientes: z.number() });
+export type Opcao = z.infer<typeof opcaoSchema>;
+
+export const opcaoInputSchema = z.object({
+  nome: z.string().trim().min(2, 'Informe o nome').max(60, 'Nome longo demais'),
+  ativa: z.boolean(),
+});
+export type OpcaoInput = z.input<typeof opcaoInputSchema>;
+
 // ---------- Clientes ----------
+
+const chaves = <T extends Record<string, string>>(o: T) => Object.keys(o) as [keyof T & string, ...(keyof T & string)[]];
+
+/** Vendido/Inativo: continua no histórico, mas não recebe O.S. nova até ser reativado. */
+export const STATUS_VEICULO = { ativo: 'Ativo', vendido: 'Vendido', inativo: 'Inativo' } as const;
+export type StatusVeiculo = keyof typeof STATUS_VEICULO;
+
+export const SEXOS = { masculino: 'Masculino', feminino: 'Feminino', outro: 'Outro', nao_informado: 'Prefiro não informar' } as const;
+export type Sexo = keyof typeof SEXOS;
+
+export const TIPOS_ENDERECO = { residencial: 'Residencial', comercial: 'Comercial', outro: 'Outro' } as const;
+export type TipoEndereco = keyof typeof TIPOS_ENDERECO;
+
+/** Finalidades que um endereço de PJ pode acumular (a sede pode ser faturamento e cobrança ao mesmo tempo). */
+export const FINALIDADES_PJ = { faturamento: 'Faturamento', entrega: 'Entrega', cobranca: 'Cobrança' } as const;
+
+export const UFS = ['AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'] as const;
+export const PAIS_PADRAO = 'Brasil';
+
+/** Select vazio do formulário vira null. */
+const vazioComoNulo = (v: unknown) => (v === '' || v === undefined ? null : v);
+
+const telefoneSchema = (rotulo: string) =>
+  z
+    .string({ error: `Informe o ${rotulo}` })
+    .trim()
+    .min(1, `Informe o ${rotulo}`)
+    .refine(telefoneValido, `${rotulo[0]!.toUpperCase()}${rotulo.slice(1)} inválido: use DDD + número`)
+    .transform(somenteDigitos);
+
+const dataPassadaOpcional = z
+  .union([z.literal(''), z.iso.date('Data inválida')])
+  .nullish()
+  .transform((v) => v || null)
+  .refine((v) => !v || (v >= '1900-01-01' && v <= hojeIso()), 'Data fora do intervalo permitido');
+
+const textoObrigatorio = (msg: string, max = 120) => z.string({ error: msg }).trim().min(1, msg).max(max, 'Texto longo demais');
+
+export const enderecoInputSchema = z
+  .object({
+    tipo: z.enum(chaves(TIPOS_ENDERECO), 'Escolha o tipo de endereço'),
+    cep: textoObrigatorio('Informe o CEP', 12),
+    logradouro: textoObrigatorio('Informe o logradouro', 150),
+    numero: textoObrigatorio('Informe o número (ou S/N)', 10),
+    complemento: textoOpcional,
+    bairro: textoObrigatorio('Informe o bairro', 100),
+    cidade: textoObrigatorio('Informe a cidade', 100),
+    uf: textoObrigatorio('Informe o estado', 30).transform((v) => v.toUpperCase()),
+    pais: z.string().trim().max(60).optional().transform((v) => v || PAIS_PADRAO),
+    principal: z.boolean().default(false),
+    faturamento: z.boolean().default(false),
+    entrega: z.boolean().default(false),
+    cobranca: z.boolean().default(false),
+  })
+  .superRefine((e, ctx) => {
+    // CEP e UF só são validados no formato brasileiro quando o endereço é no Brasil.
+    if (e.pais.toLowerCase() !== PAIS_PADRAO.toLowerCase()) return;
+    if (!cepValido(e.cep)) ctx.addIssue({ code: 'custom', path: ['cep'], message: 'CEP inválido' });
+    if (!(UFS as readonly string[]).includes(e.uf)) ctx.addIssue({ code: 'custom', path: ['uf'], message: 'Escolha o estado' });
+  })
+  .transform((e) => (e.pais.toLowerCase() === PAIS_PADRAO.toLowerCase() ? { ...e, cep: somenteDigitos(e.cep), pais: PAIS_PADRAO } : e));
+export type EnderecoInput = z.input<typeof enderecoInputSchema>;
 
 export const clienteInputSchema = z
   .object({
     tipo: z.enum(['PF', 'PJ']).default('PF'),
-    nome: z.string().trim().min(2, 'Informe o nome'),
-    cpfCnpj: textoOpcional,
-    telefone: textoOpcional,
-    email: z.union([z.literal(''), z.email('E-mail inválido')]).nullish().transform((v) => v || null),
-    observacoes: textoOpcional,
+    nome: z.string().trim().min(2, 'Informe o nome').max(150, 'Nome longo demais'),
+    // Validado no próprio campo (e não só no objeto) para o formulário em etapas conferir já na 1ª etapa.
+    cpfCnpj: z
+      .string({ error: 'Informe o documento' })
+      .trim()
+      .min(1, 'Informe o documento')
+      .superRefine((v, ctx) => {
+        const n = somenteDigitos(v).length;
+        if (n === 11 ? !cpfValido(v) : n === 14 ? !cnpjValido(v) : true) {
+          ctx.addIssue({ code: 'custom', message: n === 11 ? 'CPF inválido' : n === 14 ? 'CNPJ inválido' : 'Documento inválido' });
+        }
+      }),
+    rgIe: textoOpcional.refine((v) => !v || v.length <= 20, 'Máximo de 20 caracteres'),
+    dataNascimento: dataPassadaOpcional,
+    sexo: z.preprocess(vazioComoNulo, z.enum(chaves(SEXOS)).nullable()),
+    telefone: telefoneSchema('telefone'),
+    whatsapp: telefoneSchema('WhatsApp'),
+    email: z.union([z.literal(''), emailSchema]).nullish().transform((v) => v || null),
+    observacoes: textoOpcional.refine((v) => !v || v.length <= 2000, 'Máximo de 2.000 caracteres'),
+    clienteDesde: z.iso.date('Informe a data').refine((v) => v >= '1900-01-01' && v <= hojeIso(), 'Data fora do intervalo permitido'),
+    origemId: z.preprocess(vazioComoNulo, z.uuid().nullable()),
+    relacionamentoId: z.preprocess(vazioComoNulo, z.uuid().nullable()),
+    ativo: z.boolean().default(true),
+    enderecos: z
+      .array(enderecoInputSchema, 'Cadastre ao menos um endereço')
+      .min(1, 'Cadastre ao menos um endereço')
+      .max(20, 'Máximo de 20 endereços')
+      .refine((lista) => lista.filter((e) => e.principal).length <= 1, 'Marque apenas um endereço como principal'),
   })
   .superRefine((c, ctx) => {
-    if (!c.cpfCnpj) return;
-    const ok = c.tipo === 'PF' ? cpfValido(c.cpfCnpj) : cnpjValido(c.cpfCnpj);
-    if (!ok) ctx.addIssue({ code: 'custom', path: ['cpfCnpj'], message: c.tipo === 'PF' ? 'CPF inválido' : 'CNPJ inválido' });
+    // O documento já é válido (campo); aqui só confere se combina com o tipo de cliente.
+    const digitos = somenteDigitos(c.cpfCnpj).length;
+    if (c.tipo === 'PF' && digitos !== 11) ctx.addIssue({ code: 'custom', path: ['cpfCnpj'], message: 'Pessoa física: informe um CPF' });
+    if (c.tipo === 'PJ' && digitos !== 14) ctx.addIssue({ code: 'custom', path: ['cpfCnpj'], message: 'Pessoa jurídica: informe um CNPJ' });
   })
-  .transform((c) => ({ ...c, cpfCnpj: c.cpfCnpj ? somenteDigitos(c.cpfCnpj) : null }));
+  .transform((c) => {
+    const pf = c.tipo === 'PF';
+    const temPrincipal = c.enderecos.some((e) => e.principal);
+    return {
+      ...c,
+      cpfCnpj: somenteDigitos(c.cpfCnpj),
+      // Nascimento e sexo só fazem sentido para PF; finalidades de faturamento/entrega/cobrança, só para PJ.
+      dataNascimento: pf ? c.dataNascimento : null,
+      sexo: pf ? c.sexo : null,
+      enderecos: c.enderecos.map((e, i) => ({
+        ...e,
+        principal: temPrincipal ? e.principal : i === 0,
+        faturamento: !pf && e.faturamento,
+        entrega: !pf && e.entrega,
+        cobranca: !pf && e.cobranca,
+      })),
+    };
+  });
 export type ClienteInput = z.input<typeof clienteInputSchema>;
+export type ClienteDados = z.output<typeof clienteInputSchema>;
 
-export const clienteSchema = z.object({
+export const enderecoSchema = z.object({
+  id: z.uuid(),
+  tipo: z.enum(chaves(TIPOS_ENDERECO)),
+  cep: z.string(),
+  logradouro: z.string(),
+  numero: z.string(),
+  complemento: z.string().nullable(),
+  bairro: z.string(),
+  cidade: z.string(),
+  uf: z.string(),
+  pais: z.string(),
+  principal: z.boolean(),
+  faturamento: z.boolean(),
+  entrega: z.boolean(),
+  cobranca: z.boolean(),
+});
+export type Endereco = z.infer<typeof enderecoSchema>;
+
+/**
+ * Campos obrigatórios que faltam no cadastro (registros anteriores às regras atuais).
+ * Cadastro incompleto não impede consultar, mas impede abrir O.S. até ser completado.
+ */
+export function pendenciasCliente(c: { cpfCnpj: string | null; telefone: string | null; whatsapp: string | null }, temEndereco: boolean): string[] {
+  const faltando: string[] = [];
+  if (!c.cpfCnpj) faltando.push('CPF/CNPJ');
+  if (!c.telefone) faltando.push('telefone');
+  if (!c.whatsapp) faltando.push('WhatsApp');
+  if (!temEndereco) faltando.push('endereço');
+  return faltando;
+}
+
+export const clienteResumoSchema = z.object({
   id: z.uuid(),
   tipo: z.enum(['PF', 'PJ']),
   nome: z.string(),
   cpfCnpj: z.string().nullable(),
   telefone: z.string().nullable(),
+  whatsapp: z.string().nullable(),
+  ativo: z.boolean(),
+  pendencias: z.array(z.string()),
+  /** Até 4 veículos (principal primeiro), para os cartões da lista; o total vem em `totalVeiculos`. */
+  veiculos: z.array(z.object({ id: z.uuid(), placa: z.string(), marca: z.string(), modelo: z.string(), status: z.enum(chaves(STATUS_VEICULO)) })),
+  totalVeiculos: z.number(),
+});
+export type ClienteResumo = z.infer<typeof clienteResumoSchema>;
+
+export const clienteSchema = clienteResumoSchema.extend({
+  rgIe: z.string().nullable(),
+  dataNascimento: z.string().nullable(),
+  sexo: z.enum(chaves(SEXOS)).nullable(),
   email: z.string().nullable(),
   observacoes: z.string().nullable(),
+  clienteDesde: z.string(),
+  origemId: z.uuid().nullable(),
+  origemNome: z.string().nullable(),
+  relacionamentoId: z.uuid().nullable(),
+  relacionamentoNome: z.string().nullable(),
+  enderecos: z.array(enderecoSchema),
   criadoEm: z.coerce.date(),
 });
 export type Cliente = z.infer<typeof clienteSchema>;
 
 // ---------- Veículos ----------
+
+export const COMBUSTIVEIS = { flex: 'Flex', gasolina: 'Gasolina', etanol: 'Etanol', diesel: 'Diesel', gnv: 'GNV', eletrico: 'Elétrico', hibrido: 'Híbrido' } as const;
+export type Combustivel = keyof typeof COMBUSTIVEIS;
+
 
 const anoAtual = new Date().getFullYear();
 
@@ -159,30 +342,73 @@ const inteiroOpcional = (min: number, max?: number) =>
       .nullable(),
   );
 
-export const veiculoInputSchema = z.object({
-  clienteId: z.uuid(),
-  placa: z.string().refine(placaValida, 'Placa inválida').transform(normalizarPlaca),
-  marca: z.string().trim().min(1, 'Informe a marca'),
-  modelo: z.string().trim().min(1, 'Informe o modelo'),
-  ano: inteiroOpcional(1900, anoAtual + 1).optional(),
+const ano = (msg: string, max: number) =>
+  z.preprocess(
+    (v) => (v === '' || v == null ? undefined : Number(v)),
+    z.number({ error: msg }).int(msg).min(1900, 'Ano inválido').max(max, 'Ano inválido'),
+  );
+
+const veiculoCampos = z.object({
+  placa: z.string({ error: 'Informe a placa' }).refine(placaValida, 'Placa inválida').transform(normalizarPlaca),
+  renavam: textoOpcional.refine((v) => !v || renavamValido(v), 'Renavam inválido').transform((v) => (v ? somenteDigitos(v).padStart(11, '0') : null)),
+  chassi: textoOpcional.refine((v) => !v || chassiValido(v), 'Chassi inválido: 17 caracteres, sem I, O e Q').transform((v) => (v ? normalizarChassi(v) : null)),
+  marca: textoObrigatorio('Informe a marca', 60),
+  modelo: textoObrigatorio('Informe o modelo', 80),
+  versao: textoOpcional,
+  anoFabricacao: ano('Informe o ano de fabricação', anoAtual + 1),
+  anoModelo: ano('Informe o ano modelo', anoAtual + 2),
   cor: textoOpcional,
-  chassi: textoOpcional.transform((v) => v?.toUpperCase() ?? null),
-  kmAtual: inteiroOpcional(0).optional(),
+  combustivel: z.preprocess(vazioComoNulo, z.enum(chaves(COMBUSTIVEIS)).nullable()),
+  kmAtual: inteiroOpcional(0).optional().transform((v) => v ?? null),
+  principal: z.boolean().default(false),
+  status: z.enum(chaves(STATUS_VEICULO)).default('ativo'),
 });
+
+const regrasVeiculo = <T extends { anoFabricacao: number; anoModelo: number }>(v: T, ctx: z.RefinementCtx) => {
+  if (v.anoModelo < v.anoFabricacao || v.anoModelo > v.anoFabricacao + 1) {
+    ctx.addIssue({ code: 'custom', path: ['anoModelo'], message: 'O ano modelo deve ser igual ao de fabricação ou o seguinte' });
+  }
+};
+
+/** Edição: o dono não muda aqui (use a transferência). */
+export const veiculoAtualizarSchema = veiculoCampos.superRefine(regrasVeiculo);
+export const veiculoInputSchema = veiculoCampos.extend({ clienteId: z.uuid() }).superRefine(regrasVeiculo);
 export type VeiculoInput = z.input<typeof veiculoInputSchema>;
+export type VeiculoAtualizarInput = z.input<typeof veiculoAtualizarSchema>;
+
+export const veiculoTransferirSchema = z.object({ clienteId: z.uuid('Escolha o novo proprietário') });
+
+export function pendenciasVeiculo(v: { anoFabricacao: number | null; anoModelo: number | null }): string[] {
+  const faltando: string[] = [];
+  if (v.anoFabricacao == null) faltando.push('ano de fabricação');
+  if (v.anoModelo == null) faltando.push('ano modelo');
+  return faltando;
+}
 
 export const veiculoSchema = z.object({
   id: z.uuid(),
   clienteId: z.uuid(),
   placa: z.string(),
+  renavam: z.string().nullable(),
+  chassi: z.string().nullable(),
   marca: z.string(),
   modelo: z.string(),
-  ano: z.number().nullable(),
+  versao: z.string().nullable(),
+  anoFabricacao: z.number().nullable(),
+  anoModelo: z.number().nullable(),
   cor: z.string().nullable(),
-  chassi: z.string().nullable(),
+  combustivel: z.enum(chaves(COMBUSTIVEIS)).nullable(),
   kmAtual: z.number().nullable(),
+  /** Preenchida automaticamente pela O.S. (fase 1). */
+  ultimaVisita: z.string().nullable(),
+  principal: z.boolean(),
+  status: z.enum(chaves(STATUS_VEICULO)),
+  pendencias: z.array(z.string()),
 });
 export type Veiculo = z.infer<typeof veiculoSchema>;
+
+export const sugestoesVeiculoSchema = z.object({ marcas: z.array(z.string()), modelos: z.array(z.string()) });
+export type SugestoesVeiculo = z.infer<typeof sugestoesVeiculoSchema>;
 
 // ---------- Utilitários ----------
 

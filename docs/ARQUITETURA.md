@@ -164,6 +164,7 @@ contadores (tenant_id, chave, valor)  -- numeração sequencial de O.S. sem bura
 - Rate limit no login (`@fastify/rate-limit`) — fase 1.
 - LGPD: CPF/telefone são dados pessoais → exportação e exclusão por titular, trilha de auditoria, backups criptografados, termo de uso/DPA para o SaaS.
 - Segredos só em variáveis de ambiente; nunca no repositório.
+- Serviço externo no cadastro: o navegador consulta o **ViaCEP** (público, gratuito) só com o CEP digitado, para preencher o endereço. Nenhum dado pessoal sai do sistema; se o serviço falhar, o preenchimento é manual.
 
 ### Relatórios
 

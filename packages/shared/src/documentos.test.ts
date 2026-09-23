@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cnpjValido, cpfValido, normalizarPlaca, placaValida } from './documentos.js';
+import { chassiValido, cnpjValido, cpfValido, normalizarPlaca, placaValida, renavamValido, telefoneValido } from './documentos.js';
 
 describe('documentos', () => {
   it('valida CPF', () => {
@@ -19,21 +19,89 @@ describe('documentos', () => {
     expect(placaValida('AB12345')).toBe(false);
     expect(normalizarPlaca('bra-2e19')).toBe('BRA2E19');
   });
+
+  it('valida Renavam, chassi e telefone', () => {
+    expect(renavamValido('63938648428')).toBe(true);
+    expect(renavamValido('00123456780')).toBe(false);
+    expect(renavamValido('12345678')).toBe(false);
+    expect(chassiValido('9BW ZZZ377 VT004251')).toBe(true);
+    expect(chassiValido('9BWZZZ377VT00425O')).toBe(false);
+    expect(telefoneValido('(48) 99999-0000')).toBe(true);
+    expect(telefoneValido('(01) 99999-0000')).toBe(false);
+  });
 });
 
 describe('veiculoInputSchema', async () => {
   const { veiculoInputSchema } = await import('./schemas.js');
-  const base = { clienteId: '4d3c1a2b-9f8e-4d7c-8b6a-5f4e3d2c1b0a', placa: 'BRA2E19', marca: 'Fiat', modelo: 'Strada' };
+  const base = {
+    clienteId: '4d3c1a2b-9f8e-4d7c-8b6a-5f4e3d2c1b0a',
+    placa: 'BRA2E19',
+    chassi: '9bwzzz377vt004251',
+    marca: 'Fiat',
+    modelo: 'Strada',
+    anoFabricacao: '2020',
+    anoModelo: '2021',
+  };
 
-  it('trata ano e km vazios como null', () => {
-    const r = veiculoInputSchema.parse({ ...base, ano: '', kmAtual: '' });
-    expect(r.ano).toBeNull();
-    expect(r.kmAtual).toBeNull();
+  it('converte anos digitados, trata km e combustível vazios como null', () => {
+    const r = veiculoInputSchema.parse({ ...base, kmAtual: '', combustivel: '', renavam: '' });
+    expect(r).toMatchObject({ anoFabricacao: 2020, anoModelo: 2021, kmAtual: null, combustivel: null, renavam: null, chassi: '9BWZZZ377VT004251', status: 'ativo' });
   });
 
-  it('converte ano digitado e rejeita ano absurdo', () => {
-    expect(veiculoInputSchema.parse({ ...base, ano: '2020' }).ano).toBe(2020);
-    expect(veiculoInputSchema.safeParse({ ...base, ano: '1800' }).success).toBe(false);
+  it('chassi opcional, mas válido se informado; ano modelo coerente com o de fabricação', () => {
+    expect(veiculoInputSchema.parse({ ...base, chassi: '' }).chassi).toBeNull();
+    expect(veiculoInputSchema.safeParse({ ...base, chassi: '9BWZZZ377VT00425I' }).success).toBe(false);
+    expect(veiculoInputSchema.safeParse({ ...base, anoModelo: '2023' }).success).toBe(false);
+    expect(veiculoInputSchema.safeParse({ ...base, anoFabricacao: '1800' }).success).toBe(false);
+    expect(veiculoInputSchema.safeParse({ ...base, anoModelo: '' }).success).toBe(false);
+  });
+
+  it('valida o Renavam pelo dígito verificador', () => {
+    expect(veiculoInputSchema.parse({ ...base, renavam: '639.386.484-28' }).renavam).toBe('63938648428');
+    expect(veiculoInputSchema.safeParse({ ...base, renavam: '63938648420' }).success).toBe(false);
+  });
+});
+
+describe('clienteInputSchema', async () => {
+  const { clienteInputSchema } = await import('./schemas.js');
+  const endereco = { tipo: 'comercial', cep: '88015-100', logradouro: 'Rua Felipe Schmidt', numero: '100', bairro: 'Centro', cidade: 'Florianópolis', uf: 'sc' };
+  const base = {
+    tipo: 'PJ',
+    nome: 'Transportes Exemplo Ltda',
+    cpfCnpj: '11.222.333/0001-81',
+    telefone: '(48) 3222-1000',
+    whatsapp: '(48) 99999-0000',
+    clienteDesde: '2024-01-10',
+    enderecos: [endereco],
+  } as const;
+
+  it('normaliza documento, telefones e endereço; o primeiro endereço vira principal', () => {
+    const r = clienteInputSchema.parse({ ...base, enderecos: [{ ...endereco, faturamento: true }, { ...endereco, tipo: 'outro' }] });
+    expect(r).toMatchObject({ cpfCnpj: '11222333000181', telefone: '4832221000', whatsapp: '48999990000', origemId: null, sexo: null });
+    expect(r.enderecos.map((e) => [e.principal, e.faturamento, e.cep, e.uf, e.pais])).toEqual([
+      [true, true, '88015100', 'SC', 'Brasil'],
+      [false, false, '88015100', 'SC', 'Brasil'],
+    ]);
+  });
+
+  it('exige endereço, WhatsApp e documento válido', () => {
+    expect(clienteInputSchema.safeParse({ ...base, enderecos: [] }).success).toBe(false);
+    expect(clienteInputSchema.safeParse({ ...base, whatsapp: '' }).success).toBe(false);
+    expect(clienteInputSchema.safeParse({ ...base, telefone: '3222-1000' }).success).toBe(false);
+    expect(clienteInputSchema.safeParse({ ...base, tipo: 'PF' }).success).toBe(false);
+    expect(clienteInputSchema.safeParse({ ...base, enderecos: [{ ...endereco, cep: '123' }] }).success).toBe(false);
+  });
+
+  it('PF guarda nascimento e sexo; PJ descarta e não aceita finalidade em PF', () => {
+    const pf = clienteInputSchema.parse({ ...base, tipo: 'PF', cpfCnpj: '529.982.247-25', dataNascimento: '1990-05-01', sexo: 'feminino', enderecos: [{ ...endereco, cobranca: true }] });
+    expect(pf).toMatchObject({ dataNascimento: '1990-05-01', sexo: 'feminino' });
+    expect(pf.enderecos[0]!.cobranca).toBe(false);
+    expect(clienteInputSchema.parse({ ...base, dataNascimento: '1990-05-01', sexo: 'feminino' })).toMatchObject({ dataNascimento: null, sexo: null });
+  });
+
+  it('aceita endereço no exterior sem regra de CEP/UF brasileiros', () => {
+    const r = clienteInputSchema.parse({ ...base, enderecos: [{ ...endereco, cep: 'K1A 0B1', uf: 'Ontario', pais: 'Canadá' }] });
+    expect(r.enderecos[0]).toMatchObject({ cep: 'K1A 0B1', pais: 'Canadá' });
   });
 });
 

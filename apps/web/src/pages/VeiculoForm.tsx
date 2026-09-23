@@ -1,65 +1,209 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { veiculoInputSchema, type Veiculo } from '@mobios/shared';
+import { COMBUSTIVEIS, formatarDataIso, STATUS_VEICULO, veiculoAtualizarSchema, type Veiculo } from '@mobios/shared';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useForm } from 'react-hook-form';
+import { ArrowLeft, ArrowRight } from 'lucide-react';
+import { useId } from 'react';
+import { useForm, type UseFormReturn } from 'react-hook-form';
 import type { z } from 'zod';
-import { Alerta, Botao, Campo, Input } from '../components/ui';
+import { Etapas } from '../components/Etapas';
+import { Placa } from '../components/Placa';
+import { Alerta, Botao, Campo, Input, Marcador, Select, TextoSuave } from '../components/ui';
 import { api } from '../lib/api';
+import { useAssistente, type EtapaDef } from '../lib/assistente';
+import { useSugestoesVeiculo } from '../lib/cadastro';
 import { aplicarErrosDaApi } from '../lib/formulario';
 
-type Entrada = z.input<typeof veiculoInputSchema>;
-type Saida = z.output<typeof veiculoInputSchema>;
+export type VeiculoEntrada = z.input<typeof veiculoAtualizarSchema>;
+export type VeiculoSaida = z.output<typeof veiculoAtualizarSchema>;
+export type FormVeiculo = UseFormReturn<VeiculoEntrada, unknown, VeiculoSaida>;
 
-/** Cadastro de veículo de um cliente. Usado no detalhe do cliente e no atalho "Novo veículo". */
-export function VeiculoForm({ clienteId, aoSalvar, aoCancelar }: { clienteId: string; aoSalvar: (v: Veiculo) => void; aoCancelar: () => void }) {
-  const queryClient = useQueryClient();
-  const form = useForm<Entrada, unknown, Saida>({ resolver: zodResolver(veiculoInputSchema), defaultValues: { clienteId } });
-  const salvar = useMutation({
-    mutationFn: (dados: Saida) => api<Veiculo>('/veiculos', { method: 'POST', body: dados }),
-    onSuccess: (veiculo) => {
-      queryClient.invalidateQueries({ queryKey: ['veiculos', clienteId] });
-      queryClient.invalidateQueries({ queryKey: ['painel'] });
-      aoSalvar(veiculo);
-    },
-  });
+export const valoresVeiculo = (v?: Veiculo): VeiculoEntrada =>
+  v
+    ? {
+        placa: v.placa,
+        renavam: v.renavam ?? '',
+        chassi: v.chassi ?? '',
+        marca: v.marca,
+        modelo: v.modelo,
+        versao: v.versao ?? '',
+        anoFabricacao: v.anoFabricacao ?? '',
+        anoModelo: v.anoModelo ?? '',
+        cor: v.cor ?? '',
+        combustivel: v.combustivel ?? '',
+        kmAtual: v.kmAtual ?? '',
+        principal: v.principal,
+        status: v.status,
+      }
+    : { placa: '', chassi: '', renavam: '', marca: '', modelo: '', versao: '', anoFabricacao: '', anoModelo: '', cor: '', combustivel: '', kmAtual: '', principal: false, status: 'ativo' };
+
+export const useFormVeiculo = (v?: Veiculo) => useForm<VeiculoEntrada, unknown, VeiculoSaida>({ resolver: zodResolver(veiculoAtualizarSchema), defaultValues: valoresVeiculo(v), mode: 'onTouched' });
+
+const ETAPAS: EtapaDef[] = [
+  { titulo: 'Identificação', campos: ['placa', 'chassi', 'renavam'] },
+  { titulo: 'Modelo', campos: ['marca', 'modelo', 'versao', 'anoFabricacao', 'anoModelo', 'cor', 'combustivel'] },
+  { titulo: 'Situação', campos: ['kmAtual', 'status', 'principal'] },
+];
+
+/** Campos de cada etapa do veículo. Também usados, todos juntos, na última etapa do cadastro de cliente. */
+export function CamposVeiculo({ form, etapa, veiculo }: { form: FormVeiculo; etapa: 0 | 1 | 2; veiculo?: Veiculo }) {
   const erros = form.formState.errors;
+  const sugestoes = useSugestoesVeiculo(form.watch('marca') ?? '');
+  const listaMarcas = useId();
+  const listaModelos = useId();
+  const placa = form.watch('placa') ?? '';
 
-  return (
-    <form className="grid gap-4 md:grid-cols-4" onSubmit={form.handleSubmit((d) => salvar.mutate(d))}>
-      <div className="md:col-span-4">
-        <Alerta>{salvar.isError && aplicarErrosDaApi(salvar.error, form.setError)}</Alerta>
-      </div>
-      <Campo rotulo="Placa" erro={erros.placa}>
-        <Input className="uppercase" autoFocus {...form.register('placa')} />
-      </Campo>
-      <Campo rotulo="Marca" erro={erros.marca}>
-        <Input {...form.register('marca')} />
-      </Campo>
-      <Campo rotulo="Modelo" erro={erros.modelo}>
-        <Input {...form.register('modelo')} />
-      </Campo>
-      <Campo rotulo="Ano" erro={erros.ano}>
-        <Input type="number" {...form.register('ano')} />
-      </Campo>
-      <Campo rotulo="Cor" erro={erros.cor}>
-        <Input {...form.register('cor')} />
-      </Campo>
-      <Campo rotulo="Km atual" erro={erros.kmAtual}>
-        <Input type="number" {...form.register('kmAtual')} />
-      </Campo>
-      <div className="md:col-span-2">
-        <Campo rotulo="Chassi" erro={erros.chassi}>
-          <Input className="uppercase" {...form.register('chassi')} />
+  if (etapa === 0) {
+    return (
+      <div className="grid gap-4 md:grid-cols-2">
+        <div className="md:col-span-2 flex flex-wrap items-end gap-4">
+          <div className="w-48">
+            <Campo rotulo="Placa *" erro={erros.placa}>
+              <Input className="uppercase" autoFocus placeholder="ABC1D23" maxLength={8} {...form.register('placa')} />
+            </Campo>
+          </div>
+          {placa.replace(/[^a-z0-9]/gi, '').length === 7 && <Placa placa={placa.replace(/[^a-z0-9]/gi, '').toUpperCase()} tamanho="lg" />}
+        </div>
+        <Campo rotulo="Chassi / VIN" dica="Opcional · 17 caracteres" erro={erros.chassi}>
+          <Input className="uppercase" maxLength={20} {...form.register('chassi')} />
+        </Campo>
+        <Campo rotulo="Renavam" dica="Opcional" erro={erros.renavam}>
+          <Input inputMode="numeric" maxLength={11} {...form.register('renavam')} />
         </Campo>
       </div>
-      <div className="flex gap-2 md:col-span-4">
-        <Botao type="submit" disabled={salvar.isPending}>
-          {salvar.isPending ? 'Salvando…' : 'Salvar veículo'}
-        </Botao>
-        <Botao type="button" variante="secundario" onClick={aoCancelar}>
-          Cancelar
-        </Botao>
+    );
+  }
+
+  if (etapa === 1) {
+    return (
+      <div className="grid gap-4 md:grid-cols-3">
+        <Campo rotulo="Marca *" erro={erros.marca}>
+          <Input list={listaMarcas} autoComplete="off" placeholder="Volkswagen, Toyota…" {...form.register('marca')} />
+          <datalist id={listaMarcas}>
+            {sugestoes.data?.marcas.map((m) => <option key={m} value={m} />)}
+          </datalist>
+        </Campo>
+        <Campo rotulo="Modelo *" erro={erros.modelo}>
+          <Input list={listaModelos} autoComplete="off" placeholder="Corolla, T-Cross…" {...form.register('modelo')} />
+          <datalist id={listaModelos}>
+            {sugestoes.data?.modelos.map((m) => <option key={m} value={m} />)}
+          </datalist>
+        </Campo>
+        <Campo rotulo="Versão" erro={erros.versao}>
+          <Input placeholder="XEi, Highline…" {...form.register('versao')} />
+        </Campo>
+        <Campo rotulo="Ano de fabricação *" erro={erros.anoFabricacao}>
+          <Input type="number" inputMode="numeric" placeholder="2020" {...form.register('anoFabricacao')} />
+        </Campo>
+        <Campo rotulo="Ano modelo *" erro={erros.anoModelo}>
+          <Input type="number" inputMode="numeric" placeholder="2021" {...form.register('anoModelo')} />
+        </Campo>
+        <Campo rotulo="Cor" erro={erros.cor}>
+          <Input {...form.register('cor')} />
+        </Campo>
+        <Campo rotulo="Combustível" erro={erros.combustivel}>
+          <Select {...form.register('combustivel')}>
+            <option value="">—</option>
+            {Object.entries(COMBUSTIVEIS).map(([valor, rotulo]) => (
+              <option key={valor} value={valor}>
+                {rotulo}
+              </option>
+            ))}
+          </Select>
+        </Campo>
       </div>
+    );
+  }
+
+  return (
+    <div className="grid gap-4 md:grid-cols-3">
+      <Campo rotulo="Quilometragem atual" dica="Opcional aqui; obrigatória na O.S." erro={erros.kmAtual}>
+        <Input type="number" inputMode="numeric" {...form.register('kmAtual')} />
+      </Campo>
+      <Campo rotulo="Status *" dica="Vendido/Inativo não recebe O.S. nova" erro={erros.status}>
+        <Select {...form.register('status')}>
+          {Object.entries(STATUS_VEICULO).map(([valor, rotulo]) => (
+            <option key={valor} value={valor}>
+              {rotulo}
+            </option>
+          ))}
+        </Select>
+      </Campo>
+      <div className="flex items-center md:pt-6">
+        <Marcador rotulo="Veículo principal do cliente" {...form.register('principal')} />
+      </div>
+      {veiculo && (
+        <div className="md:col-span-3">
+          <TextoSuave>Última visita: {veiculo.ultimaVisita ? formatarDataIso(veiculo.ultimaVisita) : 'será registrada automaticamente pela O.S.'}</TextoSuave>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Cadastro (em etapas) e edição de veículo de um cliente. */
+export function VeiculoForm({ clienteId, veiculo, aoSalvar, aoCancelar }: { clienteId: string; veiculo?: Veiculo; aoSalvar: (v: Veiculo) => void; aoCancelar: () => void }) {
+  const queryClient = useQueryClient();
+  const form = useFormVeiculo(veiculo);
+  const livre = !!veiculo;
+  const assistente = useAssistente(form, ETAPAS);
+  const salvar = useMutation({
+    mutationFn: (dados: VeiculoSaida) =>
+      api<Veiculo>(veiculo ? `/veiculos/${veiculo.id}` : '/veiculos', { method: veiculo ? 'PUT' : 'POST', body: veiculo ? dados : { ...dados, clienteId } }),
+    onSuccess: (salvo) => {
+      queryClient.invalidateQueries({ queryKey: ['veiculos'] });
+      queryClient.invalidateQueries({ queryKey: ['clientes'] });
+      queryClient.invalidateQueries({ queryKey: ['painel'] });
+      aoSalvar(salvo);
+    },
+  });
+  const enviar = form.handleSubmit((d) => salvar.mutate(d), assistente.aoInvalido);
+
+  return (
+    <form className="space-y-6" noValidate onSubmit={(e) => assistente.interceptarEnvio(e, livre) || enviar(e)}>
+      <Etapas titulos={ETAPAS.map((e) => e.titulo)} atual={assistente.etapa} aoIr={assistente.irPara} livre={livre} comErro={assistente.comErro} />
+      <Alerta>{salvar.isError && aplicarErrosDaApi(salvar.error, form.setError)}</Alerta>
+      <CamposVeiculo form={form} etapa={assistente.etapa as 0 | 1 | 2} veiculo={veiculo} />
+      <NavegacaoEtapas assistente={assistente} livre={livre} salvando={salvar.isPending} rotuloSalvar={veiculo ? 'Salvar alterações' : 'Cadastrar veículo'} aoCancelar={aoCancelar} />
     </form>
+  );
+}
+
+/** Botões do rodapé: Cancelar · Voltar · Continuar/Salvar (na edição, Salvar sempre visível). */
+export function NavegacaoEtapas({
+  assistente,
+  livre,
+  salvando,
+  rotuloSalvar,
+  aoCancelar,
+}: {
+  assistente: ReturnType<typeof useAssistente>;
+  livre: boolean;
+  salvando: boolean;
+  rotuloSalvar: string;
+  aoCancelar: () => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-borda pt-5">
+      <Botao type="button" variante="secundario" onClick={aoCancelar}>
+        Cancelar
+      </Botao>
+      <div className="flex flex-wrap gap-2">
+        {assistente.etapa > 0 && (
+          <Botao type="button" variante="secundario" onClick={assistente.voltar}>
+            <ArrowLeft className="mr-1 size-4" aria-hidden /> Voltar
+          </Botao>
+        )}
+        {!assistente.ultima && (
+          <Botao type="button" variante={livre ? 'secundario' : 'primario'} onClick={assistente.avancar}>
+            Continuar <ArrowRight className="ml-1 size-4" aria-hidden />
+          </Botao>
+        )}
+        {(livre || assistente.ultima) && (
+          <Botao type="submit" disabled={salvando}>
+            {salvando ? 'Salvando…' : rotuloSalvar}
+          </Botao>
+        )}
+      </div>
+    </div>
   );
 }

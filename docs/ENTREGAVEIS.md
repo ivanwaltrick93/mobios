@@ -17,9 +17,10 @@ Definição do dono do produto:
 | Perfil | Papel no sistema | O que faz |
 |---|---|---|
 | **Administrador** | `admin` | **Acesso a todas as funcionalidades**; configura o sistema e a equipe |
-| **Atendente** | `atendente` | **Venda de peças no balcão, abertura de O.S., solicitação de serviços e entrega do veículo** (e, para isso, cadastra clientes e veículos) |
+| **Atendente** | `atendente` | **Venda de peças no balcão, abertura de O.S., solicitação de serviços e entrega do veículo** (e, para isso, cadastra clientes e veículos); também **adiciona peças na O.S.** e **registra pagamentos** |
 | **Mecânico** | `mecanico` | **Diagnóstico do carro, observações sobre o serviço, solicitação de peças para troca e confirmação da execução do serviço**. Usa o sistema diretamente, de preferência em tablet ou celular na oficina |
-| **Financeiro** | `financeiro` | **Menu financeiro: faturamento, serviços em aberto e relatórios** |
+| **Almoxarife** | função padrão | **Adiciona as peças na O.S. aberta** (separa e dá baixa no estoque); consulta clientes, veículos, O.S. e estoque |
+| **Financeiro** | `financeiro` | **Menu financeiro: faturamento, serviços em aberto e relatórios**; **registra pagamentos** |
 | **Cliente final** | *sem login* | Aprovar orçamento, ser avisado quando o carro ficar pronto, receber o comprovante |
 | **Operador do SaaS** (você) | *super-admin* ⚪ | Cadastrar oficinas, planos, cobrança, suporte |
 
@@ -34,18 +35,24 @@ Definido pelo dono do produto: o admin configura em **Configurações → Funç�
 - **Desativar uma função** retira na hora o acesso que vinha dela; reativar devolve. Mudanças valem na hora, inclusive para quem está logado.
 - Limite conhecido do nível por módulo: quem pode *Editar* a O.S. faz todas as ações da O.S. (abrir, diagnosticar, confirmar execução, entregar).
 
+**Módulos da matriz:** Clientes e veículos · Ordem de Serviço · **Peças na O.S.** · Estoque · **Recebimentos** · Financeiro · Relatórios.
+Os módulos *Peças na O.S.* e *Recebimentos* existem para separar ações que, dentro da O.S., não devem ir para todos os que editam a O.S.: o mecânico edita a O.S. (diagnóstico, solicitar peças, execução), mas **não adiciona peças nem registra pagamento**.
+
 **Funções iniciais** de toda oficina (editáveis; `FUNCOES_PADRAO` em `packages/shared/src/acessos.ts`):
 
-| Função | Clientes e veículos | O.S. | Estoque | Financeiro | Relatórios |
-|---|---|---|---|---|---|
-| Administrador (fixo) | Editar | Editar | Editar | Editar | Consultar |
-| Atendente | Editar | Editar | Editar | — | — |
-| Mecânico | Consultar | Editar | Consultar | — | — |
-| Financeiro | Consultar | Consultar | — | Editar | Consultar |
+| Função | Clientes/veículos | O.S. | Peças na O.S. | Estoque | Recebimentos | Financeiro | Relatórios |
+|---|---|---|---|---|---|---|---|
+| Administrador (fixo) | Editar | Editar | Editar | Editar | Editar | Editar | Consultar |
+| Atendente | Editar | Editar | Editar | Editar | Editar | — | — |
+| Mecânico | Consultar | Editar | — | Consultar | — | — | — |
+| Almoxarife | Consultar | Consultar | Editar | Consultar | — | — | — |
+| Financeiro | Consultar | Consultar | — | — | Editar | Editar | Consultar |
+
+**Decisões do dono do produto (registro):**
+- **Peças:** o **Almoxarife** adiciona a peça **na O.S. aberta**; o **Atendente** também pode. O Mecânico só solicita. Entradas de compra no estoque ficam com quem tem *Editar* no Estoque (Atendente).
+- **Pagamento:** registrado pelo **Financeiro** ou pelo **Atendente**, tanto **na O.S.** (entrega) quanto **no módulo Financeiro** — sempre exigindo *Editar* em Recebimentos.
 
 Efeitos já implementados: menu e atalhos da página inicial seguem os níveis; o indicador "Faturado hoje" exige Financeiro ≥ Consultar; o relatório de Usuários é só do Administrador.
-
-> **Ainda a confirmar:** quem **atende a solicitação de peças** do mecânico (separa e dá baixa no estoque) — agora pode ser uma função "Almoxarife" criada pelo admin; e quem **registra o pagamento** na entrega.
 
 ## 2. Jornada do veículo na oficina
 
@@ -94,10 +101,10 @@ flowchart LR
 
 | Código | Entregável | Proposta |
 |---|---|---|
-| CAD-01 | Clientes PF/PJ com validação de CPF/CNPJ | ✅ |
-| CAD-02 | Endereço do cliente, com preenchimento automático pelo CEP | 🟢 |
+| CAD-01 | Clientes PF/PJ: CPF/CNPJ validado, RG/IE, nascimento e sexo (só PF), telefone e WhatsApp obrigatórios, e-mail, observações, cliente desde, origem, tipo de relacionamento, status Ativo/Inativo | ✅ |
+| CAD-02 | Endereços do cliente (ao menos um, um principal), com preenchimento pelo CEP (ViaCEP); na PJ, cada endereço pode ser também de faturamento, entrega e/ou cobrança | ✅ |
 | CAD-03 | Vários contatos por cliente (ex.: frota de empresa: quem aprova, quem busca o carro) | 🟡 |
-| CAD-04 | Veículos com placa antiga/Mercosul, km, chassi | ✅ |
+| CAD-04 | Veículos: placa antiga/Mercosul, chassi/VIN (opcional, 17 caracteres) e Renavam validados quando informados, marca/modelo com sugestões da própria oficina, versão, ano fabricação/modelo, cor, combustível, km, veículo principal, status Ativo/Vendido/Inativo, data da última visita (preenchida pela O.S.) | ✅ |
 | CAD-05 | Marca e modelo por lista padronizada (tabela FIPE) em vez de texto livre | 🟡 |
 | CAD-06 | Histórico do veículo: todas as O.S., km a cada visita, peças trocadas | 🟢 (chega com OS) |
 | CAD-07 | **Catálogo de serviços** (mão de obra): descrição, tempo padrão, preço | 🟢 |
@@ -105,15 +112,22 @@ flowchart LR
 | CAD-09 | Fornecedores | 🟢 |
 | CAD-10 | Mecânicos: especialidade e % de comissão | 🟢 |
 | CAD-11 | Formas de pagamento e taxas (ex.: crédito 3,5%, prazo de recebimento) | 🟢 |
-| CAD-12 | Transferir veículo de um cliente para outro (venda do carro) | 🟡 |
+| CAD-12 | Transferir veículo de um cliente para outro (venda do carro), levando o histórico | ✅ |
 | CAD-13 | Importar clientes e veículos de planilha (migração de outro sistema) | 🟡 |
+| CAD-14 | Listas editáveis por oficina: origem do cliente e tipo de relacionamento (Configurações → Cadastros) | ✅ |
+
+**Regras do cadastro, decididas pelo dono do produto em 22/09/2026:**
+- Placa (obrigatória) e chassi (opcional) são únicos na oficina. Na venda para outro cliente, o veículo é **transferido** (CAD-12) e não recadastrado. As O.S. guardam o cliente da época, então o histórico do ex-dono continua com ele.
+- **Cliente Inativo ou veículo Vendido/Inativo não recebe O.S. nova**, mas continua na busca e no histórico. Para atender de novo, basta reativar. Aplicar em OS-02.
+- **Cadastro incompleto:** clientes e veículos anteriores a estas regras continuam válidos, marcados como "cadastro incompleto" com o que falta. **A O.S. só pode ser aberta depois de completar o cadastro** (aplicar em OS-02). A página inicial avisa quantos existem.
+- A quilometragem é opcional no cadastro do veículo e **obrigatória na O.S.** (OS-02). A data da última visita é gravada pela O.S.
 
 ### OS — Ordem de Serviço (núcleo do produto)
 
 | Código | Entregável | Proposta |
 |---|---|---|
 | OS-01 | Numeração sequencial por oficina, sem buracos | 🟢 |
-| OS-02 | Abertura rápida: cliente + veículo + km de entrada + relato do cliente | 🟢 |
+| OS-02 | Abertura rápida: cliente + veículo + km de entrada (obrigatório) + relato do cliente. Bloqueia cliente inativo, veículo vendido/inativo e cadastro incompleto; atualiza km atual e última visita do veículo | 🟢 |
 | OS-03 | **Checklist de entrada**: itens (estepe, macaco, som…), nível de combustível, avarias | 🟢 |
 | OS-04 | **Fotos do veículo** na entrada (avarias) e durante o serviço | 🟢 |
 | OS-05 | Diagnóstico técnico e **observações do mecânico** sobre o serviço | 🟢 |
@@ -132,7 +146,7 @@ flowchart LR
 | OS-18 | **Tela do mecânico** otimizada para tablet/celular: suas O.S., diagnóstico, solicitar peças, confirmar execução | 🟢 (o mecânico usa o sistema diretamente) |
 | OS-19 | Assinatura digital do cliente na tela (aprovação/entrega) | ⚪ |
 | OS-20 | Pacotes de serviço (ex.: "Revisão 10.000 km" = serviços + peças pré-definidos) | 🟡 |
-| OS-21 | **Solicitação de peças pelo mecânico**: pede a peça na O.S.; o atendente separa e dá baixa no estoque (peça sem estoque vira pendência de compra e status "aguardando peça") | 🟢 |
+| OS-21 | **Solicitação de peças pelo mecânico**: pede a peça na O.S.; o **almoxarife ou o atendente** adiciona a peça na O.S. aberta, com baixa no estoque (módulo *Peças na O.S.*); peça sem estoque vira pendência de compra e status "aguardando peça" | 🟢 |
 | OS-22 | **Confirmação de execução por serviço** pelo mecânico (quem e quando); a O.S. só pode ser concluída com todos os serviços aprovados confirmados | 🟢 |
 
 ### EST — Estoque
@@ -155,7 +169,7 @@ flowchart LR
 | Código | Entregável | Proposta |
 |---|---|---|
 | FIN-01 | Conta a receber gerada automaticamente ao concluir/faturar a O.S. | 🟢 |
-| FIN-02 | **Registro de pagamentos**: Pix, crédito, débito, dinheiro, boleto, transferência; parcelado; vários meios na mesma O.S. | 🟢 |
+| FIN-02 | **Registro de pagamentos**: Pix, crédito, débito, dinheiro, boleto, transferência; parcelado; vários meios na mesma O.S. Feito pelo **Financeiro ou Atendente**, na O.S. (entrega) ou no Financeiro (módulo *Recebimentos*) | 🟢 |
 | FIN-03 | Recibo/comprovante de pagamento | 🟢 |
 | FIN-04 | Contas a pagar: fornecedores e despesas fixas (aluguel, energia) | 🟢 |
 | FIN-05 | **Caixa diário**: abertura, entradas, saídas, sangria, fechamento com conferência | 🟢 |

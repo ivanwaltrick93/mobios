@@ -21,14 +21,20 @@ export const painelRoutes: FastifyPluginAsyncZod = async (app) => {
         .select({
           total: count(),
           hoje: sql<number>`count(*) filter (where ${hoje(clientes.criadoEm)})`.mapWith(Number),
-          semTelefone: sql<number>`count(*) filter (where ${clientes.telefone} is null)`.mapWith(Number),
+          // Faltando campo obrigatório (cadastros antigos): não poderão abrir O.S. até serem completados.
+          incompletos: sql<number>`count(*) filter (where ${clientes.cpfCnpj} is null or ${clientes.telefone} is null or ${clientes.whatsapp} is null
+            or not exists (select 1 from cliente_enderecos e where e.cliente_id = "clientes"."id"))`.mapWith(Number),
           // Correlação escrita à mão: dentro da subconsulta o Drizzle não qualifica as colunas
           // e "id" seria o do veículo, não o do cliente.
           semVeiculo: sql<number>`count(*) filter (where not exists (select 1 from veiculos v where v.cliente_id = "clientes"."id"))`.mapWith(Number),
         })
         .from(clientes);
       const [v] = await tx
-        .select({ total: count(), hoje: sql<number>`count(*) filter (where ${hoje(veiculos.criadoEm)})`.mapWith(Number) })
+        .select({
+          total: count(),
+          hoje: sql<number>`count(*) filter (where ${hoje(veiculos.criadoEm)})`.mapWith(Number),
+          incompletos: sql<number>`count(*) filter (where ${veiculos.anoFabricacao} is null or ${veiculos.anoModelo} is null)`.mapWith(Number),
+        })
         .from(veiculos);
 
       const indicadores: Indicador[] = [
@@ -42,8 +48,11 @@ export const painelRoutes: FastifyPluginAsyncZod = async (app) => {
       ];
 
       const alertas: AlertaPainel[] = [];
-      if (c!.semTelefone > 0) {
-        alertas.push({ nivel: 'aviso', mensagem: `${c!.semTelefone} cliente(s) sem telefone: não será possível avisar quando o veículo ficar pronto.`, link: '/clientes' });
+      if (c!.incompletos > 0) {
+        alertas.push({ nivel: 'aviso', mensagem: `${c!.incompletos} cliente(s) com cadastro incompleto: complete antes de abrir O.S.`, link: '/clientes' });
+      }
+      if (v!.incompletos > 0) {
+        alertas.push({ nivel: 'aviso', mensagem: `${v!.incompletos} veículo(s) com cadastro incompleto (ano de fabricação ou modelo): complete antes de abrir O.S.`, link: '/clientes' });
       }
       if (c!.semVeiculo > 0) {
         alertas.push({ nivel: 'info', mensagem: `${c!.semVeiculo} cliente(s) sem veículo cadastrado.`, link: '/clientes' });
