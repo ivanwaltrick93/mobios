@@ -1,6 +1,6 @@
 # MobiOS — convenções
 
-Leia `docs/ARQUITETURA.md` antes de mudanças estruturais.
+Leia `docs/ARQUITETURA.md` antes de mudanças estruturais. Escopo e prioridades de cada módulo: `docs/ENTREGAVEIS.md` (cite os códigos, ex.: OS-05).
 
 ## Multi-tenancy (não negociável)
 - Toda tabela de negócio tem `tenantId: tenantId()` e `isolamentoPorTenant('<tabela>')` em `apps/api/src/db/schema.ts`.

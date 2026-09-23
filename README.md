@@ -2,7 +2,9 @@
 
 Gestão de Ordens de Serviço para oficinas mecânicas. Web, multi-tenant (SaaS) e open core.
 
+- Mapa de entregáveis (escopo e prioridades): [docs/ENTREGAVEIS.md](docs/ENTREGAVEIS.md)
 - Arquitetura e decisões: [docs/ARQUITETURA.md](docs/ARQUITETURA.md)
+- Style guide: [docs/STYLE_GUIDE.md](docs/STYLE_GUIDE.md)
 - Licença: núcleo AGPL-3.0-or-later ([LICENSE](LICENSE)); `ee/` sob licença comercial
 
 ## Requisitos
