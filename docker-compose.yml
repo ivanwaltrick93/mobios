@@ -1,0 +1,69 @@
+# Tudo:            docker compose up -d --build   → http://localhost:8080
+# Só o banco (dev): docker compose up -d db        → e rode `pnpm dev` na máquina
+name: mobios
+
+x-api-image: &api-image
+  image: mobios/api:local
+  build:
+    context: .
+    dockerfile: apps/api/Dockerfile
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: mobios
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mobios}
+      POSTGRES_DB: mobios
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:-mobios_app}
+    ports:
+      # Só na própria máquina, para o `pnpm dev` e ferramentas de banco.
+      - "127.0.0.1:${DB_PORT:-5432}:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ./infra/db/init.sh:/docker-entrypoint-initdb.d/01-init.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mobios -d mobios"]
+      interval: 5s
+      retries: 10
+
+  # Aplica as migrações e termina; a API só sobe depois que ele concluir com sucesso.
+  migrate:
+    <<: *api-image
+    command: ["node", "dist/db/migrate.js"]
+    environment:
+      DATABASE_MIGRATION_URL: postgres://mobios:${POSTGRES_PASSWORD:-mobios}@db:5432/mobios
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    <<: *api-image
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3333
+      DATABASE_URL: postgres://mobios_app:${APP_DB_PASSWORD:-mobios_app}@db:5432/mobios
+      JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET no arquivo .env}
+      # false enquanto o acesso for por http://localhost; true quando houver HTTPS.
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    image: mobios/web:local
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  db-data:

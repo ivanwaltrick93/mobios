@@ -1,0 +1,19 @@
+# Para HTTPS em produção, troque ":80" pelo domínio (ex.: app.mobios.com.br):
+# o Caddy emite e renova o certificado Let's Encrypt automaticamente.
+:80 {
+	encode zstd gzip
+
+	handle /api/* {
+		reverse_proxy {$API_UPSTREAM:api:3333}
+	}
+
+	handle {
+		root * /srv
+		# SPA: rotas do React Router caem no index.html.
+		try_files {path} /index.html
+		file_server
+	}
+
+	@assets path /assets/*
+	header @assets Cache-Control "public, max-age=31536000, immutable"
+}

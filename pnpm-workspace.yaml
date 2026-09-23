@@ -1,0 +1,7 @@
+packages:
+  - apps/*
+  - packages/*
+
+# pnpm só roda scripts de instalação de pacotes explicitamente aprovados.
+allowBuilds:
+  esbuild: true

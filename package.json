@@ -1,0 +1,17 @@
+{
+  "name": "mobios",
+  "private": true,
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter @mobios/api --filter @mobios/web dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "db:generate": "pnpm --filter @mobios/api db:generate",
+    "db:migrate": "pnpm --filter @mobios/api db:migrate"
+  }
+}
