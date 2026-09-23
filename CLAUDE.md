@@ -12,7 +12,7 @@ Leia `docs/ARQUITETURA.md` antes de mudanças estruturais. Escopo e prioridades 
 ## Banco de dados
 - Toda tabela tem PK `id uuid` (`uuid().primaryKey().defaultRandom()`), chave natural com índice único quando existir, e índice em toda FK e em colunas de filtro/ordenação frequentes.
 - Nunca selecione `senha_hash` fora do login. Usuários não são excluídos: `ativo = false`.
-- Rotas restritas: `app.addHook('onRequest', app.autenticar)` e depois `app.exigirPapel('admin', ...)`.
+- Acesso: funções configuráveis por oficina, com nível por módulo (`packages/shared/src/acessos.ts`, `docs/ENTREGAVEIS.md` §1.1). API: `app.autenticar` e depois `app.exigirAcesso('modulo', 'editar')` ou `app.exigirAdmin`; tela: `usePode()('modulo', 'editar')` / `useAdmin()`. Módulo novo: acrescente em `MODULOS` e no enum `modulo` (migração). Nunca compare nomes de função no código.
 
 ## Escalabilidade horizontal (não negociável)
 A API deve funcionar com N réplicas atrás de um balanceador (futuro Kubernetes + HPA). Detalhes em `docs/ARQUITETURA.md` §9.

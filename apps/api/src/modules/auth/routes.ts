@@ -1,26 +1,34 @@
 import { hash, verify } from '@node-rs/argon2';
-import { loginSchema, sessaoSchema, type Papel, type Sessao } from '@mobios/shared';
+import { loginSchema, sessaoSchema, type Sessao } from '@mobios/shared';
 import { eq, sql } from 'drizzle-orm';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { db, withTenant } from '../../db/client.js';
-import { tenants, users } from '../../db/schema.js';
+import { tenants, usuarioFotos, users } from '../../db/schema.js';
+import { carregarAcesso } from '../../lib/acessos.js';
 import { ErroHttp } from '../../lib/erros.js';
 import { lerTema, lerVersaoLogo } from '../../lib/marca.js';
+import { versaoFoto } from '../fotos/routes.js';
 
 // Hash fixo usado quando o e-mail não existe, para o tempo de resposta não revelar contas cadastradas.
 const HASH_FALSO = await hash('senha-inexistente');
 
-type Credencial = { id: string; tenant_id: string; senha_hash: string; papel: Papel; ativo: boolean };
+type Credencial = { id: string; tenant_id: string; senha_hash: string; ativo: boolean };
 
 async function carregarSessao(userId: string, tenantId: string): Promise<Sessao | undefined> {
   return withTenant(tenantId, async (tx) => {
     const [linha] = await tx
-      .select({ usuario: { id: users.id, nome: users.nome, email: users.email, papel: users.papel }, oficina: { id: tenants.id, nome: tenants.nome } })
+      .select({ usuario: { id: users.id, nome: users.nome, email: users.email }, oficina: { id: tenants.id, nome: tenants.nome }, fotoEm: usuarioFotos.atualizadoEm })
       .from(users)
       .innerJoin(tenants, eq(tenants.id, users.tenantId))
+      .leftJoin(usuarioFotos, eq(usuarioFotos.usuarioId, users.id))
       .where(eq(users.id, userId));
-    if (!linha) return undefined;
-    return { usuario: linha.usuario, oficina: { ...linha.oficina, tema: await lerTema(tx), logoVersao: await lerVersaoLogo(tx) } };
+    const acesso = await carregarAcesso(tx, userId);
+    if (!linha || !acesso) return undefined;
+    return {
+      usuario: { ...linha.usuario, fotoVersao: versaoFoto(linha.fotoEm), admin: acesso.admin, funcoes: acesso.funcoes },
+      acessos: acesso.acessos,
+      oficina: { ...linha.oficina, tema: await lerTema(tx), logoVersao: await lerVersaoLogo(tx) },
+    };
   });
 }
 

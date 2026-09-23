@@ -74,6 +74,7 @@ Em [`components/ui.tsx`](../apps/web/src/components/ui.tsx). Use-os em vez de re
 | `Selo` (`sucesso` / `neutro` / `primario`) | Status curtos |
 | `Tabela`, `Cabecalho`, `Th`, `Linha`, `Td`, `LinhaVazia` | Listagens |
 | `TextoSuave` | Texto secundário |
+| `Avatar` (`sm` / `md` / `lg`) | Foto do usuário em círculo; sem foto, iniciais na cor principal |
 
 ## Regras
 

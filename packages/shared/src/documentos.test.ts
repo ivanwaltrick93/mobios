@@ -36,3 +36,25 @@ describe('veiculoInputSchema', async () => {
     expect(veiculoInputSchema.safeParse({ ...base, ano: '1800' }).success).toBe(false);
   });
 });
+
+describe('acessos', async () => {
+  const { combinarAcessos, temAcesso, SEM_ACESSO, funcaoInputSchema } = await import('./acessos.js');
+
+  it('combina funções pelo maior nível de cada módulo', () => {
+    const a = combinarAcessos([{ clientes: 'consultar', os: 'editar' }, { clientes: 'editar', relatorios: 'consultar' }]);
+    expect(a).toEqual({ ...SEM_ACESSO, clientes: 'editar', os: 'editar', relatorios: 'consultar' });
+    expect(combinarAcessos([])).toEqual(SEM_ACESSO);
+  });
+
+  it('editar inclui consultar', () => {
+    const a = { ...SEM_ACESSO, clientes: 'editar' as const, os: 'consultar' as const };
+    expect(temAcesso(a, 'clientes', 'consultar')).toBe(true);
+    expect(temAcesso(a, 'os', 'editar')).toBe(false);
+    expect(temAcesso(a, 'financeiro')).toBe(false);
+  });
+
+  it('recusa nível que o módulo não tem', () => {
+    const r = funcaoInputSchema.safeParse({ nome: 'Teste', ativa: true, acessos: { ...SEM_ACESSO, relatorios: 'editar' } });
+    expect(r.success).toBe(false);
+  });
+});

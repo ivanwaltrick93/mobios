@@ -1,4 +1,4 @@
-import type { AlertaPainel, Indicador, Painel } from '@mobios/shared';
+import { temAcesso, type AlertaPainel, type Indicador, type Painel } from '@mobios/shared';
 import { count, sql } from 'drizzle-orm';
 import type { PgColumn } from 'drizzle-orm/pg-core';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
@@ -33,14 +33,17 @@ export const painelRoutes: FastifyPluginAsyncZod = async (app) => {
 
       const indicadores: Indicador[] = [
         { id: 'os_abertas', titulo: 'O.S. em aberto', valor: null, formato: 'numero', detalhe: 'Disponível com o módulo de O.S.' },
-        { id: 'faturado_hoje', titulo: 'Faturado hoje', valor: null, formato: 'moeda', detalhe: 'Disponível com o módulo Financeiro' },
+        // Faturamento só para quem acessa o financeiro.
+        ...(temAcesso(req.user.acessos, 'financeiro')
+          ? [{ id: 'faturado_hoje', titulo: 'Faturado hoje', valor: null, formato: 'moeda', detalhe: 'Disponível com o módulo Financeiro' } as const]
+          : []),
         { id: 'clientes', titulo: 'Clientes', valor: c!.total, formato: 'numero', detalhe: `${c!.hoje} cadastrado(s) hoje`, link: '/clientes' },
         { id: 'veiculos', titulo: 'Veículos', valor: v!.total, formato: 'numero', detalhe: `${v!.hoje} cadastrado(s) hoje`, link: '/clientes' },
       ];
 
       const alertas: AlertaPainel[] = [];
       if (c!.semTelefone > 0) {
-        alertas.push({ nivel: 'aviso', mensagem: `${c!.semTelefone} cliente(s) sem telefone: não será possível avisar quando o veículo ficar pronto.`, link: '/relatorios' });
+        alertas.push({ nivel: 'aviso', mensagem: `${c!.semTelefone} cliente(s) sem telefone: não será possível avisar quando o veículo ficar pronto.`, link: '/clientes' });
       }
       if (c!.semVeiculo > 0) {
         alertas.push({ nivel: 'info', mensagem: `${c!.semVeiculo} cliente(s) sem veículo cadastrado.`, link: '/clientes' });

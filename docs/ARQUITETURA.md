@@ -112,8 +112,11 @@ tenants (id, nome, cnpj, plano, criado_em)
 tenant_aparencia (tenant_id [PK/FK], cor_primaria?, cor_menu?, cor_botao_primario?, cor_botao_primario_texto?,
                   cor_botao_secundario?, cor_botao_secundario_texto?)   -- style guide da oficina
 tenant_logos (tenant_id [PK/FK], conteudo bytea, tipo, tamanho, atualizado_em)   -- logo, até 1 MB, no próprio banco
-users (id, tenant_id, nome, email [único global], senha_hash, papel, ativo)
-    papel: admin | atendente | mecanico | financeiro
+users (id, tenant_id, nome, email [único global], senha_hash, ativo)
+funcoes (id, tenant_id, nome [único por oficina, sem diferenciar maiúsculas], admin [uma por oficina], ativa)
+funcao_permissoes (funcao_id + modulo [PK], tenant_id, nivel consultar|editar)   -- ausente = sem acesso
+usuario_funcoes (usuario_id + funcao_id [PK], tenant_id)                          -- várias funções por usuário
+usuario_fotos (usuario_id [PK/FK], tenant_id, conteudo bytea, tipo, tamanho)     -- foto opcional, reduzida no navegador
 
 clientes (id, tenant_id, tipo PF|PJ, nome, cpf_cnpj, telefone, email, endereco jsonb, observacoes)
 veiculos (id, tenant_id, cliente_id, placa, marca, modelo, ano, cor, chassi, km_atual)
@@ -152,7 +155,7 @@ contadores (tenant_id, chave, valor)  -- numeração sequencial de O.S. sem bura
 ## 6. Segurança e LGPD
 
 - **Sem cadastro público.** Na primeira instalação (banco sem usuários), o serviço `migrate` cria a oficina e o **admin inicial** a partir de `ADMIN_EMAIL`/`ADMIN_SENHA` do `.env`. Só o admin cadastra usuários.
-- **Funções = permissões:** `admin` (gerencia usuários e tudo mais), `atendente`, `mecanico`, `financeiro`. Checadas na rota com `app.exigirPapel(...)`.
+- **Funções configuráveis** (`docs/ENTREGAVEIS.md` §1.1): nível por módulo, várias funções por usuário (vale o maior nível). Na API, `app.exigirAcesso('modulo', 'editar')` ou `app.exigirAdmin`; o acesso efetivo é recalculado do banco a cada requisição.
 - **Usuários não são excluídos, só desativados** (preserva o histórico de quem fez o quê). O admin não pode rebaixar nem desativar a própria conta.
 - Senhas com Argon2id (8 a 128 caracteres; o hash nunca sai da API). Login com tempo constante, sem revelar se o e-mail existe.
 - JWT de 12 h em cookie `httpOnly`, `SameSite=Lax`, `Secure` com HTTPS. O token só identifica o usuário: **papel e status são lidos do banco a cada requisição** (consulta pela PK), então desativar ou trocar a função vale na hora.
@@ -227,6 +230,7 @@ Kubernetes **não** faz parte do MVP: a carga de uma oficina é baixa e uma VPS 
 | **0.1c** ✅ | Logo da oficina (upload pelo admin, salvo no banco) |
 | **0.1d** ✅ | Página inicial: atalhos do balcão (novo cliente, novo veículo, O.S., estoque, relatórios), indicadores e alertas vindos do banco (`GET /api/painel`); indicadores de módulos futuros aparecem como "em breve", nunca com número inventado |
 | **0.1e** ✅ | Style guide configurável: botões principal/secundário (fundo e texto), aviso de contraste; tela de login com a marca da oficina (`/api/publico/*`) |
+| **0.1f** ✅ | Funções e permissões configuráveis pelo admin (nível por módulo, várias funções por usuário) |
 | **0.2** | Rate limit no login (no Postgres, pela regra §9.2) e "alterar minha senha" antes de qualquer deploy público |
 | **1 — O.S.** | Abertura, itens (serviço/peça), orçamento, aprovação, status, checklist de entrada, PDF da O.S. |
 | **2 — Estoque** | Peças, fornecedores, entradas, baixa automática pela O.S., alerta de estoque mínimo |

@@ -7,9 +7,11 @@ import './index.css';
 import { ClienteDetalhe } from './pages/ClienteDetalhe';
 import { Clientes } from './pages/Clientes';
 import { EmBreve } from './pages/EmBreve';
+import { Funcoes } from './pages/Funcoes';
 import { Inicio } from './pages/Inicio';
 import { NovoCliente } from './pages/NovoCliente';
 import { NovoVeiculo } from './pages/NovoVeiculo';
+import { Perfil } from './pages/Perfil';
 import { Entrar } from './pages/Entrar';
 import { Configuracoes } from './pages/Configuracoes';
 import { Relatorios } from './pages/Relatorios';
@@ -32,7 +34,9 @@ const router = createBrowserRouter([
       { path: '/financeiro', element: <EmBreve titulo="Financeiro" /> },
       { path: '/relatorios', element: <Relatorios /> },
       { path: '/usuarios', element: <Usuarios /> },
+      { path: '/perfil', element: <Perfil /> },
       { path: '/configuracoes', element: <Configuracoes /> },
+      { path: '/configuracoes/funcoes', element: <Funcoes /> },
     ],
   },
 ]);

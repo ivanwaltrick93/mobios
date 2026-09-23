@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { Botao, Cabecalho, Cartao, Input, Linha, LinhaVazia, Tabela, Td, TextoSuave, Th, Titulo } from '../components/ui';
 import { api } from '../lib/api';
+import { usePode } from '../lib/sessao';
 import { ClienteForm } from './ClienteForm';
 
 export function Clientes() {
@@ -11,6 +12,7 @@ export function Clientes() {
   const queryClient = useQueryClient();
   const [busca, setBusca] = useState('');
   const [novo, setNovo] = useState(false);
+  const podeEditar = usePode()('clientes', 'editar');
   const clientes = useQuery({
     queryKey: ['clientes', busca],
     queryFn: () => api<{ itens: Cliente[]; total: number }>(`/clientes?${new URLSearchParams({ q: busca })}`),
@@ -19,7 +21,7 @@ export function Clientes() {
 
   return (
     <div className="space-y-6">
-      <Titulo acao={!novo && <Botao onClick={() => setNovo(true)}>Novo cliente</Botao>}>Clientes</Titulo>
+      <Titulo acao={podeEditar && !novo && <Botao onClick={() => setNovo(true)}>Novo cliente</Botao>}>Clientes</Titulo>
 
       {novo && (
         <Cartao>

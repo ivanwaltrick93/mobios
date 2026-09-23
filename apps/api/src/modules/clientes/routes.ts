@@ -20,6 +20,8 @@ const colunas = {
 // O tenant_id não aparece em nenhum filtro abaixo: quem garante o isolamento é o RLS via withTenant().
 export const clientesRoutes: FastifyPluginAsyncZod = async (app) => {
   app.addHook('onRequest', app.autenticar);
+  app.addHook('onRequest', app.exigirAcesso('clientes'));
+  const editar = { onRequest: app.exigirAcesso('clientes', 'editar') };
 
   app.get(
     '/',
@@ -41,12 +43,12 @@ export const clientesRoutes: FastifyPluginAsyncZod = async (app) => {
     return cliente;
   });
 
-  app.post('/', { schema: { body: clienteInputSchema, response: { 201: clienteSchema } } }, async (req, reply) => {
+  app.post('/', { ...editar, schema: { body: clienteInputSchema, response: { 201: clienteSchema } } }, async (req, reply) => {
     const [cliente] = await withTenant(req.user.tid, (tx) => tx.insert(clientes).values(req.body).returning(colunas));
     return reply.code(201).send(cliente!);
   });
 
-  app.put('/:id', { schema: { params: idParamSchema, body: clienteInputSchema, response: { 200: clienteSchema } } }, async (req) => {
+  app.put('/:id', { ...editar, schema: { params: idParamSchema, body: clienteInputSchema, response: { 200: clienteSchema } } }, async (req) => {
     const [cliente] = await withTenant(req.user.tid, (tx) =>
       tx.update(clientes).set(req.body).where(eq(clientes.id, req.params.id)).returning(colunas),
     );
@@ -54,7 +56,7 @@ export const clientesRoutes: FastifyPluginAsyncZod = async (app) => {
     return cliente;
   });
 
-  app.delete('/:id', { schema: { params: idParamSchema } }, async (req, reply) => {
+  app.delete('/:id', { ...editar, schema: { params: idParamSchema } }, async (req, reply) => {
     const removidos = await withTenant(req.user.tid, (tx) => tx.delete(clientes).where(eq(clientes.id, req.params.id)).returning({ id: clientes.id }));
     if (removidos.length === 0) throw naoEncontrado('Cliente');
     return reply.code(204).send();

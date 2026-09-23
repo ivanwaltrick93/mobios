@@ -1,20 +1,20 @@
-import { formatarMoeda, type Indicador, type Painel, type Papel } from '@mobios/shared';
+import { formatarMoeda, type Indicador, type ModuloId, type Nivel, type Painel } from '@mobios/shared';
 import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, ArrowRight, CarFront, ClipboardPlus, FileBarChart, Info, Package, UserPlus, type LucideIcon } from 'lucide-react';
 import { Link } from 'react-router';
 import { Alerta, Cartao, Selo, TextoSuave } from '../components/ui';
 import { api } from '../lib/api';
-import { useSessao } from '../lib/sessao';
+import { usePode, useSessao } from '../lib/sessao';
 
-type Atalho = { para: string; rotulo: string; descricao: string; icone: LucideIcon; emBreve?: boolean; papeis?: Papel[] };
+type Atalho = { para: string; rotulo: string; descricao: string; icone: LucideIcon; emBreve?: boolean; modulo: ModuloId; nivel: Nivel };
 
 // Ações mais frequentes do balcão, em botões grandes (fáceis de tocar em tablet).
 const atalhos: Atalho[] = [
-  { para: '/clientes/novo', rotulo: 'Novo cliente', descricao: 'Cadastrar pessoa ou empresa', icone: UserPlus },
-  { para: '/veiculos/novo', rotulo: 'Novo veículo', descricao: 'Vincular a um cliente', icone: CarFront },
-  { para: '/os', rotulo: 'Abrir O.S.', descricao: 'Nova ordem de serviço', icone: ClipboardPlus, emBreve: true },
-  { para: '/estoque', rotulo: 'Estoque', descricao: 'Peças e quantidades', icone: Package, emBreve: true },
-  { para: '/relatorios', rotulo: 'Relatórios', descricao: 'Extrair em CSV/Excel', icone: FileBarChart, papeis: ['admin', 'atendente', 'financeiro'] },
+  { para: '/clientes/novo', rotulo: 'Novo cliente', descricao: 'Cadastrar pessoa ou empresa', icone: UserPlus, modulo: 'clientes', nivel: 'editar' },
+  { para: '/veiculos/novo', rotulo: 'Novo veículo', descricao: 'Vincular a um cliente', icone: CarFront, modulo: 'clientes', nivel: 'editar' },
+  { para: '/os', rotulo: 'Abrir O.S.', descricao: 'Nova ordem de serviço', icone: ClipboardPlus, emBreve: true, modulo: 'os', nivel: 'editar' },
+  { para: '/estoque', rotulo: 'Estoque', descricao: 'Peças e quantidades', icone: Package, emBreve: true, modulo: 'estoque', nivel: 'consultar' },
+  { para: '/relatorios', rotulo: 'Relatórios', descricao: 'Extrair em CSV/Excel', icone: FileBarChart, modulo: 'relatorios', nivel: 'consultar' },
 ];
 
 function saudacao() {
@@ -41,7 +41,7 @@ function CartaoIndicador({ indicador }: { indicador: Indicador }) {
 export function Inicio() {
   const sessao = useSessao();
   const painel = useQuery({ queryKey: ['painel'], queryFn: () => api<Painel>('/painel'), refetchInterval: 60_000 });
-  const papel = sessao.data?.usuario.papel;
+  const pode = usePode();
 
   return (
     <div className="space-y-8">
@@ -54,7 +54,7 @@ export function Inicio() {
 
       <section aria-label="Atalhos" className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         {atalhos
-          .filter((a) => !a.papeis || (papel && a.papeis.includes(papel)))
+          .filter((a) => pode(a.modulo, a.nivel))
           .map(({ para, rotulo, descricao, icone: Icone, emBreve }) => (
             <Link
               key={para}

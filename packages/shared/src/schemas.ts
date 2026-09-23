@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { acessosSchema, funcaoResumoSchema } from './acessos.js';
 import { cnpjValido, cpfValido, normalizarPlaca, placaValida, somenteDigitos } from './documentos.js';
 
 // Mensagens padrão do Zod em português, no front e no back.
@@ -11,16 +12,6 @@ const textoOpcional = z
   .nullish();
 
 // ---------- Auth e usuários ----------
-
-export const papelSchema = z.enum(['admin', 'atendente', 'mecanico', 'financeiro']);
-export type Papel = z.infer<typeof papelSchema>;
-
-export const nomesPapel: Record<Papel, string> = {
-  admin: 'Administrador',
-  atendente: 'Atendente',
-  mecanico: 'Mecânico',
-  financeiro: 'Financeiro',
-};
 
 // Normaliza antes de validar: e-mails colados costumam vir com espaços ou maiúsculas.
 const emailSchema = z.string().trim().toLowerCase().pipe(z.email('E-mail inválido'));
@@ -76,12 +67,14 @@ export const aparenciaPublicaSchema = z.object({
 });
 export type AparenciaPublica = z.infer<typeof aparenciaPublicaSchema>;
 
-// SVG fica de fora: pode conter scripts.
-export const LOGO_TIPOS = ['image/png', 'image/jpeg', 'image/webp'] as const;
-export const LOGO_TAMANHO_MAXIMO = 1024 * 1024; // 1 MB
+// Imagens enviadas (logo da oficina, fotos da equipe). SVG fica de fora: pode conter scripts.
+export const IMAGEM_TIPOS = ['image/png', 'image/jpeg', 'image/webp'] as const;
+export const IMAGEM_TAMANHO_MAXIMO = 1024 * 1024; // 1 MB
 
 export const sessaoSchema = z.object({
-  usuario: z.object({ id: z.uuid(), nome: z.string(), email: z.string(), papel: papelSchema }),
+  usuario: z.object({ id: z.uuid(), nome: z.string(), email: z.string(), fotoVersao: z.string().nullable(), admin: z.boolean(), funcoes: z.array(funcaoResumoSchema) }),
+  /** Nível efetivo por módulo (maior entre as funções ativas; tudo, para o admin). */
+  acessos: acessosSchema,
   // logoVersao: null = sem logo; senão, muda a cada troca (usado na URL para renovar o cache).
   oficina: z.object({ id: z.uuid(), nome: z.string(), tema: temaSchema, logoVersao: z.string().nullable() }),
 });
@@ -91,16 +84,21 @@ export const usuarioSchema = z.object({
   id: z.uuid(),
   nome: z.string(),
   email: z.string(),
-  papel: papelSchema,
+  /** null = sem foto; senão, muda a cada troca (renova o cache). */
+  fotoVersao: z.string().nullable(),
+  /** Inclui funções desativadas (sem efeito até serem reativadas), para o admin enxergar. */
+  funcoes: z.array(funcaoResumoSchema.extend({ ativa: z.boolean() })),
   ativo: z.boolean(),
   criadoEm: z.coerce.date(),
 });
 export type Usuario = z.infer<typeof usuarioSchema>;
 
+const funcoesIdsSchema = z.array(z.uuid()).min(1, 'Escolha ao menos uma função').transform((ids) => [...new Set(ids)]);
+
 export const usuarioCriarSchema = z.object({
   nome: z.string().trim().min(2, 'Informe o nome'),
   email: emailSchema,
-  papel: papelSchema,
+  funcoes: funcoesIdsSchema,
   senha: senhaSchema,
 });
 export type UsuarioCriarInput = z.input<typeof usuarioCriarSchema>;
@@ -108,7 +106,7 @@ export type UsuarioCriarInput = z.input<typeof usuarioCriarSchema>;
 /** Edição pelo admin. Senha vazia = manter a atual. O e-mail não muda (é a chave de login). */
 export const usuarioAtualizarSchema = z.object({
   nome: z.string().trim().min(2, 'Informe o nome'),
-  papel: papelSchema,
+  funcoes: funcoesIdsSchema,
   ativo: z.boolean(),
   novaSenha: z.union([z.literal(''), senhaSchema]).nullish().transform((v) => v || null),
 });

@@ -2,6 +2,7 @@ import { CAMPOS_TEMA, TEMA_VAZIO, type Tema } from '@mobios/shared';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { Tx } from '../db/client.js';
 import { tenantAparencia, tenantLogos } from '../db/schema.js';
+import { responderImagem } from './imagem.js';
 
 // Marca da oficina (tema + logo). Sempre dentro de withTenant: o RLS escolhe a linha da oficina.
 
@@ -30,9 +31,5 @@ export async function lerVersaoLogo(tx: Tx): Promise<string | null> {
 /** Responde com a imagem do logo (ou 404), com cache por versão/ETag. */
 export async function enviarLogo(tx: Tx, req: FastifyRequest, reply: FastifyReply) {
   const [logo] = await tx.select({ conteudo: tenantLogos.conteudo, tipo: tenantLogos.tipo, atualizadoEm: tenantLogos.atualizadoEm }).from(tenantLogos);
-  if (!logo) return reply.code(404).send({ erro: 'Nenhum logo cadastrado' });
-  const etag = `"${logo.atualizadoEm.getTime()}"`;
-  reply.header('ETag', etag).header('Cache-Control', 'public, max-age=31536000, immutable');
-  if (req.headers['if-none-match'] === etag) return reply.code(304).send();
-  return reply.type(logo.tipo).send(logo.conteudo);
+  return responderImagem(req, reply, logo, 'Nenhum logo cadastrado');
 }

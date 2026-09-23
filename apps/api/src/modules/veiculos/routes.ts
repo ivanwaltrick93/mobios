@@ -20,6 +20,8 @@ const colunas = {
 
 export const veiculosRoutes: FastifyPluginAsyncZod = async (app) => {
   app.addHook('onRequest', app.autenticar);
+  app.addHook('onRequest', app.exigirAcesso('clientes'));
+  const editar = { onRequest: app.exigirAcesso('clientes', 'editar') };
 
   app.get(
     '/',
@@ -36,12 +38,12 @@ export const veiculosRoutes: FastifyPluginAsyncZod = async (app) => {
     },
   );
 
-  app.post('/', { schema: { body: veiculoInputSchema, response: { 201: veiculoSchema } } }, async (req, reply) => {
+  app.post('/', { ...editar, schema: { body: veiculoInputSchema, response: { 201: veiculoSchema } } }, async (req, reply) => {
     const [veiculo] = await withTenant(req.user.tid, (tx) => tx.insert(veiculos).values(req.body).returning(colunas));
     return reply.code(201).send(veiculo!);
   });
 
-  app.put('/:id', { schema: { params: idParamSchema, body: veiculoInputSchema, response: { 200: veiculoSchema } } }, async (req) => {
+  app.put('/:id', { ...editar, schema: { params: idParamSchema, body: veiculoInputSchema, response: { 200: veiculoSchema } } }, async (req) => {
     const [veiculo] = await withTenant(req.user.tid, (tx) =>
       tx.update(veiculos).set(req.body).where(eq(veiculos.id, req.params.id)).returning(colunas),
     );
@@ -49,7 +51,7 @@ export const veiculosRoutes: FastifyPluginAsyncZod = async (app) => {
     return veiculo;
   });
 
-  app.delete('/:id', { schema: { params: idParamSchema } }, async (req, reply) => {
+  app.delete('/:id', { ...editar, schema: { params: idParamSchema } }, async (req, reply) => {
     const removidos = await withTenant(req.user.tid, (tx) => tx.delete(veiculos).where(eq(veiculos.id, req.params.id)).returning({ id: veiculos.id }));
     if (removidos.length === 0) throw naoEncontrado('Veículo');
     return reply.code(204).send();

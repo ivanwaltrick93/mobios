@@ -1,21 +1,23 @@
-import { nomesPapel, type Papel } from '@mobios/shared';
+import { temAcesso, type ModuloId } from '@mobios/shared';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
-import { Navigate, NavLink, Outlet, useNavigate } from 'react-router';
+import { Link, Navigate, NavLink, Outlet, useNavigate } from 'react-router';
 import { api } from '../lib/api';
 import { useSessao } from '../lib/sessao';
 import { aplicarTema, urlLogo } from '../lib/tema';
+import { Avatar } from './Avatar';
 import { LogoMobiOS, Rodape } from './Marca';
 
-const menu: { para: string; rotulo: string; papeis?: Papel[] }[] = [
+// Itens aparecem conforme o acesso do usuário ao módulo (Configurações → Funções e permissões).
+const menu: { para: string; rotulo: string; modulo?: ModuloId; somenteAdmin?: boolean }[] = [
   { para: '/', rotulo: 'Início' },
-  { para: '/clientes', rotulo: 'Clientes e veículos' },
-  { para: '/os', rotulo: 'Ordens de serviço' },
-  { para: '/estoque', rotulo: 'Estoque' },
-  { para: '/financeiro', rotulo: 'Financeiro' },
-  { para: '/relatorios', rotulo: 'Relatórios', papeis: ['admin', 'atendente', 'financeiro'] },
-  { para: '/usuarios', rotulo: 'Usuários', papeis: ['admin'] },
-  { para: '/configuracoes', rotulo: 'Configurações', papeis: ['admin'] },
+  { para: '/clientes', rotulo: 'Clientes e veículos', modulo: 'clientes' },
+  { para: '/os', rotulo: 'Ordens de serviço', modulo: 'os' },
+  { para: '/estoque', rotulo: 'Estoque', modulo: 'estoque' },
+  { para: '/financeiro', rotulo: 'Financeiro', modulo: 'financeiro' },
+  { para: '/relatorios', rotulo: 'Relatórios', modulo: 'relatorios' },
+  { para: '/usuarios', rotulo: 'Equipe', somenteAdmin: true },
+  { para: '/configuracoes', rotulo: 'Configurações', somenteAdmin: true },
 ];
 
 export function Layout() {
@@ -54,7 +56,7 @@ export function Layout() {
         </div>
         <nav className="flex gap-1 overflow-x-auto px-3 pb-3 md:flex-col">
           {menu
-            .filter((item) => !item.papeis || item.papeis.includes(usuario.papel))
+            .filter((item) => (item.somenteAdmin ? usuario.admin : !item.modulo || temAcesso(sessao.data.acessos, item.modulo)))
             .map((item) => (
               <NavLink
                 key={item.para}
@@ -73,9 +75,13 @@ export function Layout() {
       </aside>
       <div className="flex flex-1 flex-col">
         <header className="flex items-center justify-end gap-3 border-b border-borda bg-superficie px-6 py-3 text-sm">
-          <span className="text-texto">
-            {usuario.nome} <span className="text-texto-suave">· {nomesPapel[usuario.papel]}</span>
-          </span>
+          <Link to="/perfil" className="flex items-center gap-2 rounded-full py-1 pr-3 pl-1 hover:bg-superficie-alt" title="Meu perfil">
+            <Avatar nome={usuario.nome} usuarioId={usuario.id} fotoVersao={usuario.fotoVersao} tamanho="sm" />
+            <span className="text-texto">
+              {usuario.nome}{' '}
+              {usuario.funcoes.length > 0 && <span className="text-texto-suave">· {usuario.funcoes.map((f) => f.nome).join(', ')}</span>}
+            </span>
+          </Link>
           <button className="text-primaria hover:underline" onClick={() => sair.mutate()}>
             Sair
           </button>

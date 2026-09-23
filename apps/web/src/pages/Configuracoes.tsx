@@ -1,11 +1,12 @@
-import { LOGO_TAMANHO_MAXIMO, LOGO_TIPOS, TEMA_VAZIO, temaInputSchema, type CampoTema, type Tema } from '@mobios/shared';
+import { IMAGEM_TAMANHO_MAXIMO, IMAGEM_TIPOS, TEMA_VAZIO, temaInputSchema, type CampoTema, type Tema } from '@mobios/shared';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { AbasConfiguracoes } from '../components/AbasConfiguracoes';
 import { LogoMobiOS } from '../components/Marca';
 import { Alerta, Botao, BotaoLink, Campo, Cartao, Input, Selo, TextoSuave, Titulo } from '../components/ui';
 import { api, ErroApi } from '../lib/api';
-import { chaveSessao, useSessao } from '../lib/sessao';
+import { chaveSessao, useAdmin, useSessao } from '../lib/sessao';
 import { aplicarTema, contraste, CONTRASTE_MINIMO, resolverTema, urlLogo } from '../lib/tema';
 
 const hexValido = (v: string) => /^#[0-9a-fA-F]{6}$/.test(v);
@@ -96,6 +97,7 @@ function avisosDeContraste(cores: ReturnType<typeof resolverTema>): string[] {
 
 export function Configuracoes() {
   const sessao = useSessao();
+  const admin = useAdmin();
   const queryClient = useQueryClient();
   const salvo = sessao.data?.oficina.tema ?? TEMA_VAZIO;
   const [tema, setTema] = useState<Tema>(salvo);
@@ -112,7 +114,7 @@ export function Configuracoes() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: chaveSessao }),
   });
 
-  if (sessao.data?.usuario.papel !== 'admin') return <Alerta>Apenas administradores podem alterar as configurações.</Alerta>;
+  if (!admin || !sessao.data) return <Alerta>Você não tem permissão para alterar as configurações.</Alerta>;
   const { oficina } = sessao.data;
 
   // Cor que o campo usa quando está vazio: padrão do style guide ou contraste automático.
@@ -128,6 +130,7 @@ export function Configuracoes() {
   return (
     <div className="space-y-6">
       <Titulo>Configurações</Titulo>
+      <AbasConfiguracoes />
 
       <LogoOficina versao={oficina.logoVersao} nome={oficina.nome} />
 
@@ -242,8 +245,8 @@ function LogoOficina({ versao, nome }: { versao: string | null; nome: string }) 
     setErro(null);
     if (!logo) return;
     // Checagem rápida no navegador; a API valida de novo pelos bytes do arquivo.
-    if (!(LOGO_TIPOS as readonly string[]).includes(logo.type)) return setErro('Formato não suportado. Use PNG, JPEG ou WebP.');
-    if (logo.size > LOGO_TAMANHO_MAXIMO) return setErro('Arquivo grande demais. O limite é 1 MB.');
+    if (!(IMAGEM_TIPOS as readonly string[]).includes(logo.type)) return setErro('Formato não suportado. Use PNG, JPEG ou WebP.');
+    if (logo.size > IMAGEM_TAMANHO_MAXIMO) return setErro('Arquivo grande demais. O limite é 1 MB.');
     enviar.mutate(logo);
   }
 
@@ -261,7 +264,7 @@ function LogoOficina({ versao, nome }: { versao: string | null; nome: string }) 
           )}
         </div>
         <div className="flex flex-wrap gap-2">
-          <input ref={arquivo} type="file" accept={LOGO_TIPOS.join(',')} className="hidden" onChange={(e) => (escolher(e.target.files?.[0]), (e.target.value = ''))} />
+          <input ref={arquivo} type="file" accept={IMAGEM_TIPOS.join(',')} className="hidden" onChange={(e) => (escolher(e.target.files?.[0]), (e.target.value = ''))} />
           <Botao disabled={enviar.isPending} onClick={() => arquivo.current?.click()}>
             {enviar.isPending ? 'Enviando…' : versao ? 'Trocar logo' : 'Enviar logo'}
           </Botao>

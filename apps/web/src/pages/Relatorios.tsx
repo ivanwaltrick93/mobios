@@ -1,3 +1,4 @@
+import { usePode } from '../lib/sessao';
 import type { RelatorioDescricao, RelatorioId, RelatorioPrevia } from '@mobios/shared';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
@@ -19,10 +20,12 @@ async function baixarCsv(id: RelatorioId, filtro: URLSearchParams) {
 }
 
 export function Relatorios() {
-  const lista = useQuery({ queryKey: ['relatorios'], queryFn: () => api<RelatorioDescricao[]>('/relatorios') });
+  const permitido = usePode()('relatorios');
+  const lista = useQuery({ queryKey: ['relatorios'], queryFn: () => api<RelatorioDescricao[]>('/relatorios'), enabled: permitido });
   const [selecionado, setSelecionado] = useState<RelatorioId | null>(null);
   const atual = lista.data?.find((r) => r.id === selecionado) ?? lista.data?.[0];
 
+  if (!permitido) return <Alerta>Você não tem permissão para acessar os relatórios.</Alerta>;
   if (lista.isError) return <Alerta>{lista.error.message}</Alerta>;
 
   return (

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { Alerta, Botao, BotaoLink, Cartao, TextoSuave } from '../components/ui';
 import { api, ErroApi } from '../lib/api';
+import { usePode } from '../lib/sessao';
 
 import { ClienteForm } from './ClienteForm';
 import { VeiculoForm } from './VeiculoForm';
@@ -13,6 +14,7 @@ export function ClienteDetalhe() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [editando, setEditando] = useState(false);
+  const podeEditar = usePode()('clientes', 'editar');
   const cliente = useQuery({ queryKey: ['clientes', id], queryFn: () => api<Cliente>(`/clientes/${id}`) });
   const excluir = useMutation({
     mutationFn: () => api(`/clientes/${id}`, { method: 'DELETE' }),
@@ -44,18 +46,16 @@ export function ClienteDetalhe() {
               </p>
               {c.observacoes && <TextoSuave>{c.observacoes}</TextoSuave>}
             </div>
-            <div className="flex gap-2">
-              <Botao variante="secundario" onClick={() => setEditando(true)}>
-                Editar
-              </Botao>
-              <Botao
-                variante="perigo"
-                disabled={excluir.isPending}
-                onClick={() => confirm(`Excluir o cliente ${c.nome}?`) && excluir.mutate()}
-              >
-                Excluir
-              </Botao>
-            </div>
+            {podeEditar && (
+              <div className="flex gap-2">
+                <Botao variante="secundario" onClick={() => setEditando(true)}>
+                  Editar
+                </Botao>
+                <Botao variante="perigo" disabled={excluir.isPending} onClick={() => confirm(`Excluir o cliente ${c.nome}?`) && excluir.mutate()}>
+                  Excluir
+                </Botao>
+              </div>
+            )}
           </div>
         )}
         {excluir.isError && (
@@ -73,6 +73,7 @@ export function ClienteDetalhe() {
 function Veiculos({ clienteId }: { clienteId: string }) {
   const queryClient = useQueryClient();
   const [novo, setNovo] = useState(false);
+  const podeEditar = usePode()('clientes', 'editar');
   const chave = ['veiculos', clienteId];
   const veiculos = useQuery({ queryKey: chave, queryFn: () => api<Veiculo[]>(`/veiculos?clienteId=${clienteId}`) });
   const remover = useMutation({
@@ -87,7 +88,7 @@ function Veiculos({ clienteId }: { clienteId: string }) {
     <Cartao>
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-lg font-medium">Veículos</h2>
-        {!novo && <Botao onClick={() => setNovo(true)}>Adicionar veículo</Botao>}
+        {podeEditar && !novo && <Botao onClick={() => setNovo(true)}>Adicionar veículo</Botao>}
       </div>
 
       {novo && (
@@ -111,9 +112,11 @@ function Veiculos({ clienteId }: { clienteId: string }) {
                 {v.kmAtual != null ? ` · ${v.kmAtual.toLocaleString('pt-BR')} km` : ''}
               </span>
             </div>
-            <BotaoLink perigo onClick={() => confirm(`Remover o veículo ${formatarPlaca(v.placa)}?`) && remover.mutate(v.id)}>
-              Remover
-            </BotaoLink>
+            {podeEditar && (
+              <BotaoLink perigo onClick={() => confirm(`Remover o veículo ${formatarPlaca(v.placa)}?`) && remover.mutate(v.id)}>
+                Remover
+              </BotaoLink>
+            )}
           </li>
         ))}
       </ul>

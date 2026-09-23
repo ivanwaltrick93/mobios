@@ -1,14 +1,16 @@
+import { usePode } from '../lib/sessao';
 import { formatarDocumento, type Cliente } from '@mobios/shared';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Search } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
-import { BotaoLink, Cartao, Input, TextoSuave, Titulo } from '../components/ui';
+import { Alerta, BotaoLink, Cartao, Input, TextoSuave, Titulo } from '../components/ui';
 import { api } from '../lib/api';
 import { VeiculoForm } from './VeiculoForm';
 
 /** Atalho do balcão: escolher o cliente e cadastrar o veículo, sem passar pela lista de clientes. */
 export function NovoVeiculo() {
+  const permitido = usePode()('clientes', 'editar');
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const clienteId = params.get('clienteId');
@@ -21,6 +23,8 @@ export function NovoVeiculo() {
     enabled: !clienteId && busca.trim().length >= 2,
     placeholderData: keepPreviousData,
   });
+
+  if (!permitido) return <Alerta>Você não tem permissão para cadastrar veículos.</Alerta>;
 
   return (
     <div className="space-y-6">

@@ -1,4 +1,4 @@
-import { formatarData, formatarDocumento, formatarPlaca, nomesPapel, type Papel, type RelatorioDescricao, type RelatorioId } from '@mobios/shared';
+import { formatarData, formatarDocumento, formatarPlaca, type RelatorioDescricao, type RelatorioId } from '@mobios/shared';
 import { asc, count, eq, sql, type SQL } from 'drizzle-orm';
 import type { PgColumn } from 'drizzle-orm/pg-core';
 import type { Tx } from '../../db/client.js';
@@ -7,7 +7,8 @@ import { clientes, users, veiculos } from '../../db/schema.js';
 export type Filtro = { de?: string; ate?: string };
 
 type Definicao = RelatorioDescricao & {
-  papeis: Papel[];
+  /** Além do acesso ao módulo Relatórios: exige a função Administrador. */
+  somenteAdmin: boolean;
   /** Linhas já formatadas como texto: a prévia e o CSV mostram exatamente o mesmo. */
   consultar: (tx: Tx, filtro: Filtro, limite: number) => Promise<{ linhas: Record<string, string>[]; total: number }>;
 };
@@ -31,7 +32,7 @@ export const relatorios: Record<RelatorioId, Definicao> = {
     id: 'clientes',
     titulo: 'Clientes',
     descricao: 'Cadastro de clientes com contato e quantidade de veículos.',
-    papeis: ['admin', 'atendente', 'financeiro'],
+    somenteAdmin: false,
     colunas: [
       { chave: 'nome', titulo: 'Nome' },
       { chave: 'tipo', titulo: 'Tipo' },
@@ -79,7 +80,7 @@ export const relatorios: Record<RelatorioId, Definicao> = {
     id: 'veiculos',
     titulo: 'Veículos',
     descricao: 'Frota atendida, com o proprietário de cada veículo.',
-    papeis: ['admin', 'atendente', 'financeiro'],
+    somenteAdmin: false,
     colunas: [
       { chave: 'placa', titulo: 'Placa' },
       { chave: 'marca', titulo: 'Marca' },
@@ -124,11 +125,11 @@ export const relatorios: Record<RelatorioId, Definicao> = {
     id: 'usuarios',
     titulo: 'Usuários',
     descricao: 'Equipe com acesso ao sistema, função e status.',
-    papeis: ['admin'],
+    somenteAdmin: true,
     colunas: [
       { chave: 'nome', titulo: 'Nome' },
       { chave: 'email', titulo: 'E-mail' },
-      { chave: 'funcao', titulo: 'Função' },
+      { chave: 'funcoes', titulo: 'Funções' },
       { chave: 'status', titulo: 'Status' },
       { chave: 'cadastro', titulo: 'Cadastrado em' },
     ],
@@ -137,7 +138,15 @@ export const relatorios: Record<RelatorioId, Definicao> = {
       const [{ total }] = (await tx.select({ total: count() }).from(users).where(where)) as [{ total: number }];
       // Sem senha_hash: só as colunas do relatório.
       const linhas = await tx
-        .select({ nome: users.nome, email: users.email, papel: users.papel, ativo: users.ativo, criadoEm: users.criadoEm })
+        .select({
+          nome: users.nome,
+          email: users.email,
+          ativo: users.ativo,
+          criadoEm: users.criadoEm,
+          // Correlação escrita à mão (o Drizzle não qualifica colunas dentro da subconsulta).
+          funcoes: sql<string | null>`(select string_agg(f.nome || case when f.ativa then '' else ' (desativada)' end, ', ' order by f.nome)
+            from usuario_funcoes uf join funcoes f on f.id = uf.funcao_id where uf.usuario_id = "users"."id")`,
+        })
         .from(users)
         .where(where)
         .orderBy(asc(users.nome))
@@ -147,7 +156,7 @@ export const relatorios: Record<RelatorioId, Definicao> = {
         linhas: linhas.map((u) => ({
           nome: u.nome,
           email: u.email,
-          funcao: nomesPapel[u.papel],
+          funcoes: texto(u.funcoes),
           status: u.ativo ? 'Ativo' : 'Desativado',
           cadastro: formatarData(u.criadoEm),
         })),

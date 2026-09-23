@@ -35,7 +35,10 @@ async function novaOficina(nome: string) {
   await criarOficinaComAdmin(db, { oficina: nome, nome: 'Admin', email, senha: SENHA });
   const sessao = await entrar(email);
   expect(sessao.res.statusCode).toBe(200);
-  return { ...sessao, email };
+  /** Id de uma função da oficina pelo nome. */
+  const funcao = async (nome: string): Promise<string> =>
+    (await sessao.chamar('GET', '/api/funcoes')).json().find((f: { nome: string }) => f.nome === nome).id;
+  return { ...sessao, email, funcao };
 }
 
 describe('auth', () => {
@@ -46,7 +49,7 @@ describe('auth', () => {
 
     const login = await entrar(email.toUpperCase());
     expect(login.res.statusCode).toBe(200);
-    expect(login.res.json()).toMatchObject({ usuario: { papel: 'admin' }, oficina: { nome: 'Auto Center Teste' } });
+    expect(login.res.json()).toMatchObject({ usuario: { admin: true, funcoes: [{ nome: 'Administrador' }] }, oficina: { nome: 'Auto Center Teste' } });
   });
 
   it('não tem cadastro público', async () => {
@@ -64,9 +67,9 @@ describe('usuários', () => {
   it('admin cadastra usuário; senha fica só como hash Argon2id', async () => {
     const admin = await novaOficina('Oficina Usuários');
     const email = emailAleatorio();
-    const criado = await admin.chamar('POST', '/api/usuarios', { nome: 'Pedro', email: ` ${email.toUpperCase()} `, papel: 'mecanico', senha: SENHA });
+    const criado = await admin.chamar('POST', '/api/usuarios', { nome: 'Pedro', email: ` ${email.toUpperCase()} `, funcoes: [await admin.funcao('Mecânico')], senha: SENHA });
     expect(criado.statusCode).toBe(201);
-    expect(criado.json()).toMatchObject({ nome: 'Pedro', email, papel: 'mecanico', ativo: true });
+    expect(criado.json()).toMatchObject({ nome: 'Pedro', email, funcoes: [{ nome: 'Mecânico', ativa: true }], ativo: true });
     expect(criado.body).not.toContain('senha');
 
     const [linha] = await db.execute(sql`select senha_hash from auth_usuario_por_email(${email})`);
@@ -76,18 +79,18 @@ describe('usuários', () => {
     expect(lista.map((u: { nome: string }) => u.nome)).toEqual(['Admin', 'Pedro']);
 
     const mecanico = await entrar(email);
-    expect(mecanico.res.json().usuario.papel).toBe('mecanico');
+    expect(mecanico.res.json().usuario.funcoes.map((f: { nome: string }) => f.nome)).toEqual(['Mecânico']);
   });
 
   it('valida dados e recusa e-mail duplicado (inclusive de outra oficina)', async () => {
     const a = await novaOficina('Oficina Dup A');
     const b = await novaOficina('Oficina Dup B');
-    const curta = await a.chamar('POST', '/api/usuarios', { nome: 'Ana', email: emailAleatorio(), papel: 'atendente', senha: '123' });
+    const curta = await a.chamar('POST', '/api/usuarios', { nome: 'Ana', email: emailAleatorio(), funcoes: [await a.funcao('Atendente')], senha: '123' });
     expect(curta.statusCode).toBe(400);
     expect(curta.json().campos.senha).toBeDefined();
-    expect((await a.chamar('POST', '/api/usuarios', { nome: 'Ana', email: emailAleatorio(), papel: 'chefe', senha: SENHA })).statusCode).toBe(400);
+    expect((await a.chamar('POST', '/api/usuarios', { nome: 'Ana', email: emailAleatorio(), funcoes: ['nao-e-uuid'], senha: SENHA })).statusCode).toBe(400);
 
-    const dup = await a.chamar('POST', '/api/usuarios', { nome: 'Ana', email: b.email, papel: 'atendente', senha: SENHA });
+    const dup = await a.chamar('POST', '/api/usuarios', { nome: 'Ana', email: b.email, funcoes: [await a.funcao('Atendente')], senha: SENHA });
     expect(dup.statusCode).toBe(409);
     expect(dup.json().erro).toBe('Já existe uma conta com este e-mail');
   });
@@ -95,26 +98,26 @@ describe('usuários', () => {
   it('só admin gerencia usuários', async () => {
     const admin = await novaOficina('Oficina Permissões');
     const email = emailAleatorio();
-    await admin.chamar('POST', '/api/usuarios', { nome: 'Atendente', email, papel: 'atendente', senha: SENHA });
+    await admin.chamar('POST', '/api/usuarios', { nome: 'Atendente', email, funcoes: [await admin.funcao('Atendente')], senha: SENHA });
     const atendente = await entrar(email);
     expect((await atendente.chamar('GET', '/api/usuarios')).statusCode).toBe(403);
-    expect((await atendente.chamar('POST', '/api/usuarios', { nome: 'Hacker', email: emailAleatorio(), papel: 'admin', senha: SENHA })).statusCode).toBe(403);
+    expect((await atendente.chamar('POST', '/api/usuarios', { nome: 'Hacker', email: emailAleatorio(), funcoes: [await admin.funcao('Administrador')], senha: SENHA })).statusCode).toBe(403);
     expect((await atendente.chamar('GET', '/api/clientes')).statusCode).toBe(200);
   });
 
   it('desativar ou trocar a senha vale na hora, inclusive para sessões abertas', async () => {
     const admin = await novaOficina('Oficina Desativação');
     const email = emailAleatorio();
-    const { id } = (await admin.chamar('POST', '/api/usuarios', { nome: 'Carla', email, papel: 'financeiro', senha: SENHA })).json();
+    const { id } = (await admin.chamar('POST', '/api/usuarios', { nome: 'Carla', email, funcoes: [await admin.funcao('Financeiro')], senha: SENHA })).json();
     const carla = await entrar(email);
     expect((await carla.chamar('GET', '/api/clientes')).statusCode).toBe(200);
 
     const novaSenha = 'outra-senha-456';
-    await admin.chamar('PUT', `/api/usuarios/${id}`, { nome: 'Carla', papel: 'financeiro', ativo: true, novaSenha });
+    await admin.chamar('PUT', `/api/usuarios/${id}`, { nome: 'Carla', funcoes: [await admin.funcao('Financeiro')], ativo: true, novaSenha });
     expect((await entrar(email)).res.statusCode).toBe(401);
     expect((await entrar(email, novaSenha)).res.statusCode).toBe(200);
 
-    await admin.chamar('PUT', `/api/usuarios/${id}`, { nome: 'Carla', papel: 'financeiro', ativo: false });
+    await admin.chamar('PUT', `/api/usuarios/${id}`, { nome: 'Carla', funcoes: [await admin.funcao('Financeiro')], ativo: false });
     expect((await carla.chamar('GET', '/api/clientes')).statusCode).toBe(401);
     expect((await entrar(email, novaSenha)).res.statusCode).toBe(401);
   });
@@ -122,9 +125,9 @@ describe('usuários', () => {
   it('admin não remove o próprio acesso', async () => {
     const admin = await novaOficina('Oficina Autoproteção');
     const { usuario } = (await admin.chamar('GET', '/api/auth/sessao')).json();
-    expect((await admin.chamar('PUT', `/api/usuarios/${usuario.id}`, { nome: 'Admin', papel: 'atendente', ativo: true })).statusCode).toBe(400);
-    expect((await admin.chamar('PUT', `/api/usuarios/${usuario.id}`, { nome: 'Admin', papel: 'admin', ativo: false })).statusCode).toBe(400);
-    expect((await admin.chamar('PUT', `/api/usuarios/${usuario.id}`, { nome: 'Admin Renomeado', papel: 'admin', ativo: true })).statusCode).toBe(200);
+    expect((await admin.chamar('PUT', `/api/usuarios/${usuario.id}`, { nome: 'Admin', funcoes: [await admin.funcao('Atendente')], ativo: true })).statusCode).toBe(400);
+    expect((await admin.chamar('PUT', `/api/usuarios/${usuario.id}`, { nome: 'Admin', funcoes: [await admin.funcao('Administrador')], ativo: false })).statusCode).toBe(400);
+    expect((await admin.chamar('PUT', `/api/usuarios/${usuario.id}`, { nome: 'Admin Renomeado', funcoes: [await admin.funcao('Administrador')], ativo: true })).statusCode).toBe(200);
   });
 
   it('admin de uma oficina não enxerga nem altera usuários de outra', async () => {
@@ -132,7 +135,7 @@ describe('usuários', () => {
     const b = await novaOficina('Oficina Users B');
     const { usuario } = (await a.chamar('GET', '/api/auth/sessao')).json();
     expect((await b.chamar('GET', '/api/usuarios')).json().map((u: { email: string }) => u.email)).toEqual([b.email]);
-    expect((await b.chamar('PUT', `/api/usuarios/${usuario.id}`, { nome: 'Invasor', papel: 'atendente', ativo: false })).statusCode).toBe(404);
+    expect((await b.chamar('PUT', `/api/usuarios/${usuario.id}`, { nome: 'Invasor', funcoes: [await b.funcao('Atendente')], ativo: false })).statusCode).toBe(404);
   });
 });
 
@@ -158,6 +161,139 @@ describe('clientes e veículos', () => {
   });
 });
 
+describe('personas e permissões', () => {
+  it('cada função acessa só o que lhe cabe (docs/ENTREGAVEIS.md §1)', async () => {
+    const admin = await novaOficina('Oficina Personas');
+    const pessoa = async (funcao: string) => {
+      const email = emailAleatorio();
+      await admin.chamar('POST', '/api/usuarios', { nome: funcao, email, funcoes: [await admin.funcao(funcao)], senha: SENHA });
+      return entrar(email);
+    };
+    const [atendente, mecanico, financeiro] = [await pessoa('Atendente'), await pessoa('Mecânico'), await pessoa('Financeiro')];
+    const indicadores = async (s: Awaited<ReturnType<typeof entrar>>) => (await s.chamar('GET', '/api/painel')).json().indicadores.map((i: { id: string }) => i.id);
+
+    // Atendente: cadastra clientes e veículos (abre O.S. e vende no balcão); sem relatórios e configurações.
+    const cliente = await atendente.chamar('POST', '/api/clientes', { nome: 'Cliente do Balcão' });
+    expect(cliente.statusCode).toBe(201);
+    expect((await atendente.chamar('POST', '/api/veiculos', { clienteId: cliente.json().id, placa: 'BAL1C00', marca: 'Fiat', modelo: 'Uno' })).statusCode).toBe(201);
+    expect((await atendente.chamar('GET', '/api/relatorios')).statusCode).toBe(403);
+    expect((await atendente.chamar('GET', '/api/usuarios')).statusCode).toBe(403);
+    expect((await atendente.chamar('PUT', '/api/configuracoes/aparencia', TEMA_VAZIO)).statusCode).toBe(403);
+    expect(await indicadores(atendente)).not.toContain('faturado_hoje');
+
+    // Mecânico: consulta clientes/veículos, não cadastra nem altera; sem relatórios e faturamento.
+    expect((await mecanico.chamar('GET', '/api/clientes')).statusCode).toBe(200);
+    expect((await mecanico.chamar('GET', `/api/veiculos?clienteId=${cliente.json().id}`)).json()).toHaveLength(1);
+    expect((await mecanico.chamar('POST', '/api/clientes', { nome: 'Não pode' })).statusCode).toBe(403);
+    expect((await mecanico.chamar('PUT', `/api/clientes/${cliente.json().id}`, { nome: 'Não pode' })).statusCode).toBe(403);
+    expect((await mecanico.chamar('POST', '/api/veiculos', { clienteId: cliente.json().id, placa: 'MEC1A00', marca: 'VW', modelo: 'Gol' })).statusCode).toBe(403);
+    expect((await mecanico.chamar('GET', '/api/relatorios')).statusCode).toBe(403);
+    expect(await indicadores(mecanico)).not.toContain('faturado_hoje');
+
+    // Financeiro: relatórios e faturamento; consulta cadastros sem alterar.
+    expect((await financeiro.chamar('GET', '/api/relatorios/clientes')).statusCode).toBe(200);
+    expect((await financeiro.chamar('DELETE', `/api/clientes/${cliente.json().id}`)).statusCode).toBe(403);
+    expect(await indicadores(financeiro)).toContain('faturado_hoje');
+
+    // Admin: tudo.
+    expect(await indicadores(admin)).toContain('faturado_hoje');
+    expect((await admin.chamar('GET', '/api/relatorios')).json()).toHaveLength(3);
+  });
+});
+
+describe('funções e permissões configuráveis', () => {
+  const acessos = (a: Partial<Record<string, string | null>> = {}) => ({ clientes: null, os: null, estoque: null, financeiro: null, relatorios: null, ...a });
+
+  it('toda oficina nasce com Administrador fixo e as funções padrão aprovadas', async () => {
+    const admin = await novaOficina('Oficina Funções Padrão');
+    const lista = (await admin.chamar('GET', '/api/funcoes')).json();
+    expect(lista.map((f: { nome: string; admin: boolean }) => [f.nome, f.admin])).toEqual([
+      ['Administrador', true],
+      ['Atendente', false],
+      ['Financeiro', false],
+      ['Mecânico', false],
+    ]);
+    const porNome = Object.fromEntries(lista.map((f: { nome: string }) => [f.nome, f]));
+    expect(porNome.Administrador.acessos).toEqual(acessos({ clientes: 'editar', os: 'editar', estoque: 'editar', financeiro: 'editar', relatorios: 'consultar' }));
+    expect(porNome.Atendente.acessos).toEqual(acessos({ clientes: 'editar', os: 'editar', estoque: 'editar' }));
+    expect(porNome['Mecânico'].acessos).toEqual(acessos({ clientes: 'consultar', os: 'editar', estoque: 'consultar' }));
+    expect(porNome.Financeiro.acessos).toEqual(acessos({ clientes: 'consultar', os: 'consultar', financeiro: 'editar', relatorios: 'consultar' }));
+    expect(porNome.Administrador.usuarios).toBe(1);
+  });
+
+  it('admin cria função; mudanças de nível valem na hora para quem já está logado', async () => {
+    const admin = await novaOficina('Oficina Almoxarife');
+    const criada = await admin.chamar('POST', '/api/funcoes', { nome: 'Almoxarife', ativa: true, acessos: acessos({ clientes: 'consultar' }) });
+    expect(criada.statusCode).toBe(201);
+    const almox = criada.json();
+
+    const email = emailAleatorio();
+    await admin.chamar('POST', '/api/usuarios', { nome: 'Almox', email, funcoes: [almox.id], senha: SENHA });
+    const usuario = await entrar(email);
+    expect(usuario.res.json().acessos).toEqual(acessos({ clientes: 'consultar' }));
+    expect((await usuario.chamar('POST', '/api/clientes', { nome: 'Não pode' })).statusCode).toBe(403);
+    expect((await usuario.chamar('GET', '/api/relatorios')).statusCode).toBe(403);
+
+    await admin.chamar('PUT', `/api/funcoes/${almox.id}`, { nome: 'Almoxarife', ativa: true, acessos: acessos({ clientes: 'editar', relatorios: 'consultar' }) });
+    expect((await usuario.chamar('POST', '/api/clientes', { nome: 'Agora pode' })).statusCode).toBe(201);
+    expect((await usuario.chamar('GET', '/api/relatorios')).statusCode).toBe(200);
+    expect((await usuario.chamar('GET', '/api/auth/sessao')).json().acessos.clientes).toBe('editar');
+  });
+
+  it('várias funções somam o maior nível de cada módulo', async () => {
+    const admin = await novaOficina('Oficina Multi');
+    const email = emailAleatorio();
+    await admin.chamar('POST', '/api/usuarios', { nome: 'Dupla', email, funcoes: [await admin.funcao('Mecânico'), await admin.funcao('Financeiro')], senha: SENHA });
+    const dupla = await entrar(email);
+    expect(dupla.res.json().acessos).toEqual(acessos({ clientes: 'consultar', os: 'editar', estoque: 'consultar', financeiro: 'editar', relatorios: 'consultar' }));
+    expect(dupla.res.json().usuario.funcoes.map((f: { nome: string }) => f.nome)).toEqual(['Financeiro', 'Mecânico']);
+  });
+
+  it('desativar a função retira o acesso na hora; reativar devolve', async () => {
+    const admin = await novaOficina('Oficina Desativa Função');
+    const idFin = await admin.funcao('Financeiro');
+    const email = emailAleatorio();
+    await admin.chamar('POST', '/api/usuarios', { nome: 'Fin', email, funcoes: [idFin], senha: SENHA });
+    const fin = await entrar(email);
+    expect((await fin.chamar('GET', '/api/relatorios')).statusCode).toBe(200);
+
+    const financeiro = (await admin.chamar('GET', '/api/funcoes')).json().find((f: { id: string }) => f.id === idFin);
+    await admin.chamar('PUT', `/api/funcoes/${idFin}`, { nome: 'Financeiro', ativa: false, acessos: financeiro.acessos });
+    expect((await fin.chamar('GET', '/api/relatorios')).statusCode).toBe(403);
+    expect((await fin.chamar('GET', '/api/auth/sessao')).json()).toMatchObject({ acessos: acessos(), usuario: { funcoes: [] } });
+    // Função desativada não pode ser atribuída a ninguém.
+    expect((await admin.chamar('POST', '/api/usuarios', { nome: 'X', email: emailAleatorio(), funcoes: [idFin], senha: SENHA })).statusCode).toBe(400);
+
+    await admin.chamar('PUT', `/api/funcoes/${idFin}`, { nome: 'Financeiro', ativa: true, acessos: financeiro.acessos });
+    expect((await fin.chamar('GET', '/api/relatorios')).statusCode).toBe(200);
+  });
+
+  it('Administrador é fixo, nomes são únicos e níveis precisam existir no módulo', async () => {
+    const admin = await novaOficina('Oficina Regras Função');
+    const idAdmin = await admin.funcao('Administrador');
+    expect((await admin.chamar('PUT', `/api/funcoes/${idAdmin}`, { nome: 'Chefe', ativa: true, acessos: acessos() })).statusCode).toBe(400);
+    const dup = await admin.chamar('POST', '/api/funcoes', { nome: 'atendente', ativa: true, acessos: acessos() });
+    expect(dup.statusCode).toBe(409);
+    expect(dup.json().erro).toBe('Já existe uma função com este nome');
+    expect((await admin.chamar('POST', '/api/funcoes', { nome: 'Gerente', ativa: true, acessos: acessos({ relatorios: 'editar' }) })).statusCode).toBe(400);
+  });
+
+  it('só o Administrador gerencia funções, e uma oficina não vê as funções de outra', async () => {
+    const a = await novaOficina('Oficina Funções A');
+    const b = await novaOficina('Oficina Funções B');
+    const email = emailAleatorio();
+    await a.chamar('POST', '/api/usuarios', { nome: 'Atendente', email, funcoes: [await a.funcao('Atendente')], senha: SENHA });
+    const atendente = await entrar(email);
+    expect((await atendente.chamar('GET', '/api/funcoes')).statusCode).toBe(403);
+    expect((await atendente.chamar('POST', '/api/funcoes', { nome: 'Hack', ativa: true, acessos: acessos() })).statusCode).toBe(403);
+
+    const idAtendenteA = await a.funcao('Atendente');
+    expect((await b.chamar('PUT', `/api/funcoes/${idAtendenteA}`, { nome: 'Invasão', ativa: false, acessos: acessos() })).statusCode).toBe(404);
+    // Atribuir a um usuário da B uma função da A é recusado.
+    expect((await b.chamar('POST', '/api/usuarios', { nome: 'X', email: emailAleatorio(), funcoes: [idAtendenteA], senha: SENHA })).statusCode).toBe(400);
+  });
+});
+
 describe('aparência', () => {
   it('admin define cores e botões; todos recebem o tema na sessão; outros papéis não alteram', async () => {
     const admin = await novaOficina('Oficina Cores');
@@ -178,7 +314,7 @@ describe('aparência', () => {
     expect((await admin.chamar('PUT', '/api/configuracoes/aparencia', { ...TEMA_VAZIO, corPrimaria: 'laranja' })).statusCode).toBe(400);
 
     const email = emailAleatorio();
-    await admin.chamar('POST', '/api/usuarios', { nome: 'Mecânico', email, papel: 'mecanico', senha: SENHA });
+    await admin.chamar('POST', '/api/usuarios', { nome: 'Mecânico', email, funcoes: [await admin.funcao('Mecânico')], senha: SENHA });
     const mecanico = await entrar(email);
     expect(mecanico.res.json().oficina.tema).toMatchObject({ corPrimaria: '#c2410c', corBotaoPrimario: '#15803d' });
     expect((await mecanico.chamar('PUT', '/api/configuracoes/aparencia', TEMA_VAZIO)).statusCode).toBe(403);
@@ -228,7 +364,7 @@ describe('logo da oficina', () => {
     expect(versao).toMatch(/^\d+$/);
 
     const email = emailAleatorio();
-    await admin.chamar('POST', '/api/usuarios', { nome: 'Mecânico', email, papel: 'mecanico', senha: SENHA });
+    await admin.chamar('POST', '/api/usuarios', { nome: 'Mecânico', email, funcoes: [await admin.funcao('Mecânico')], senha: SENHA });
     const mecanico = await entrar(email);
     const logo = await mecanico.chamar('GET', '/api/configuracoes/logo');
     expect(logo.statusCode).toBe(200);
@@ -288,6 +424,56 @@ describe('painel', () => {
   });
 });
 
+describe('fotos da equipe', () => {
+  const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01]);
+  const enviar = (s: Awaited<ReturnType<typeof entrar>>, id: string, corpo: Buffer | string, tipo = 'image/jpeg') =>
+    s.chamar('PUT', `/api/fotos/usuario/${id}`, corpo as unknown as object, { 'content-type': tipo });
+
+  it('o próprio usuário e o admin trocam a foto; a oficina toda vê; os demais não alteram', async () => {
+    const admin = await novaOficina('Oficina Fotos');
+    const criar = async (nome: string) => {
+      const email = emailAleatorio();
+      const { id } = (await admin.chamar('POST', '/api/usuarios', { nome, email, funcoes: [await admin.funcao('Mecânico')], senha: SENHA })).json();
+      return { id, sessao: await entrar(email) };
+    };
+    const joao = await criar('João');
+    const maria = await criar('Maria');
+
+    // Sem foto: versão nula e 404.
+    expect(joao.sessao.res.json().usuario.fotoVersao).toBeNull();
+    expect((await maria.sessao.chamar('GET', `/api/fotos/usuario/${joao.id}`)).statusCode).toBe(404);
+
+    // O próprio usuário envia a sua; colega não altera a dele.
+    expect((await enviar(joao.sessao, joao.id, jpeg)).statusCode).toBe(204);
+    expect((await enviar(maria.sessao, joao.id, jpeg)).statusCode).toBe(403);
+    expect((await maria.sessao.chamar('DELETE', `/api/fotos/usuario/${joao.id}`)).statusCode).toBe(403);
+
+    // Qualquer um da oficina vê; a versão aparece na sessão e na lista da equipe.
+    const foto = await maria.sessao.chamar('GET', `/api/fotos/usuario/${joao.id}`);
+    expect(foto.statusCode).toBe(200);
+    expect(foto.headers['content-type']).toBe('image/jpeg');
+    expect(foto.rawPayload.equals(jpeg)).toBe(true);
+    expect((await joao.sessao.chamar('GET', '/api/auth/sessao')).json().usuario.fotoVersao).toMatch(/^\d+$/);
+    const equipe = (await admin.chamar('GET', '/api/usuarios')).json();
+    expect(equipe.find((u: { id: string }) => u.id === joao.id).fotoVersao).toMatch(/^\d+$/);
+    expect(equipe.find((u: { id: string }) => u.id === maria.id).fotoVersao).toBeNull();
+
+    // Admin troca e remove a foto de qualquer um.
+    expect((await enviar(admin, maria.id, jpeg)).statusCode).toBe(204);
+    expect((await admin.chamar('DELETE', `/api/fotos/usuario/${joao.id}`)).statusCode).toBe(204);
+    expect((await maria.sessao.chamar('GET', `/api/fotos/usuario/${joao.id}`)).statusCode).toBe(404);
+
+    // Validação igual à do logo.
+    expect((await enviar(joao.sessao, joao.id, '<svg/>', 'image/svg+xml')).statusCode).toBe(415);
+    expect((await enviar(joao.sessao, joao.id, Buffer.from('não é imagem'), 'image/png')).statusCode).toBe(415);
+
+    // Outra oficina não vê nem altera.
+    const outra = await novaOficina('Outra Oficina Fotos');
+    expect((await outra.chamar('GET', `/api/fotos/usuario/${maria.id}`)).statusCode).toBe(404);
+    expect((await enviar(outra, maria.id, jpeg)).statusCode).toBe(404);
+  });
+});
+
 describe('relatórios', () => {
   it('lista, filtra por período e exporta CSV para Excel', async () => {
     const admin = await novaOficina('Oficina Relatórios');
@@ -322,14 +508,14 @@ describe('relatórios', () => {
     expect((await b.chamar('GET', '/api/relatorios/clientes/csv')).rawPayload.toString()).not.toContain('Secreto');
 
     const email = emailAleatorio();
-    await a.chamar('POST', '/api/usuarios', { nome: 'Atendente', email, papel: 'atendente', senha: SENHA });
-    const atendente = await entrar(email);
-    expect((await atendente.chamar('GET', '/api/relatorios')).json().map((r: { id: string }) => r.id)).toEqual(['clientes', 'veiculos']);
-    expect((await atendente.chamar('GET', '/api/relatorios/usuarios')).statusCode).toBe(403);
-    expect((await atendente.chamar('GET', '/api/relatorios/usuarios/csv')).statusCode).toBe(403);
+    await a.chamar('POST', '/api/usuarios', { nome: 'Financeiro', email, funcoes: [await a.funcao('Financeiro')], senha: SENHA });
+    const financeiro = await entrar(email);
+    expect((await financeiro.chamar('GET', '/api/relatorios')).json().map((r: { id: string }) => r.id)).toEqual(['clientes', 'veiculos']);
+    expect((await financeiro.chamar('GET', '/api/relatorios/usuarios')).statusCode).toBe(403);
+    expect((await financeiro.chamar('GET', '/api/relatorios/usuarios/csv')).statusCode).toBe(403);
 
     const usuarios = (await a.chamar('GET', '/api/relatorios/usuarios/csv')).rawPayload.toString();
-    expect(usuarios).toContain('Atendente;');
+    expect(usuarios).toContain('Financeiro;');
     expect(usuarios).not.toMatch(/argon2|senha/i);
   });
 });
@@ -355,7 +541,7 @@ describe('isolamento entre oficinas (RLS)', () => {
   });
 
   it('sem tenant definido, o banco não devolve nenhuma linha', async () => {
-    for (const tabela of ['clientes', 'veiculos', 'users', 'tenant_logos', 'tenant_aparencia']) {
+    for (const tabela of ['clientes', 'veiculos', 'users', 'tenant_logos', 'tenant_aparencia', 'funcoes', 'funcao_permissoes', 'usuario_funcoes', 'usuario_fotos']) {
       const linhas = await db.execute(sql`select count(*)::int as n from ${sql.identifier(tabela)}`);
       expect(linhas[0]!.n, tabela).toBe(0);
     }

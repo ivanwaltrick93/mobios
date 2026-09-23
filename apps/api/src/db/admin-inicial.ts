@@ -1,19 +1,30 @@
 import { hash } from '@node-rs/argon2';
-import { usuarioCriarSchema } from '@mobios/shared';
+import { FUNCOES_PADRAO, NOME_FUNCAO_ADMIN, usuarioCriarSchema } from '@mobios/shared';
 import { count, sql } from 'drizzle-orm';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
-import { tenants, users } from './schema.js';
+import { gravarAcessos, gravarFuncoesDoUsuario } from '../lib/acessos.js';
+import type { Tx } from './client.js';
+import { funcoes, tenants, users } from './schema.js';
 
 type Banco = PostgresJsDatabase<Record<string, unknown>>;
 
 /** Cria uma oficina com seu usuário admin. A senha é gravada apenas como hash Argon2id. */
 export async function criarOficinaComAdmin(banco: Banco, dados: { oficina: string; nome: string; email: string; senha: string }) {
-  const admin = usuarioCriarSchema.parse({ nome: dados.nome, email: dados.email, senha: dados.senha, papel: 'admin' });
+  const admin = usuarioCriarSchema.omit({ funcoes: true }).parse({ nome: dados.nome, email: dados.email, senha: dados.senha });
   const senhaHash = await hash(admin.senha);
   return banco.transaction(async (tx) => {
     const [tenant] = await tx.insert(tenants).values({ nome: dados.oficina }).returning();
     await tx.execute(sql`select set_config('app.tenant_id', ${tenant!.id}, true)`);
-    const [user] = await tx.insert(users).values({ nome: admin.nome, email: admin.email, senhaHash, papel: 'admin' }).returning();
+
+    // Funções da oficina: Administrador (fixo) + padrões editáveis.
+    const [funcaoAdmin] = await tx.insert(funcoes).values({ nome: NOME_FUNCAO_ADMIN, admin: true }).returning();
+    for (const padrao of FUNCOES_PADRAO) {
+      const [funcao] = await tx.insert(funcoes).values({ nome: padrao.nome }).returning();
+      await gravarAcessos(tx as unknown as Tx, funcao!.id, padrao.acessos);
+    }
+
+    const [user] = await tx.insert(users).values({ nome: admin.nome, email: admin.email, senhaHash }).returning();
+    await gravarFuncoesDoUsuario(tx as unknown as Tx, user!.id, [funcaoAdmin!.id]);
     return { tenant: tenant!, user: user! };
   });
 }

@@ -12,14 +12,40 @@ Objetivo: **decidir o escopo completo antes de evoluir a arquitetura**. Este doc
 
 ## 1. Quem usa o sistema
 
-| Perfil | Papel no sistema | O que precisa no dia a dia |
+Definição do dono do produto:
+
+| Perfil | Papel no sistema | O que faz |
 |---|---|---|
-| **Dono / gestor** | `admin` | Visão do faturamento, O.S. atrasadas, produtividade, margem; configura o sistema e a equipe |
-| **Atendente / consultor técnico** | `atendente` | Receber o carro, abrir a O.S., montar o orçamento, falar com o cliente, entregar o veículo |
-| **Mecânico** | `mecanico` | Ver as O.S. atribuídas a ele, registrar diagnóstico, serviços feitos e peças usadas (de preferência em tablet ou celular) |
-| **Financeiro** | `financeiro` | Receber pagamentos, contas a pagar e receber, fechamento do caixa, comissões |
+| **Administrador** | `admin` | **Acesso a todas as funcionalidades**; configura o sistema e a equipe |
+| **Atendente** | `atendente` | **Venda de peças no balcão, abertura de O.S., solicitação de serviços e entrega do veículo** (e, para isso, cadastra clientes e veículos) |
+| **Mecânico** | `mecanico` | **Diagnóstico do carro, observações sobre o serviço, solicitação de peças para troca e confirmação da execução do serviço**. Usa o sistema diretamente, de preferência em tablet ou celular na oficina |
+| **Financeiro** | `financeiro` | **Menu financeiro: faturamento, serviços em aberto e relatórios** |
 | **Cliente final** | *sem login* | Aprovar orçamento, ser avisado quando o carro ficar pronto, receber o comprovante |
 | **Operador do SaaS** (você) | *super-admin* ⚪ | Cadastrar oficinas, planos, cobrança, suporte |
+
+### 1.1 Funções e permissões (configuráveis)
+
+Definido pelo dono do produto: o admin configura em **Configurações → Funções e permissões**.
+
+- O admin **cria, renomeia, desativa e reativa funções** (ex.: Almoxarife, Gerente). Funções não são excluídas.
+- Cada função tem um **nível por módulo**: *Sem acesso*, *Consultar* ou *Editar* (Relatórios: só *Sem acesso* ou *Consultar*). Módulos ainda não construídos já aparecem ("em breve") e controlam o menu.
+- Um usuário pode ter **várias funções** e recebe o **maior nível** de cada módulo entre elas.
+- **Administrador** é fixo, com acesso total, e é o único que gerencia **usuários, funções e configurações** (não entram na matriz).
+- **Desativar uma função** retira na hora o acesso que vinha dela; reativar devolve. Mudanças valem na hora, inclusive para quem está logado.
+- Limite conhecido do nível por módulo: quem pode *Editar* a O.S. faz todas as ações da O.S. (abrir, diagnosticar, confirmar execução, entregar).
+
+**Funções iniciais** de toda oficina (editáveis; `FUNCOES_PADRAO` em `packages/shared/src/acessos.ts`):
+
+| Função | Clientes e veículos | O.S. | Estoque | Financeiro | Relatórios |
+|---|---|---|---|---|---|
+| Administrador (fixo) | Editar | Editar | Editar | Editar | Consultar |
+| Atendente | Editar | Editar | Editar | — | — |
+| Mecânico | Consultar | Editar | Consultar | — | — |
+| Financeiro | Consultar | Consultar | — | Editar | Consultar |
+
+Efeitos já implementados: menu e atalhos da página inicial seguem os níveis; o indicador "Faturado hoje" exige Financeiro ≥ Consultar; o relatório de Usuários é só do Administrador.
+
+> **Ainda a confirmar:** quem **atende a solicitação de peças** do mecânico (separa e dá baixa no estoque) — agora pode ser uma função "Almoxarife" criada pelo admin; e quem **registra o pagamento** na entrega.
 
 ## 2. Jornada do veículo na oficina
 
@@ -54,13 +80,14 @@ flowchart LR
 | PLT-04 | Style guide configurável (cores, botões), logo e login com a marca da oficina | ✅ |
 | PLT-05 | Página inicial com atalhos, indicadores e alertas | ✅ (indicadores de O.S./financeiro chegam com esses módulos) |
 | PLT-06 | Tudo em Docker (db, migrate, api, web) | ✅ |
-| PLT-07 | **Alterar a própria senha** | 🟢 |
+| PLT-07 | **Alterar a própria senha** (na tela "Meu perfil", que já existe) | 🟢 |
+| PLT-15 | **Foto opcional do usuário** (admin na Equipe ou o próprio usuário em "Meu perfil"), exibida no topo e na Equipe; menu "Usuários" renomeado para "Equipe" | ✅ |
 | PLT-08 | **Limite de tentativas de login** (proteção contra força bruta) | 🟢 |
 | PLT-09 | Recuperar senha por e-mail (exige servidor de e-mail/SMTP) | 🟡 |
 | PLT-10 | Trilha de auditoria geral (quem alterou o quê e quando) | 🟡 |
 | PLT-11 | Dados da oficina: razão social, CNPJ, endereço, telefone, IE/IM (usados na impressão da O.S. e na nota fiscal) | 🟢 |
 | PLT-12 | Backup automático diário e restauração testada | 🟢 (antes do primeiro cliente real) |
-| PLT-13 | Permissões finas por ação (ex.: "atendente pode dar desconto até X%") | 🟡 |
+| PLT-13 | **Funções configuráveis** com nível por módulo e várias funções por usuário (§1.1); limites finos, como "desconto até X%", ficam para depois | ✅ funções · 🟡 limites |
 | PLT-14 | Autenticação em dois fatores (2FA) | ⚪ |
 
 ### CAD — Cadastros
@@ -89,7 +116,7 @@ flowchart LR
 | OS-02 | Abertura rápida: cliente + veículo + km de entrada + relato do cliente | 🟢 |
 | OS-03 | **Checklist de entrada**: itens (estepe, macaco, som…), nível de combustível, avarias | 🟢 |
 | OS-04 | **Fotos do veículo** na entrada (avarias) e durante o serviço | 🟢 |
-| OS-05 | Diagnóstico técnico do mecânico | 🟢 |
+| OS-05 | Diagnóstico técnico e **observações do mecânico** sobre o serviço | 🟢 |
 | OS-06 | Itens da O.S.: serviços (do catálogo ou avulsos) e peças (do estoque ou avulsas), com quantidade, preço e desconto | 🟢 |
 | OS-07 | Orçamento com validade, impressão/PDF e totais (serviços, peças, desconto, total) | 🟢 |
 | OS-08 | **Aprovação do cliente**: total ou **parcial, por item**; registro de quem aprovou, quando e por qual meio (presencial, telefone, WhatsApp, link) | 🟢 |
@@ -102,9 +129,11 @@ flowchart LR
 | OS-15 | **Garantia** por serviço/peça (prazo e km) e O.S. de retorno em garantia vinculada à original | 🟡 |
 | OS-16 | Quadro de acompanhamento (kanban) das O.S. por status, para a TV da oficina | 🟡 |
 | OS-17 | Previsão de entrega e alerta de O.S. atrasada | 🟢 |
-| OS-18 | Tela do mecânico otimizada para tablet/celular | 🟡 |
+| OS-18 | **Tela do mecânico** otimizada para tablet/celular: suas O.S., diagnóstico, solicitar peças, confirmar execução | 🟢 (o mecânico usa o sistema diretamente) |
 | OS-19 | Assinatura digital do cliente na tela (aprovação/entrega) | ⚪ |
 | OS-20 | Pacotes de serviço (ex.: "Revisão 10.000 km" = serviços + peças pré-definidos) | 🟡 |
+| OS-21 | **Solicitação de peças pelo mecânico**: pede a peça na O.S.; o atendente separa e dá baixa no estoque (peça sem estoque vira pendência de compra e status "aguardando peça") | 🟢 |
+| OS-22 | **Confirmação de execução por serviço** pelo mecânico (quem e quando); a O.S. só pode ser concluída com todos os serviços aprovados confirmados | 🟢 |
 
 ### EST — Estoque
 
@@ -119,7 +148,7 @@ flowchart LR
 | EST-07 | Custo médio ponderado e margem por peça | 🟢 |
 | EST-08 | Sugestão de compra (abaixo do mínimo + reservado em O.S.) | 🟡 |
 | EST-09 | Curva ABC e estoque parado | 🟡 |
-| EST-10 | Venda de peça no balcão, sem O.S. | 🟡 |
+| EST-10 | **Venda de peça no balcão**, sem O.S. (atendente), com baixa de estoque e pagamento | 🟢 (atribuição do atendente) |
 
 ### FIN — Financeiro
 
@@ -230,7 +259,7 @@ O estoque pode começar junto com a O.S.: as peças da O.S. já nascem ligadas a
 
 **MVP = uma oficina consegue operar o dia inteiro só com o MobiOS, sem papel e sem planilha.**
 
-- **Entra:** PLT-07, 08, 11, 12 · CAD-02, 06–11 · OS-01–10, 12–14, 17 · EST-01, 02, 04–07 · FIN-01–05 · COM-01–03 · REL-02–04, 07, 08 · SAAS-01, 07
+- **Entra:** PLT-07, 08, 11, 12 · CAD-02, 06–11 · OS-01–10, 12–14, 17, 18, 21, 22 · EST-01, 02, 04–07, 10 · FIN-01–05 · COM-01–03 · REL-02–04, 07, 08 · SAAS-01, 07
 - **Fica para a v1.x:** agenda, garantia, comissões, apontamento de horas, kanban, importação de XML, DRE, cobrança da assinatura, painel SaaS
 - **Módulos comerciais (`ee/`):** fiscal, cobrança integrada, WhatsApp automático
 
@@ -255,6 +284,6 @@ O estoque pode começar junto com a O.S.: as peças da O.S. já nascem ligadas a
 4. **Fotos:** quantas por O.S., em média? Guardar no banco (atual) ou já prever storage?
 5. **Impressão:** A4, impressora térmica de 80 mm ou as duas?
 6. **Comissão de mecânicos:** sobre o quê (mão de obra, peças, lucro) e com que frequência é paga?
-7. **Mecânico usa o sistema diretamente** (tablet na oficina) ou o atendente lança tudo?
+7. ~~Mecânico usa o sistema diretamente?~~ **Decidido: sim** (personas, §1). Falta saber: haverá um tablet por mecânico/box ou um compartilhado? Isso define o login (individual ou troca rápida de usuário).
 8. **Agenda** é necessária no MVP?
 9. **Oficina-piloto:** existe uma oficina real para validar o MVP? Ela usa algum sistema hoje (para importar os dados)?

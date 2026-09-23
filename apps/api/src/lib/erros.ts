@@ -25,6 +25,7 @@ const mensagensUnicidade: Record<string, string> = {
   users_email_index: 'Já existe uma conta com este e-mail',
   clientes_tenant_id_cpf_cnpj_index: 'Já existe um cliente com este CPF/CNPJ',
   veiculos_tenant_id_placa_index: 'Já existe um veículo com esta placa',
+  funcoes_nome_unico: 'Já existe uma função com este nome',
 };
 
 export function registrarTratamentoDeErros(app: FastifyInstance) {

@@ -1,31 +1,33 @@
 import cookie from '@fastify/cookie';
 import jwt from '@fastify/jwt';
-import type { Papel } from '@mobios/shared';
-import { eq } from 'drizzle-orm';
+import { temAcesso, type Acessos, type ModuloId, type Nivel } from '@mobios/shared';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import fp from 'fastify-plugin';
 import { withTenant } from '../db/client.js';
-import { users } from '../db/schema.js';
 import { env } from '../env.js';
+import { carregarAcesso } from './acessos.js';
 import { ErroHttp } from './erros.js';
 
 export const COOKIE_SESSAO = 'mobios_sessao';
 const DURACAO_SEGUNDOS = 60 * 60 * 12; // um turno de trabalho
 
-/** O token só identifica o usuário; papel e status vêm do banco a cada requisição. */
+/** O token só identifica o usuário; funções, permissões e status vêm do banco a cada requisição. */
 export type Token = { sub: string; tid: string };
 
 declare module '@fastify/jwt' {
   interface FastifyJWT {
     payload: Token;
-    user: Token & { papel: Papel };
+    user: Token & { admin: boolean; acessos: Acessos };
   }
 }
 
 declare module 'fastify' {
   interface FastifyInstance {
     autenticar: (req: FastifyRequest) => Promise<void>;
-    exigirPapel: (...papeis: Papel[]) => (req: FastifyRequest) => Promise<void>;
+    /** Nível mínimo no módulo (editar inclui consultar). */
+    exigirAcesso: (modulo: ModuloId, nivel?: Nivel) => (req: FastifyRequest) => Promise<void>;
+    /** Exclusivo da função Administrador: usuários, funções e configurações. */
+    exigirAdmin: (req: FastifyRequest) => Promise<void>;
   }
   interface FastifyReply {
     iniciarSessao: (token: Token) => Promise<void>;
@@ -48,17 +50,19 @@ export const authPlugin = fp(async (app) => {
     } catch {
       throw new ErroHttp(401, 'Sessão expirada. Entre novamente.');
     }
-    // Consulta pela PK a cada requisição: desativar ou trocar a função de alguém vale na hora.
-    const [usuario] = await withTenant(token.tid, (tx) =>
-      tx.select({ papel: users.papel, ativo: users.ativo }).from(users).where(eq(users.id, token.sub)),
-    );
-    if (!usuario?.ativo) throw new ErroHttp(401, 'Acesso desativado. Fale com o administrador.');
-    req.user = { sub: token.sub, tid: token.tid, papel: usuario.papel };
+    // Lido do banco a cada requisição: desativar alguém ou mudar funções e permissões vale na hora.
+    const acesso = await withTenant(token.tid, (tx) => carregarAcesso(tx, token.sub));
+    if (!acesso?.ativo) throw new ErroHttp(401, 'Acesso desativado. Fale com o administrador.');
+    req.user = { sub: token.sub, tid: token.tid, admin: acesso.admin, acessos: acesso.acessos };
   });
 
-  // Usar depois de `autenticar` (que preenche req.user.papel).
-  app.decorate('exigirPapel', (...papeis: Papel[]) => async (req: FastifyRequest) => {
-    if (!papeis.includes(req.user.papel)) throw new ErroHttp(403, 'Você não tem permissão para esta ação.');
+  // Usar depois de `autenticar`. Níveis configurados em Configurações → Funções e permissões.
+  app.decorate('exigirAcesso', (modulo: ModuloId, nivel: Nivel = 'consultar') => async (req: FastifyRequest) => {
+    if (!temAcesso(req.user.acessos, modulo, nivel)) throw new ErroHttp(403, 'Você não tem permissão para esta ação.');
+  });
+
+  app.decorate('exigirAdmin', async (req: FastifyRequest) => {
+    if (!req.user.admin) throw new ErroHttp(403, 'Apenas o Administrador pode fazer isto.');
   });
 
   app.decorateReply('iniciarSessao', async function (this: FastifyReply, token: Token) {

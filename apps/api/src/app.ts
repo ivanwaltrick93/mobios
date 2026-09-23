@@ -7,6 +7,8 @@ import { registrarTratamentoDeErros } from './lib/erros.js';
 import { authRoutes } from './modules/auth/routes.js';
 import { clientesRoutes } from './modules/clientes/routes.js';
 import { configuracoesRoutes } from './modules/configuracoes/routes.js';
+import { fotosRoutes } from './modules/fotos/routes.js';
+import { funcoesRoutes } from './modules/funcoes/routes.js';
 import { painelRoutes } from './modules/painel/routes.js';
 import { publicoRoutes } from './modules/publico/routes.js';
 import { relatoriosRoutes } from './modules/relatorios/routes.js';
@@ -29,6 +31,8 @@ export async function criarApp() {
   await app.register(authRoutes, { prefix: '/api/auth' });
   await app.register(publicoRoutes, { prefix: '/api/publico' });
   await app.register(usuariosRoutes, { prefix: '/api/usuarios' });
+  await app.register(funcoesRoutes, { prefix: '/api/funcoes' });
+  await app.register(fotosRoutes, { prefix: '/api/fotos' });
   await app.register(clientesRoutes, { prefix: '/api/clientes' });
   await app.register(veiculosRoutes, { prefix: '/api/veiculos' });
   await app.register(configuracoesRoutes, { prefix: '/api/configuracoes' });

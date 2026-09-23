@@ -36,6 +36,27 @@
       "when": 1790127190888,
       "tag": "0004_aparencia_tabela",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790128993038,
+      "tag": "0005_funcoes_permissoes",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790128993386,
+      "tag": "0006_remove_papel",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1790129698606,
+      "tag": "0007_fotos_usuarios",
+      "breakpoints": true
     }
   ]
 }
