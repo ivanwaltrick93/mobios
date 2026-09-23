@@ -46,6 +46,8 @@ export function registrarTratamentoDeErros(app: FastifyInstance) {
     if (pg?.code === '23503') {
       return reply.code(409).send({ erro: 'Registro vinculado a outros dados ou referência inexistente' });
     }
+    if (err.code === 'FST_ERR_CTP_BODY_TOO_LARGE') return reply.code(413).send({ erro: 'Arquivo grande demais.' });
+    if (err.code === 'FST_ERR_CTP_INVALID_MEDIA_TYPE') return reply.code(415).send({ erro: 'Formato de arquivo não suportado.' });
     if (err.statusCode && err.statusCode < 500) return reply.code(err.statusCode).send({ erro: err.message });
 
     req.log.error(err);

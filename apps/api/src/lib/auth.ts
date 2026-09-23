@@ -1,26 +1,31 @@
 import cookie from '@fastify/cookie';
 import jwt from '@fastify/jwt';
 import type { Papel } from '@mobios/shared';
+import { eq } from 'drizzle-orm';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import fp from 'fastify-plugin';
+import { withTenant } from '../db/client.js';
+import { users } from '../db/schema.js';
 import { env } from '../env.js';
 import { ErroHttp } from './erros.js';
 
 export const COOKIE_SESSAO = 'mobios_sessao';
 const DURACAO_SEGUNDOS = 60 * 60 * 12; // um turno de trabalho
 
-export type Token = { sub: string; tid: string; papel: Papel };
+/** O token só identifica o usuário; papel e status vêm do banco a cada requisição. */
+export type Token = { sub: string; tid: string };
 
 declare module '@fastify/jwt' {
   interface FastifyJWT {
     payload: Token;
-    user: Token;
+    user: Token & { papel: Papel };
   }
 }
 
 declare module 'fastify' {
   interface FastifyInstance {
     autenticar: (req: FastifyRequest) => Promise<void>;
+    exigirPapel: (...papeis: Papel[]) => (req: FastifyRequest) => Promise<void>;
   }
   interface FastifyReply {
     iniciarSessao: (token: Token) => Promise<void>;
@@ -37,11 +42,23 @@ export const authPlugin = fp(async (app) => {
   });
 
   app.decorate('autenticar', async (req: FastifyRequest) => {
+    let token: Token;
     try {
-      await req.jwtVerify();
+      token = await req.jwtVerify<Token>();
     } catch {
       throw new ErroHttp(401, 'Sessão expirada. Entre novamente.');
     }
+    // Consulta pela PK a cada requisição: desativar ou trocar a função de alguém vale na hora.
+    const [usuario] = await withTenant(token.tid, (tx) =>
+      tx.select({ papel: users.papel, ativo: users.ativo }).from(users).where(eq(users.id, token.sub)),
+    );
+    if (!usuario?.ativo) throw new ErroHttp(401, 'Acesso desativado. Fale com o administrador.');
+    req.user = { sub: token.sub, tid: token.tid, papel: usuario.papel };
+  });
+
+  // Usar depois de `autenticar` (que preenche req.user.papel).
+  app.decorate('exigirPapel', (...papeis: Papel[]) => async (req: FastifyRequest) => {
+    if (!papeis.includes(req.user.papel)) throw new ErroHttp(403, 'Você não tem permissão para esta ação.');
   });
 
   app.decorateReply('iniciarSessao', async function (this: FastifyReply, token: Token) {

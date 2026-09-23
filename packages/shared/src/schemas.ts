@@ -10,31 +10,89 @@ const textoOpcional = z
   .transform((v) => (v === '' ? null : v))
   .nullish();
 
-// ---------- Auth ----------
+// ---------- Auth e usuários ----------
 
-export const papelSchema = z.enum(['dono', 'atendente', 'mecanico', 'financeiro']);
+export const papelSchema = z.enum(['admin', 'atendente', 'mecanico', 'financeiro']);
 export type Papel = z.infer<typeof papelSchema>;
 
-export const cadastroOficinaSchema = z.object({
-  nomeOficina: z.string().trim().min(2, 'Informe o nome da oficina'),
-  cnpj: textoOpcional.refine((v) => v == null || cnpjValido(v), 'CNPJ inválido').transform((v) => (v ? somenteDigitos(v) : null)),
-  nome: z.string().trim().min(2, 'Informe seu nome'),
-  email: z.email('E-mail inválido').trim().toLowerCase(),
-  senha: z.string().min(8, 'A senha precisa de pelo menos 8 caracteres'),
-});
-export type CadastroOficinaInput = z.input<typeof cadastroOficinaSchema>;
+export const nomesPapel: Record<Papel, string> = {
+  admin: 'Administrador',
+  atendente: 'Atendente',
+  mecanico: 'Mecânico',
+  financeiro: 'Financeiro',
+};
+
+// Normaliza antes de validar: e-mails colados costumam vir com espaços ou maiúsculas.
+const emailSchema = z.string().trim().toLowerCase().pipe(z.email('E-mail inválido'));
+// Limite superior evita que senhas gigantes sejam usadas para sobrecarregar o hash.
+const senhaSchema = z.string().min(8, 'A senha precisa de pelo menos 8 caracteres').max(128, 'Senha longa demais');
 
 export const loginSchema = z.object({
-  email: z.email('E-mail inválido').trim().toLowerCase(),
-  senha: z.string().min(1, 'Informe a senha'),
+  email: emailSchema,
+  senha: z.string().min(1, 'Informe a senha').max(128),
 });
 export type LoginInput = z.input<typeof loginSchema>;
 
+// ---------- Aparência (cores parametrizáveis por oficina) ----------
+
+const corHex = z
+  .string()
+  .trim()
+  .regex(/^#[0-9a-fA-F]{6}$/, 'Use uma cor no formato #RRGGBB')
+  .transform((v) => v.toLowerCase());
+
+/** Tema salvo. null = usar a cor padrão do style guide. Sem transformações: é usado em respostas. */
+export const temaSchema = z.object({
+  corPrimaria: z.string().nullable(),
+  corMenu: z.string().nullable(),
+});
+export type Tema = z.infer<typeof temaSchema>;
+
+/** Entrada do formulário de aparência: valida e normaliza as cores. */
+export const temaInputSchema = z.object({
+  corPrimaria: corHex.nullable(),
+  corMenu: corHex.nullable(),
+});
+
+export const TEMA_PADRAO = { corPrimaria: '#1d4ed8', corMenu: '#ffffff' } as const;
+
+// SVG fica de fora: pode conter scripts.
+export const LOGO_TIPOS = ['image/png', 'image/jpeg', 'image/webp'] as const;
+export const LOGO_TAMANHO_MAXIMO = 1024 * 1024; // 1 MB
+
 export const sessaoSchema = z.object({
   usuario: z.object({ id: z.uuid(), nome: z.string(), email: z.string(), papel: papelSchema }),
-  oficina: z.object({ id: z.uuid(), nome: z.string() }),
+  // logoVersao: null = sem logo; senão, muda a cada troca (usado na URL para renovar o cache).
+  oficina: z.object({ id: z.uuid(), nome: z.string(), tema: temaSchema, logoVersao: z.string().nullable() }),
 });
 export type Sessao = z.infer<typeof sessaoSchema>;
+
+export const usuarioSchema = z.object({
+  id: z.uuid(),
+  nome: z.string(),
+  email: z.string(),
+  papel: papelSchema,
+  ativo: z.boolean(),
+  criadoEm: z.coerce.date(),
+});
+export type Usuario = z.infer<typeof usuarioSchema>;
+
+export const usuarioCriarSchema = z.object({
+  nome: z.string().trim().min(2, 'Informe o nome'),
+  email: emailSchema,
+  papel: papelSchema,
+  senha: senhaSchema,
+});
+export type UsuarioCriarInput = z.input<typeof usuarioCriarSchema>;
+
+/** Edição pelo admin. Senha vazia = manter a atual. O e-mail não muda (é a chave de login). */
+export const usuarioAtualizarSchema = z.object({
+  nome: z.string().trim().min(2, 'Informe o nome'),
+  papel: papelSchema,
+  ativo: z.boolean(),
+  novaSenha: z.union([z.literal(''), senhaSchema]).nullish().transform((v) => v || null),
+});
+export type UsuarioAtualizarInput = z.input<typeof usuarioAtualizarSchema>;
 
 // ---------- Clientes ----------
 
@@ -122,3 +180,30 @@ export const erroSchema = z.object({
   erro: z.string(),
   campos: z.record(z.string(), z.string()).optional(),
 });
+
+// ---------- Relatórios ----------
+
+export const relatorioIdSchema = z.enum(['clientes', 'veiculos', 'usuarios']);
+export type RelatorioId = z.infer<typeof relatorioIdSchema>;
+
+const dataIso = z.iso.date('Data inválida');
+
+export const relatorioFiltroSchema = z
+  .object({
+    de: z.union([z.literal(''), dataIso]).optional().transform((v) => v || undefined),
+    ate: z.union([z.literal(''), dataIso]).optional().transform((v) => v || undefined),
+  })
+  .refine((f) => !f.de || !f.ate || f.de <= f.ate, { message: 'A data inicial deve ser anterior à final', path: ['ate'] });
+
+export type RelatorioDescricao = {
+  id: RelatorioId;
+  titulo: string;
+  descricao: string;
+  colunas: { chave: string; titulo: string }[];
+};
+
+export type RelatorioPrevia = {
+  colunas: { chave: string; titulo: string }[];
+  linhas: Record<string, string>[];
+  total: number;
+};

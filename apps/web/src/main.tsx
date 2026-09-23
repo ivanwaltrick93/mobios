@@ -7,13 +7,15 @@ import './index.css';
 import { ClienteDetalhe } from './pages/ClienteDetalhe';
 import { Clientes } from './pages/Clientes';
 import { EmBreve } from './pages/EmBreve';
-import { CriarConta, Entrar } from './pages/Entrar';
+import { Entrar } from './pages/Entrar';
+import { Configuracoes } from './pages/Configuracoes';
+import { Relatorios } from './pages/Relatorios';
+import { Usuarios } from './pages/Usuarios';
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { refetchOnWindowFocus: false } } });
 
 const router = createBrowserRouter([
   { path: '/entrar', element: <Entrar /> },
-  { path: '/criar-conta', element: <CriarConta /> },
   {
     element: <Layout />,
     children: [
@@ -23,6 +25,9 @@ const router = createBrowserRouter([
       { path: '/os', element: <EmBreve titulo="Ordens de serviço" /> },
       { path: '/estoque', element: <EmBreve titulo="Estoque" /> },
       { path: '/financeiro', element: <EmBreve titulo="Financeiro" /> },
+      { path: '/relatorios', element: <Relatorios /> },
+      { path: '/usuarios', element: <Usuarios /> },
+      { path: '/configuracoes', element: <Configuracoes /> },
     ],
   },
 ]);

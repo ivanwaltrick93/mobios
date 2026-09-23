@@ -16,16 +16,18 @@ Gestão de Ordens de Serviço para oficinas mecânicas. Web, multi-tenant (SaaS)
 ## Rodando tudo em Docker
 
 ```bash
-cp .env.example .env              # troque JWT_SECRET (e as senhas, se quiser)
+cp .env.example .env              # troque JWT_SECRET, ADMIN_EMAIL e ADMIN_SENHA
 docker compose up -d --build      # db → migrate → api → web
 ```
 
-Acesse http://localhost:8080. Serviços:
+Acesse http://localhost:8080 e entre com `ADMIN_EMAIL` / `ADMIN_SENHA`. O admin inicial é criado só na primeira subida (banco sem usuários); os demais usuários são cadastrados por ele, em **Usuários**.
+
+Serviços:
 
 | Serviço | O que é |
 |---|---|
 | `db` | PostgreSQL 17 (dados no volume `mobios_db-data`; porta 5432 só em 127.0.0.1) |
-| `migrate` | Aplica as migrações e encerra; a API só sobe se ele terminar com sucesso |
+| `migrate` | Aplica as migrações, cria o admin inicial se preciso e encerra; a API só sobe se ele terminar com sucesso |
 | `api` | API Fastify (porta 3333, só na rede interna do Docker) |
 | `web` | Caddy servindo o front e repassando `/api/*` para a API |
 

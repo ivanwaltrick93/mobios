@@ -1,11 +1,71 @@
 @import 'tailwindcss';
 
-@theme {
-  --color-marca-50: #eff6ff;
-  --color-marca-600: #1d4ed8;
-  --color-marca-700: #1e40af;
+/*
+ * Style guide do MobiOS: TODA cor da interface sai daqui (docs/STYLE_GUIDE.md).
+ * Nenhum componente usa cor fixa do Tailwind (slate-*, blue-*...): só os tokens abaixo.
+ *
+ * Parametrizáveis por oficina (tela Configurações → Aparência), aplicados em runtime por lib/tema.ts:
+ *   --cor-primaria, --cor-menu  (+ --cor-sobre-primaria e --cor-menu-texto, calculadas para contraste)
+ * As variações (hover, fundo suave, item ativo) derivam delas com color-mix, então acompanham a troca.
+ */
+:root {
+  /* Marca (padrão = TEMA_PADRAO em packages/shared) */
+  --cor-primaria: #1d4ed8;
+  --cor-sobre-primaria: #ffffff;
+  --cor-menu: #ffffff;
+  --cor-menu-texto: #334155;
+
+  /* Neutros */
+  --cor-fundo: #f8fafc;
+  --cor-superficie: #ffffff;
+  --cor-superficie-alt: #f1f5f9;
+  --cor-borda: #e2e8f0;
+  --cor-borda-forte: #cbd5e1;
+  --cor-texto: #0f172a;
+  --cor-texto-suave: #64748b;
+
+  /* Estados */
+  --cor-sucesso: #15803d;
+  --cor-perigo: #dc2626;
+  --cor-sobre-perigo: #ffffff;
+  --cor-alerta: #b45309;
+
+  /* Derivadas: não configurar diretamente */
+  --cor-primaria-hover: color-mix(in oklab, var(--cor-primaria), black 15%);
+  --cor-primaria-suave: color-mix(in oklab, var(--cor-primaria) 10%, var(--cor-superficie));
+  --cor-menu-ativo: color-mix(in oklab, var(--cor-menu-texto) 12%, var(--cor-menu));
+  --cor-menu-borda: color-mix(in oklab, var(--cor-menu-texto) 15%, var(--cor-menu));
+  --cor-sucesso-suave: color-mix(in oklab, var(--cor-sucesso) 12%, var(--cor-superficie));
+  --cor-perigo-suave: color-mix(in oklab, var(--cor-perigo) 10%, var(--cor-superficie));
+  --cor-perigo-hover: color-mix(in oklab, var(--cor-perigo), black 15%);
+}
+
+/* Expõe os tokens como utilitários do Tailwind: bg-primaria, text-texto-suave, border-borda... */
+@theme inline {
+  --color-primaria: var(--cor-primaria);
+  --color-primaria-hover: var(--cor-primaria-hover);
+  --color-primaria-suave: var(--cor-primaria-suave);
+  --color-sobre-primaria: var(--cor-sobre-primaria);
+  --color-menu: var(--cor-menu);
+  --color-menu-texto: var(--cor-menu-texto);
+  --color-menu-ativo: var(--cor-menu-ativo);
+  --color-menu-borda: var(--cor-menu-borda);
+  --color-fundo: var(--cor-fundo);
+  --color-superficie: var(--cor-superficie);
+  --color-superficie-alt: var(--cor-superficie-alt);
+  --color-borda: var(--cor-borda);
+  --color-borda-forte: var(--cor-borda-forte);
+  --color-texto: var(--cor-texto);
+  --color-texto-suave: var(--cor-texto-suave);
+  --color-sucesso: var(--cor-sucesso);
+  --color-sucesso-suave: var(--cor-sucesso-suave);
+  --color-perigo: var(--cor-perigo);
+  --color-perigo-suave: var(--cor-perigo-suave);
+  --color-perigo-hover: var(--cor-perigo-hover);
+  --color-sobre-perigo: var(--cor-sobre-perigo);
+  --color-alerta: var(--cor-alerta);
 }
 
 body {
-  @apply bg-slate-50 text-slate-900 antialiased;
+  @apply bg-fundo text-texto antialiased;
 }

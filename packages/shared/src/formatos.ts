@@ -6,3 +6,10 @@ export function formatarDocumento(doc: string | null): string {
 }
 
 export const formatarPlaca = (placa: string) => (/^[A-Z]{3}\d{4}$/.test(placa) ? `${placa.slice(0, 3)}-${placa.slice(3)}` : placa);
+
+const FUSO = 'America/Sao_Paulo';
+
+export const formatarData = (data: Date) => data.toLocaleDateString('pt-BR', { timeZone: FUSO });
+
+/** Data de hoje (Brasília) em AAAA-MM-DD, para nomes de arquivo e filtros. */
+export const hojeIso = () => new Date().toLocaleDateString('en-CA', { timeZone: FUSO });

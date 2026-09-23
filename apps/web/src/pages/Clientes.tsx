@@ -1,10 +1,9 @@
-import type { Cliente } from '@mobios/shared';
+import { formatarDocumento, type Cliente } from '@mobios/shared';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { Botao, Cartao, Input } from '../components/ui';
+import { Botao, Cabecalho, Cartao, Input, Linha, LinhaVazia, Tabela, Td, TextoSuave, Th, Titulo } from '../components/ui';
 import { api } from '../lib/api';
-import { formatarDocumento } from '../lib/formatos';
 import { ClienteForm } from './ClienteForm';
 
 export function Clientes() {
@@ -19,10 +18,7 @@ export function Clientes() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold">Clientes</h1>
-        {!novo && <Botao onClick={() => setNovo(true)}>Novo cliente</Botao>}
-      </div>
+      <Titulo acao={!novo && <Botao onClick={() => setNovo(true)}>Novo cliente</Botao>}>Clientes</Titulo>
 
       {novo && (
         <Cartao>
@@ -33,38 +29,30 @@ export function Clientes() {
 
       <Input placeholder="Buscar por nome, CPF/CNPJ ou telefone" value={busca} onChange={(e) => setBusca(e.target.value)} />
 
-      <Cartao className="overflow-x-auto">
-        <table className="w-full text-left text-sm">
-          <thead className="border-b border-slate-200 bg-slate-50 text-slate-500">
-            <tr>
-              <th className="px-4 py-3 font-medium">Nome</th>
-              <th className="px-4 py-3 font-medium">CPF/CNPJ</th>
-              <th className="px-4 py-3 font-medium">Telefone</th>
-            </tr>
-          </thead>
-          <tbody>
-            {clientes.data?.itens.map((c) => (
-              <tr key={c.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
-                <td className="px-4 py-3">
-                  <Link to={`/clientes/${c.id}`} className="font-medium text-marca-600 hover:underline">
-                    {c.nome}
-                  </Link>
-                </td>
-                <td className="px-4 py-3 text-slate-600">{formatarDocumento(c.cpfCnpj)}</td>
-                <td className="px-4 py-3 text-slate-600">{c.telefone ?? '—'}</td>
-              </tr>
-            ))}
-            {clientes.data?.itens.length === 0 && (
-              <tr>
-                <td colSpan={3} className="px-4 py-8 text-center text-slate-500">
-                  {busca ? 'Nenhum cliente encontrado.' : 'Nenhum cliente cadastrado ainda.'}
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </Cartao>
-      {clientes.data && <p className="text-xs text-slate-500">{clientes.data.total} cliente(s)</p>}
+      <Tabela>
+        <Cabecalho>
+          <Th>Nome</Th>
+          <Th>CPF/CNPJ</Th>
+          <Th>Telefone</Th>
+        </Cabecalho>
+        <tbody>
+          {clientes.data?.itens.map((c) => (
+            <Linha key={c.id} className="hover:bg-superficie-alt">
+              <Td>
+                <Link to={`/clientes/${c.id}`} className="font-medium text-primaria hover:underline">
+                  {c.nome}
+                </Link>
+              </Td>
+              <Td suave>{formatarDocumento(c.cpfCnpj)}</Td>
+              <Td suave>{c.telefone ?? '—'}</Td>
+            </Linha>
+          ))}
+          {clientes.data?.itens.length === 0 && (
+            <LinhaVazia colunas={3}>{busca ? 'Nenhum cliente encontrado.' : 'Nenhum cliente cadastrado ainda.'}</LinhaVazia>
+          )}
+        </tbody>
+      </Tabela>
+      {clientes.data && <TextoSuave className="text-xs">{clientes.data.total} cliente(s)</TextoSuave>}
     </div>
   );
 }

@@ -34,6 +34,11 @@ services:
     command: ["node", "dist/db/migrate.js"]
     environment:
       DATABASE_MIGRATION_URL: postgres://mobios:${POSTGRES_PASSWORD:-mobios}@db:5432/mobios
+      # Usados só na primeira instalação (banco sem usuários) para criar a oficina e o admin.
+      OFICINA_NOME: ${OFICINA_NOME:-Minha Oficina}
+      ADMIN_NOME: ${ADMIN_NOME:-Administrador}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_SENHA: ${ADMIN_SENHA:-}
     depends_on:
       db:
         condition: service_healthy

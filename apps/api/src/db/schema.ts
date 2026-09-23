@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { boolean, foreignKey, index, unique, integer, pgEnum, pgPolicy, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import { boolean, customType, foreignKey, index, unique, integer, pgEnum, pgPolicy, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 
 const timestamps = {
   criadoEm: timestamp({ withTimezone: true }).notNull().defaultNow(),
@@ -30,25 +30,30 @@ const isolamentoPorTenant = (tabela: string) =>
     withCheck: sql`tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid`,
   });
 
-// ---------- Globais (sem RLS: lidas antes de o tenant ser conhecido) ----------
+// ---------- Global (sem RLS) ----------
 
 export const tenants = pgTable('tenants', {
   id: uuid().primaryKey().defaultRandom(),
   nome: text().notNull(),
   cnpj: text(),
   plano: text().notNull().default('gratuito'),
+  // Aparência: null = cor padrão do style guide.
+  corPrimaria: text(),
+  corMenu: text(),
   ...timestamps,
 });
 
-export const papel = pgEnum('papel', ['dono', 'atendente', 'mecanico', 'financeiro']);
+export const papel = pgEnum('papel', ['admin', 'atendente', 'mecanico', 'financeiro']);
 
+/**
+ * Usuários também ficam sob RLS. O login (busca por e-mail antes de o tenant ser
+ * conhecido) usa a função SECURITY DEFINER auth_usuario_por_email, criada na migração.
+ */
 export const users = pgTable(
   'users',
   {
     id: uuid().primaryKey().defaultRandom(),
-    tenantId: uuid()
-      .notNull()
-      .references(() => tenants.id),
+    tenantId: tenantId(),
     nome: text().notNull(),
     email: text().notNull(),
     senhaHash: text().notNull(),
@@ -56,7 +61,7 @@ export const users = pgTable(
     ativo: boolean().notNull().default(true),
     ...timestamps,
   },
-  (t) => [uniqueIndex().on(t.email), index().on(t.tenantId)],
+  (t) => [uniqueIndex().on(t.email), index().on(t.tenantId, t.nome), isolamentoPorTenant('users')],
 );
 
 // ---------- Negócio (com RLS) ----------
@@ -108,4 +113,19 @@ export const veiculos = pgTable(
     index().on(t.clienteId),
     isolamentoPorTenant('veiculos'),
   ],
+);
+
+const bytea = customType<{ data: Buffer }>({ dataType: () => 'bytea' });
+
+/** Logo da oficina guardado no próprio banco (um por oficina; a PK é o tenant). */
+export const tenantLogos = pgTable(
+  'tenant_logos',
+  {
+    tenantId: tenantId().primaryKey(),
+    conteudo: bytea().notNull(),
+    tipo: text().notNull(),
+    tamanho: integer().notNull(),
+    ...timestamps,
+  },
+  () => [isolamentoPorTenant('tenant_logos')],
 );

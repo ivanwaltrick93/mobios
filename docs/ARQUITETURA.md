@@ -37,7 +37,7 @@ Todas as dependências são open source com licenças permissivas (MIT, Apache-2
 | Front-end | React 19 + Vite | MIT | SPA; não há necessidade de SSR em app autenticado |
 | Estado servidor | TanStack Query | MIT | Cache, loading, invalidação |
 | Rotas | React Router | MIT | Simples e estável |
-| Estilo | Tailwind CSS 4 | MIT | Produtivo; base para shadcn/ui depois |
+| Estilo | Tailwind CSS 4 + tokens CSS | MIT | Style guide em `docs/STYLE_GUIDE.md`; cores parametrizáveis por oficina |
 | Testes | Vitest | MIT | Mesmo runner no front e no back |
 | Proxy/TLS | Caddy | Apache-2.0 | HTTPS automático (Let's Encrypt) em produção |
 
@@ -92,7 +92,8 @@ MobiOS/
 - Se o código esquecer de filtrar por tenant, o banco devolve **zero linhas** em vez de dados de outra oficina. Falha segura.
 - **FKs entre tabelas de negócio são compostas** `(tenant_id, x_id)`: a checagem de FK do Postgres ignora o RLS, então uma FK simples permitiria vincular um registro ao de outra oficina.
 - Um teste automatizado falha se alguma tabela com `tenant_id` estiver sem RLS.
-- `tenants` e `users` ficam fora do RLS porque são lidos antes de o tenant ser conhecido (login/cadastro); só o módulo `auth` os acessa.
+- `users` também está sob RLS. A única leitura sem tenant definido é o login (busca por e-mail), feita pela função `auth_usuario_por_email` (`SECURITY DEFINER`, executável só por `mobios_app`), que devolve apenas o necessário para autenticar.
+- Só `tenants` fica fora do RLS.
 
 **Por que não um banco por cliente?** Custo e operação (migrações × N bancos) não se justificam para oficinas pequenas. Se um cliente grande exigir isolamento físico, o mesmo código roda em um banco dedicado — basta outra `DATABASE_URL`.
 
@@ -100,10 +101,16 @@ MobiOS/
 
 Valores monetários em **centavos (inteiro)** — nunca `float`.
 
+Chaves e índices (obrigatório em toda tabela):
+- **PK** `id uuid` gerada no banco (`gen_random_uuid()`).
+- **Chave natural única** sempre que existir (e-mail do usuário; placa e CPF/CNPJ por oficina).
+- **Índice em toda FK** e nas colunas usadas em filtro/ordenação frequentes, começando por `tenant_id` quando a consulta é por oficina.
+
 ```
-tenants (id, nome, cnpj, plano, criado_em)
-users (id, tenant_id, nome, email [único], senha_hash, papel, ativo)
-    papel: dono | atendente | mecanico | financeiro
+tenants (id, nome, cnpj, plano, cor_primaria?, cor_menu?, criado_em)   -- cores: aparência da oficina
+tenant_logos (tenant_id [PK/FK], conteudo bytea, tipo, tamanho, atualizado_em)   -- logo, até 1 MB, no próprio banco
+users (id, tenant_id, nome, email [único global], senha_hash, papel, ativo)
+    papel: admin | atendente | mecanico | financeiro
 
 clientes (id, tenant_id, tipo PF|PJ, nome, cpf_cnpj, telefone, email, endereco jsonb, observacoes)
 veiculos (id, tenant_id, cliente_id, placa, marca, modelo, ano, cor, chassi, km_atual)
@@ -141,12 +148,23 @@ contadores (tenant_id, chave, valor)  -- numeração sequencial de O.S. sem bura
 
 ## 6. Segurança e LGPD
 
-- Senhas com Argon2id; JWT de curta duração em cookie `httpOnly`, `SameSite=Lax`, `Secure` em produção.
+- **Sem cadastro público.** Na primeira instalação (banco sem usuários), o serviço `migrate` cria a oficina e o **admin inicial** a partir de `ADMIN_EMAIL`/`ADMIN_SENHA` do `.env`. Só o admin cadastra usuários.
+- **Funções = permissões:** `admin` (gerencia usuários e tudo mais), `atendente`, `mecanico`, `financeiro`. Checadas na rota com `app.exigirPapel(...)`.
+- **Usuários não são excluídos, só desativados** (preserva o histórico de quem fez o quê). O admin não pode rebaixar nem desativar a própria conta.
+- Senhas com Argon2id (8 a 128 caracteres; o hash nunca sai da API). Login com tempo constante, sem revelar se o e-mail existe.
+- JWT de 12 h em cookie `httpOnly`, `SameSite=Lax`, `Secure` com HTTPS. O token só identifica o usuário: **papel e status são lidos do banco a cada requisição** (consulta pela PK), então desativar ou trocar a função vale na hora.
 - RLS como segunda barreira de isolamento entre oficinas (ver §4).
 - Autorização por papel (`dono`, `atendente`, `mecanico`, `financeiro`) checada na rota.
 - Rate limit no login (`@fastify/rate-limit`) — fase 1.
 - LGPD: CPF/telefone são dados pessoais → exportação e exclusão por titular, trilha de auditoria, backups criptografados, termo de uso/DPA para o SaaS.
 - Segredos só em variáveis de ambiente; nunca no repositório.
+
+### Relatórios
+
+- Definidos em `apps/api/src/modules/relatorios/definicoes.ts` (título, colunas, funções com acesso, consulta). Relatório novo = uma entrada nesse arquivo.
+- Mesma consulta para a prévia na tela (50 linhas) e para o CSV (até 50.000 linhas; acima disso o usuário reduz o período).
+- CSV no padrão do Excel pt-BR (`;`, BOM UTF-8, CRLF), gerado em memória (sem disco, regra §9.1) e protegido contra *CSV injection*.
+- Acesso: `admin`, `atendente` e `financeiro`; o relatório de usuários é só do `admin`. Isolamento por oficina via RLS.
 
 ## 7. Licenciamento (open core)
 
@@ -161,14 +179,50 @@ contadores (tenant_id, chave, valor)  -- numeração sequencial de O.S. sem bura
 - **Dev:** `docker compose up -d db` + `pnpm dev` (api e web com hot reload).
 - **Produção (VPS)** *(fase 4)*: o mesmo compose; trocar `:80` pelo domínio no `infra/caddy/Caddyfile` (HTTPS automático), `COOKIE_SECURE=true` e senhas/JWT fortes no `.env`. Backup diário com `pg_dump` para um storage S3 compatível (Backblaze B2, Cloudflare R2 ou MinIO).
 - **Self-hosted:** o mesmo compose, entregue ao cliente.
-- **Crescimento:** api é stateless → várias réplicas atrás do Caddy; Postgres gerenciado ou réplica de leitura; depois Kubernetes se necessário.
+- **Crescimento:** api é stateless → várias réplicas atrás do Caddy; Postgres gerenciado ou réplica de leitura; depois Kubernetes se necessário (ver §9).
 
-## 9. Roadmap
+## 9. Escalabilidade horizontal (pronto para Kubernetes)
+
+Kubernetes **não** faz parte do MVP: a carga de uma oficina é baixa e uma VPS atende centenas delas. Mas o código deve estar sempre pronto para rodar com N réplicas da API atrás de um balanceador (compose com réplicas hoje, Kubernetes + HPA no futuro), sem reescrita.
+
+### O que já atende
+
+| Requisito | Como |
+|---|---|
+| Imagens independentes | `apps/api/Dockerfile`, `apps/web/Dockerfile` |
+| API sem estado | Sessão em JWT no cookie; qualquer réplica atende qualquer request |
+| Configuração externa | Só variáveis de ambiente (→ `ConfigMap`/`Secret`) |
+| Migração fora da API | Serviço `migrate` (→ `Job` do Kubernetes) |
+| Health check | `GET /api/saude` (→ liveness probe) |
+| Desligamento limpo | SIGTERM fecha o servidor e o pool do Postgres |
+| Logs | JSON no stdout (pino) |
+
+### Regras obrigatórias para o código novo
+
+1. **Nenhum arquivo no disco do container.** Por decisão do produto, **todos os dados ficam no PostgreSQL**, inclusive arquivos pequenos como o logo da oficina (`bytea`, até 1 MB), que assim entram no mesmo backup. Arquivos grandes e numerosos (fotos do checklist, PDFs) devem ser reavaliados quando chegarem: no banco enquanto o volume for pequeno; se o banco crescer demais, migrar para storage compatível com S3 (MinIO, R2, B2) guardando só a chave no banco.
+2. **Nenhum estado compartilhado em memória.** Cache, contadores, rate limit, travas e filas ficam no Postgres ou, quando houver, no Redis. Cache em memória só para dados imutáveis ou que tolerem ficar diferentes entre réplicas.
+3. **Sequências de negócio geradas no banco.** Número da O.S. etc. via tabela `contadores` com `UPDATE ... RETURNING` dentro da transação, nunca em memória.
+4. **Nada agendado dentro da API.** Tarefas periódicas (alerta de estoque mínimo, lembretes) rodam num processo `worker` separado ou garantem execução única com `pg_try_advisory_lock`. Com N réplicas, um `setInterval` na API roda N vezes.
+5. **Conexões com o banco são finitas.** Cada réplica abre até `max` conexões (hoje 10). Ao escalar horizontalmente, colocar PgBouncer (modo transaction) na frente do Postgres. O `set_config(..., true)` do `withTenant` é local à transação, então é compatível com esse modo.
+
+### Caminho de crescimento
+
+| Estágio | Infraestrutura |
+|---|---|
+| MVP | `docker compose` em uma VPS |
+| Dezenas de oficinas | VPS maior, backup automático, Postgres gerenciado |
+| Centenas | 2–3 réplicas da API atrás do Caddy, PgBouncer, Redis |
+| Carga variável/alta | Kubernetes gerenciado (k3s, DigitalOcean, GKE, EKS) com HPA; Postgres continua gerenciado, fora do cluster |
+
+## 10. Roadmap
 
 | Fase | Entrega |
 |---|---|
 | **0 — Scaffold** ✅ | Monorepo, cadastro da oficina, login, clientes e veículos com RLS |
-| **0.1** | Rate limit no login antes de qualquer deploy público |
+| **0.1** ✅ | Admin inicial, gestão de usuários e funções (sem cadastro público) |
+| **0.1b** ✅ | Style guide com tokens, cores parametrizáveis por oficina, aba de Relatórios com exportação CSV |
+| **0.1c** ✅ | Logo da oficina (upload pelo admin, salvo no banco) |
+| **0.2** | Rate limit no login (no Postgres, pela regra §9.2) e "alterar minha senha" antes de qualquer deploy público |
 | **1 — O.S.** | Abertura, itens (serviço/peça), orçamento, aprovação, status, checklist de entrada, PDF da O.S. |
 | **2 — Estoque** | Peças, fornecedores, entradas, baixa automática pela O.S., alerta de estoque mínimo |
 | **3 — Financeiro** | Contas a receber/pagar, registro de pagamentos, caixa diário, comissão de mecânico |

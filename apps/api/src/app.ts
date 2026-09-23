@@ -6,6 +6,9 @@ import { authPlugin } from './lib/auth.js';
 import { registrarTratamentoDeErros } from './lib/erros.js';
 import { authRoutes } from './modules/auth/routes.js';
 import { clientesRoutes } from './modules/clientes/routes.js';
+import { configuracoesRoutes } from './modules/configuracoes/routes.js';
+import { relatoriosRoutes } from './modules/relatorios/routes.js';
+import { usuariosRoutes } from './modules/usuarios/routes.js';
 import { veiculosRoutes } from './modules/veiculos/routes.js';
 
 export async function criarApp() {
@@ -22,8 +25,11 @@ export async function criarApp() {
 
   app.get('/api/saude', async () => ({ ok: true }));
   await app.register(authRoutes, { prefix: '/api/auth' });
+  await app.register(usuariosRoutes, { prefix: '/api/usuarios' });
   await app.register(clientesRoutes, { prefix: '/api/clientes' });
   await app.register(veiculosRoutes, { prefix: '/api/veiculos' });
+  await app.register(configuracoesRoutes, { prefix: '/api/configuracoes' });
+  await app.register(relatoriosRoutes, { prefix: '/api/relatorios' });
 
   return app;
 }

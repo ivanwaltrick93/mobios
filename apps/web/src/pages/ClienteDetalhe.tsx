@@ -1,13 +1,13 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { veiculoInputSchema, type Cliente, type Veiculo } from '@mobios/shared';
+import { formatarDocumento, formatarPlaca, veiculoInputSchema, type Cliente, type Veiculo } from '@mobios/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { Link, useNavigate, useParams } from 'react-router';
 import type { z } from 'zod';
-import { Alerta, Botao, Campo, Cartao, Input } from '../components/ui';
+import { Alerta, Botao, BotaoLink, Campo, Cartao, Input, TextoSuave } from '../components/ui';
 import { api, ErroApi } from '../lib/api';
-import { formatarDocumento, formatarPlaca } from '../lib/formatos';
+
 import { aplicarErrosDaApi } from '../lib/formulario';
 import { ClienteForm } from './ClienteForm';
 
@@ -25,13 +25,13 @@ export function ClienteDetalhe() {
     },
   });
 
-  if (cliente.isPending) return <p className="text-slate-500">Carregando…</p>;
+  if (cliente.isPending) return <TextoSuave>Carregando…</TextoSuave>;
   if (cliente.isError) return <Alerta>{cliente.error.message}</Alerta>;
   const c = cliente.data;
 
   return (
     <div className="space-y-6">
-      <Link to="/clientes" className="text-sm text-marca-600 hover:underline">
+      <Link to="/clientes" className="text-sm text-primaria hover:underline">
         ← Clientes
       </Link>
 
@@ -42,10 +42,10 @@ export function ClienteDetalhe() {
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="space-y-1">
               <h1 className="text-2xl font-semibold">{c.nome}</h1>
-              <p className="text-sm text-slate-600">
+              <p className="text-sm text-texto-suave">
                 {c.tipo === 'PF' ? 'CPF' : 'CNPJ'}: {formatarDocumento(c.cpfCnpj)} · Tel.: {c.telefone ?? '—'} · E-mail: {c.email ?? '—'}
               </p>
-              {c.observacoes && <p className="text-sm text-slate-500">{c.observacoes}</p>}
+              {c.observacoes && <TextoSuave>{c.observacoes}</TextoSuave>}
             </div>
             <div className="flex gap-2">
               <Botao variante="secundario" onClick={() => setEditando(true)}>
@@ -105,7 +105,7 @@ function Veiculos({ clienteId }: { clienteId: string }) {
       </div>
 
       {novo && (
-        <form className="mb-6 grid gap-4 rounded-md bg-slate-50 p-4 md:grid-cols-4" onSubmit={form.handleSubmit((d) => salvar.mutate(d))}>
+        <form className="mb-6 grid gap-4 rounded-md bg-superficie-alt p-4 md:grid-cols-4" onSubmit={form.handleSubmit((d) => salvar.mutate(d))}>
           <div className="md:col-span-4">
             <Alerta>{salvar.isError && aplicarErrosDaApi(salvar.error, form.setError)}</Alerta>
           </div>
@@ -143,27 +143,24 @@ function Veiculos({ clienteId }: { clienteId: string }) {
         </form>
       )}
 
-      {veiculos.data?.length === 0 && !novo && <p className="text-sm text-slate-500">Nenhum veículo cadastrado.</p>}
-      <ul className="divide-y divide-slate-100">
+      {veiculos.data?.length === 0 && !novo && <TextoSuave>Nenhum veículo cadastrado.</TextoSuave>}
+      <ul className="divide-y divide-borda">
         {veiculos.data?.map((v) => (
           <li key={v.id} className="flex items-center justify-between py-3 text-sm">
             <div>
-              <span className="mr-3 rounded bg-slate-800 px-2 py-0.5 font-mono text-xs text-white">{formatarPlaca(v.placa)}</span>
+              <span className="mr-3 rounded bg-texto px-2 py-0.5 font-mono text-xs text-superficie">{formatarPlaca(v.placa)}</span>
               <span className="font-medium">
                 {v.marca} {v.modelo}
               </span>
-              <span className="text-slate-500">
+              <span className="text-texto-suave">
                 {v.ano ? ` · ${v.ano}` : ''}
                 {v.cor ? ` · ${v.cor}` : ''}
                 {v.kmAtual != null ? ` · ${v.kmAtual.toLocaleString('pt-BR')} km` : ''}
               </span>
             </div>
-            <button
-              className="text-xs text-red-600 hover:underline"
-              onClick={() => confirm(`Remover o veículo ${formatarPlaca(v.placa)}?`) && remover.mutate(v.id)}
-            >
+            <BotaoLink perigo onClick={() => confirm(`Remover o veículo ${formatarPlaca(v.placa)}?`) && remover.mutate(v.id)}>
               Remover
-            </button>
+            </BotaoLink>
           </li>
         ))}
       </ul>

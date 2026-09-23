@@ -14,4 +14,13 @@ ALTER DEFAULT PRIVILEGES FOR ROLE :"dono" IN SCHEMA public
   GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO mobios_app;
 ALTER DEFAULT PRIVILEGES FOR ROLE :"dono" IN SCHEMA public
   GRANT USAGE, SELECT ON SEQUENCES TO mobios_app;
+
+-- Banco separado para os testes automatizados (pnpm test), para não sujar os dados de uso.
+CREATE DATABASE mobios_test OWNER :"dono";
+\connect mobios_test
+GRANT USAGE ON SCHEMA public TO mobios_app;
+ALTER DEFAULT PRIVILEGES FOR ROLE :"dono" IN SCHEMA public
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO mobios_app;
+ALTER DEFAULT PRIVILEGES FOR ROLE :"dono" IN SCHEMA public
+  GRANT USAGE, SELECT ON SEQUENCES TO mobios_app;
 SQL
