@@ -33,8 +33,12 @@ export function descendentes(lista: Categoria[], id: string): Set<string> {
   let mudou = true;
   while (mudou) {
     mudou = false;
-    for (const c of lista)
-      if (c.categoriaPaiId && ids.has(c.categoriaPaiId) && !ids.has(c.id)) (ids.add(c.id), (mudou = true));
+    for (const c of lista) {
+      if (c.categoriaPaiId && ids.has(c.categoriaPaiId) && !ids.has(c.id)) {
+        ids.add(c.id);
+        mudou = true;
+      }
+    }
   }
   return ids;
 }

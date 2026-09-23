@@ -1,6 +1,6 @@
 import { formatarQuantidade, type Saldo } from '@mobios/shared';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { Boxes, Search } from 'lucide-react';
+import { Boxes } from 'lucide-react';
 import { Fragment, useState } from 'react';
 import { Link } from 'react-router';
 import { AjusteEstoqueForm, HistoricoAjustes } from '../components/Estoque';
@@ -8,7 +8,7 @@ import {
   Alerta,
   BotaoLink,
   Cabecalho,
-  Input,
+  CampoBusca,
   Linha,
   LinhaVazia,
   Marcador,
@@ -56,19 +56,12 @@ export function Estoque() {
       </TextoSuave>
 
       <div className="grid gap-3 md:grid-cols-[1fr_16rem_auto] md:items-center">
-        <div className="relative">
-          <Search
-            className="pointer-events-none absolute top-1/2 left-4 size-5 -translate-y-1/2 text-texto-suave"
-            aria-hidden
-          />
-          <Input
-            className="h-12 pl-12 text-base"
-            placeholder="SKU, descrição ou código do fabricante"
-            aria-label="Buscar no estoque"
-            value={busca}
-            onChange={(e) => setBusca(e.target.value)}
-          />
-        </div>
+        <CampoBusca
+          rotulo="Buscar no estoque"
+          placeholder="SKU, descrição ou código do fabricante"
+          valor={busca}
+          aoMudar={setBusca}
+        />
         <Select aria-label="Depósito" value={depositoId} onChange={(e) => setDepositoId(e.target.value)}>
           <option value="">Todos os depósitos</option>
           {depositos.data?.map((d) => (

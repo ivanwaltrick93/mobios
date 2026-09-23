@@ -2,6 +2,7 @@
  * Componentes base do style guide. Use sempre estes em vez de classes soltas:
  * cores só por tokens (bg-primaria, text-texto-suave...), definidos em src/index.css.
  */
+import { Search } from 'lucide-react';
 import type { UseFormRegisterReturn } from 'react-hook-form';
 import type {
   ButtonHTMLAttributes,
@@ -224,6 +225,37 @@ export function Abas<T extends string>({
     </nav>
   );
 }
+
+/** Campo de busca grande, com lupa, usado no topo das listagens. */
+export const CampoBusca = ({
+  rotulo,
+  valor,
+  aoMudar,
+  placeholder,
+  autoFocus,
+}: {
+  /** Nome acessível do campo (lido por leitores de tela). */
+  rotulo: string;
+  valor: string;
+  aoMudar: (valor: string) => void;
+  placeholder?: string;
+  autoFocus?: boolean;
+}) => (
+  <div className="relative">
+    <Search
+      className="pointer-events-none absolute top-1/2 left-4 size-5 -translate-y-1/2 text-texto-suave"
+      aria-hidden
+    />
+    <Input
+      autoFocus={autoFocus}
+      className="h-12 pl-12 text-base"
+      placeholder={placeholder}
+      aria-label={rotulo}
+      value={valor}
+      onChange={(e) => aoMudar(e.target.value)}
+    />
+  </div>
+);
 
 /** Estado vazio amigável: ícone, mensagem e ação opcional. */
 export const Vazio = ({

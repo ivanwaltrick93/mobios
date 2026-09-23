@@ -7,6 +7,7 @@ Gestão de Ordens de Serviço para oficinas mecânicas. Web, multi-tenant (SaaS)
 - Mapa de entregáveis (escopo e prioridades): [docs/ENTREGAVEIS.md](docs/ENTREGAVEIS.md)
 - Arquitetura e decisões: [docs/ARQUITETURA.md](docs/ARQUITETURA.md)
 - Style guide: [docs/STYLE_GUIDE.md](docs/STYLE_GUIDE.md)
+- Como contribuir (padrões de código, passo a passo de módulo, migração e tela): [CONTRIBUTING.md](CONTRIBUTING.md)
 - Licença: núcleo AGPL-3.0-or-later ([LICENSE](LICENSE)); `ee/` sob licença comercial
 
 ## Requisitos
@@ -53,6 +54,9 @@ pnpm dev                          # api em :3333, web em http://localhost:5173
 | `pnpm dev` | API e web com hot reload |
 | `pnpm test` | Testes (a API precisa do Postgres rodando e migrado) |
 | `pnpm typecheck` | Checagem de tipos em todos os pacotes |
+| `pnpm lint` | ESLint em todo o projeto |
+| `pnpm format` / `pnpm format:check` | Formata com Prettier / só confere |
+| `pnpm check` | Tudo o que o CI roda: formatação, lint, tipos e testes |
 | `pnpm db:generate` | Gera migração SQL a partir de `apps/api/src/db/schema.ts` |
 | `pnpm db:migrate` | Aplica migrações pendentes |
 

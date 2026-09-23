@@ -1,174 +1,134 @@
-# MobiOS — convenções e padrões obrigatórios
+# MobiOS — regras obrigatórias
 
-Este guia vale para **toda** mudança: código novo, correção, refatoração, módulo, tela, API, banco, integração ou revisão.
-Leia `docs/ARQUITETURA.md` antes de mudanças estruturais. Escopo e prioridades: `docs/ENTREGAVEIS.md` (cite os códigos, ex.: OS-05). Regras de um módulo específico: `docs/modulos/`. Interface: `docs/STYLE_GUIDE.md`.
+Valem para toda tarefa. Detalhes fora daqui: arquitetura `docs/ARQUITETURA.md` · escopo e códigos (cite, ex.: OS-05) `docs/ENTREGAVEIS.md` · UI `docs/STYLE_GUIDE.md` · regras de módulo `docs/modulos/<modulo>.md` · passo a passo `CONTRIBUTING.md`.
 
-**Regra principal.** O objetivo é código que outro desenvolvedor entenda, teste, corrija e evolua com pouco esforço, não o código mais sofisticado possível. Na dúvida, prefira:
-simples a complexo · legível a otimizado demais · reutilizar a duplicar · abstração necessária a abstração prematura · alteração localizada a refatoração ampla · consistência com o projeto a preferência pessoal.
+**Prioridade em conflito:** segurança > integridade de dados > multi-tenancy > arquitetura existente > contratos/API > testes > manutenibilidade > performance > estilo. Convenção do projeto vence preferência pessoal.
 
-## Mapa do projeto
-Monorepo pnpm, TypeScript estrito, ESM, Node ≥ 22.
-- `packages/shared` (`@mobios/shared`): schemas Zod de entrada e saída, tipos, regras puras (documentos, máscaras, formatos, acessos). Usado pela API e pelo front. Exporta tudo por `src/index.ts`.
-- `apps/api`: Fastify 5 + `fastify-type-provider-zod` + Drizzle (postgres.js) + PostgreSQL 17.
-  - `src/modules/<nome>/routes.ts`: um plugin por recurso (`xxxRoutes`), registrado em `src/app.ts`.
-  - `src/lib/`: utilitários transversais (`erros.ts`, `cadastro.ts`, `auth.ts`, `acessos.ts`…).
-  - `src/db/schema.ts`: todas as tabelas; `drizzle/`: migrações SQL versionadas.
-- `apps/web`: React 19 + Vite + React Router + TanStack Query + react-hook-form + Tailwind 4.
-  - `src/pages/`: uma tela por arquivo. `src/components/`: peças reutilizáveis (kit em `ui.tsx`). `src/lib/`: hooks e utilitários (`api.ts`, `formulario.ts`, `assistente.ts`, `materiais.ts`…).
+## Fluxo: inspecionar → implementar → testar → revisar → concluir
+1. **Inspecionar:** localize arquivos relacionados, implementação semelhante e helpers/componentes existentes; leia a doc do módulo; liste contratos (schemas, rotas, tabelas) e testes afetados.
+2. **Implementar:** reutilizar → adaptar → refatorar → criar. Alteração cirúrgica (ver "Alterações").
+3. **Testar:** `pnpm format && pnpm check`.
+4. **Revisar o diff** (`git status`, `git diff`): arquivos modificados, criados e removidos; remova alterações incidentais; confira imports, testes, migrações e documentação; o diff deve se restringir ao escopo.
+5. **Concluir** só com a Definition of Done atendida. Funcionar não basta.
 
-A arquitetura é deliberadamente enxuta: **não existem camadas de controller, service, repository ou DTO**. O handler da rota valida com o schema do `shared`, acessa o banco pelo Drizzle dentro de `withTenant` e usa helpers de `src/lib/` para regras repetidas. Não crie essas camadas nem outros padrões novos sem necessidade concreta e sem combinar antes.
+Regra de negócio ambígua: pergunte. Commit e push só quando pedido.
+
+## Arquitetura
+- Monorepo pnpm, TypeScript estrito, ESM.
+  - `packages/shared`: schemas Zod, tipos e regras puras (sem banco nem DOM), usados pela API e pelo front.
+  - `apps/api`: Fastify 5 + fastify-type-provider-zod + Drizzle + PostgreSQL 17. `src/modules/<recurso>/routes.ts`, `src/lib/` (erros, cadastro, auth), `src/db/schema.ts`, `drizzle/` (migrações).
+  - `apps/web`: React 19 + Vite + React Router + TanStack Query + react-hook-form + Tailwind 4. `pages/`, `components/` (kit em `ui.tsx`), `lib/`.
+- Não há controller, service, repository nem DTO: o handler valida com o schema do `shared`, usa o Drizzle dentro de `withTenant` e helpers de `src/lib/`.
+- Não introduza camadas, design patterns, factories, repositories, services, wrappers, abstrações ou dependências sem necessidade concreta e combinada.
 
 ## Multi-tenancy (não negociável)
+Tenant = oficina: a unidade de isolamento dos dados.
 - Toda tabela de negócio tem `tenantId: tenantId()` e `isolamentoPorTenant('<tabela>')` em `apps/api/src/db/schema.ts`.
-- Toda FK entre tabelas de negócio é composta `(tenant_id, x_id)`: checagem de FK ignora RLS.
-- Todo acesso a tabelas de negócio passa por `withTenant(req.user.tid, tx => ...)`. Não filtre por tenant_id à mão; o RLS faz isso.
-- A API conecta como `mobios_app` (sem superuser/BYPASSRLS). Migrações rodam como `mobios`.
-- O teste "toda tabela com tenant_id tem RLS ativo" em `apps/api/src/app.test.ts` precisa continuar passando (tabela nova entra na lista dele).
+- Toda FK entre tabelas de negócio é composta `(tenant_id, x_id)`: a checagem de FK ignora RLS.
+- Todo acesso a tabelas de negócio passa por `withTenant(req.user.tid, tx => ...)`. Não filtre por `tenant_id` à mão; o RLS faz isso.
+- A API conecta como `mobios_app` (sem superuser/BYPASSRLS); migrações rodam como `mobios`.
+- O teste "toda tabela com tenant_id tem RLS ativo" (`apps/api/src/app.test.ts`) deve passar; tabela nova entra na lista dele.
 
-## Escalabilidade horizontal (não negociável)
-A API deve funcionar com N réplicas atrás de um balanceador (futuro Kubernetes + HPA). Detalhes em `docs/ARQUITETURA.md` §9.
-- Nenhum arquivo no disco do container. Todos os dados ficam no PostgreSQL, inclusive arquivos pequenos (ex.: logo em `tenant_logos.conteudo bytea`, limite 1 MB, tipo validado pelos bytes). Arquivos grandes: ver `docs/ARQUITETURA.md` §9.1.
-- Nenhum dado de negócio fixo no front, em `localStorage` ou em memória: tudo é lido do banco pela API. `localStorage` só para conveniência do usuário (ex.: última tabela escolhida), sempre em `try/catch` e com a tela funcionando sem ele.
-- Nenhum estado compartilhado em memória (cache, contadores, rate limit, travas): usar Postgres ou Redis.
-- Sequências de negócio (número da O.S.) geradas no banco via tabela `contadores`, dentro da transação.
-- Nada de `setInterval`/cron dentro da API: tarefas periódicas vão para um worker separado ou usam `pg_try_advisory_lock`.
+## Escalabilidade horizontal (não negociável — `docs/ARQUITETURA.md` §9)
+- API sem estado, pronta para N réplicas. Nenhum estado compartilhado em memória (cache, contador, rate limit, trava): use Postgres ou Redis.
+- Nenhum arquivo no disco do container: tudo no Postgres (arquivo pequeno em `bytea`, até 1 MB, tipo validado pelos bytes; grandes: §9.1).
+- Nenhum dado de negócio fixo no front ou em `localStorage`; `localStorage` só para conveniência do usuário, em `try/catch`, com a tela funcionando sem ele.
+- Sequências de negócio (número da O.S.) no banco, via tabela `contadores`, dentro da transação.
+- Sem `setInterval`/cron na API: worker separado ou `pg_try_advisory_lock`.
 
-## Configuração e segredos
-- Configuração só por variável de ambiente, validada em `apps/api/src/env.ts` (Zod). Variável nova: acrescente no schema de `env.ts` e em `.env.example` (sem valor real).
-- Diferenças entre desenvolvimento, teste e produção vêm de `NODE_ENV` e das variáveis, nunca de URLs, portas ou flags fixas no código.
-- Nunca versionar `.env`, senhas, tokens, chaves de API ou `JWT_SECRET`. Nunca escrever segredo no código, em teste, em migração ou em documentação.
+## Configuração
+- Só por variável de ambiente, validada em `apps/api/src/env.ts`; variável nova também em `.env.example`, sem valor real. Diferenças entre ambientes vêm de `NODE_ENV`/variáveis, nunca de valores fixos no código.
+- Nunca versione `.env` nem escreva segredo em código, teste, migração ou doc.
+- Não altere TypeScript, lint, formatter, testes, banco, build, Docker ou segurança só para fazer algo passar. Mudança de configuração é intencional e justificada.
 
-## Banco de dados
-- Toda tabela tem PK `id uuid` (`uuid().primaryKey().defaultRandom()`), chave natural com índice único quando existir, e índice em toda FK e em colunas de filtro/ordenação frequentes. Exceção justificada: tabela de saldo com PK composta natural (ex.: `estoques (material_id, deposito_id)`).
-- Nomes: tabelas e colunas em português, `snake_case`, tabela no plural (`materiais_precos`, `estoque_ajustes`). No TypeScript as colunas ficam em camelCase (o Drizzle usa `casing: 'snake_case'`). Constraints com nome estável quando geram mensagem ao usuário: `<tabela>_<campo>_unico`, `<tabela>_<regra>` para CHECK — e a mensagem correspondente entra em `mensagensUnicidade`/`mensagensCheck` de `apps/api/src/lib/erros.ts`.
-- Integridade no banco, não só na aplicação: `NOT NULL`, CHECK, UNIQUE, FK (RESTRICT por padrão), EXCLUDE para períodos. Dinheiro em centavos (`bigint`), quantidades em `numeric(14,3)` com `mode: 'number'`.
-- Migração: altere `schema.ts`, rode `pnpm db:generate`, **revise e ajuste o SQL gerado** (nome descritivo em português, ex.: `0013_estoque_saldos.sql`) e depois `pnpm db:migrate`. Nunca edite uma migração já aplicada/commitada; crie outra. Extensões, triggers, seeds e recriação de enum vão no SQL da migração.
-- Queries sempre parametrizadas pelo Drizzle (`eq`, `ilike`, template `sql\`...${valor}\``). `sql.raw` e `sql.identifier` só com valores vindos de constantes do código, nunca da requisição.
-- Operações que leem e depois gravam uma regra (ex.: fechar vigência) ficam na mesma transação do `withTenant`, com `for('update')` ou `pg_advisory_xact_lock` quando há risco de corrida.
-- Nunca selecione `senha_hash` fora do login. Usuários não são excluídos: `ativo = false`.
-- Acesso: funções configuráveis por oficina, com nível por módulo (`packages/shared/src/acessos.ts`, `docs/ENTREGAVEIS.md` §1.1). API: `app.autenticar` e depois `app.exigirAcesso('modulo', 'editar')` ou `app.exigirAdmin`; tela: `usePode()('modulo', 'editar')` / `useAdmin()`. Módulo novo: acrescente em `MODULOS`; na migração, **recrie** o enum `modulo` (renomear o antigo, criar o novo, `ALTER COLUMN ... USING modulo::text::modulo`, apagar o antigo), pois `ADD VALUE` não pode ser usado na mesma transação (ver `drizzle/0008`). Nunca compare nomes de função no código.
-
-## Cadastros mestres (padrão do módulo Materiais e Preços, `docs/modulos/MATERIAIS_E_PRECOS.md`)
-- Chave de negócio (SKU, código) é UNIQUE por oficina, nunca PK. Colunas de autoria `criado_por/atualizado_por` (FK users) e `versao`: a edição envia a versão lida e `atualizarVersionado` (`apps/api/src/lib/cadastro.ts`) devolve 409 se outra pessoa salvou antes.
-- Excluir só o que nunca foi usado (`excluirSeNaoUsado`: FK RESTRICT → 409 "inative"); o resto é desativação lógica (`alterarAtivo`). Referências escolhidas precisam estar ativas (`validarReferencia`), exceto a que o registro já usa.
-- Histórico com vigência: intervalo fechado com fim NULL = aberto, sem sobreposição garantida por `EXCLUDE USING gist (... daterange(inicio, fim, '[]') WITH &&)`; nunca apagar nem reescrever o passado; trava `pg_advisory_xact_lock` quando a regra lê e depois grava.
-- Alteração de saldo ou preço deixa trilha (tabela de eventos/ajustes com usuário, antes/depois e motivo).
+## Banco
+- PK `id uuid` gerado pelo banco. Chave de negócio (SKU, código) é UNIQUE por tenant, nunca PK (exceção: tabela de saldo com PK composta natural, como `estoques`). Índice em toda FK e em filtro/ordenação frequente (`pg_trgm` para busca de texto).
+- Nomes em português, `snake_case`, tabela no plural (no TS, camelCase via `casing: 'snake_case'`). Constraint que o usuário pode violar tem nome estável (`<tabela>_<campo>_unico`, `<tabela>_<regra>`) e mensagem em `mensagensUnicidade`/`mensagensCheck` (`apps/api/src/lib/erros.ts`).
+- Integridade no banco: NOT NULL, CHECK, UNIQUE, FK RESTRICT, EXCLUDE para períodos. Dinheiro em centavos (`bigint`), nunca float. Quantidade `numeric(14,3)` com `mode: 'number'`.
+- Migração: `schema.ts` → `pnpm db:generate --name <descricao>` → revise e ajuste o SQL (extensões, triggers, seeds) → `pnpm db:migrate`. Nunca edite migração aplicada ou commitada.
+- Módulo de permissão novo: acrescente em `MODULOS` (`packages/shared/src/acessos.ts`) e **recrie** o enum `modulo` na migração (renomear, criar, `ALTER COLUMN ... USING modulo::text::modulo`, apagar o antigo). Nunca `ADD VALUE` (ver `drizzle/0008`).
+- SQL só parametrizado (`eq`, `ilike`, `` sql`...${valor}` ``). `sql.raw`/`sql.identifier` só com constantes do código.
+- Ler e depois gravar uma regra: mesma transação, com `for('update')` ou `pg_advisory_xact_lock` se houver corrida.
+- Cadastros mestres (`docs/modulos/MATERIAIS_E_PRECOS.md`):
+  - Autoria `criado_por/atualizado_por` + `versao`, gravada com `atualizarVersionado` (409 se outra pessoa salvou antes).
+  - Excluir só o nunca usado (`excluirSeNaoUsado`); o resto se desativa (`alterarAtivo`).
+  - Referência escolhida deve estar ativa (`validarReferencia`), exceto a que o registro já usa.
+  - Vigências sem sobreposição (EXCLUDE gist); o passado nunca é apagado nem reescrito.
+  - Mudança de saldo ou preço deixa trilha (usuário, antes/depois, motivo).
+- Usuário nunca é excluído (`ativo = false`). `senha_hash` só é lido no login.
 
 ## API
-- Novo recurso: `apps/api/src/modules/<nome-em-kebab>/routes.ts` exportando `const <nome>Routes: FastifyPluginAsyncZod`, registrado em `src/app.ts`. Hooks `app.autenticar` e `app.exigirAcesso(...)` no topo do plugin; rotas de escrita com `{ onRequest: app.exigirAcesso('<modulo>', 'editar') }`.
-- Toda rota declara `schema` com `params`/`querystring`/`body` e `response`, usando schemas do `shared`. Validação de entrada é feita pelo schema, não por `if` no handler.
-- Caminhos REST em português, plural e kebab-case (`/tabelas-preco`, `/precos/:id`); ações que não são CRUD viram sub-recurso com POST (`/precos/:id/encerrar`). Códigos: 201 na criação, 204 sem corpo, 400 dados inválidos, 403 sem acesso, 404, 409 conflito/versão/em uso.
-- Schemas usados em `response` não podem ter `.transform()` (o serializador do fastify-type-provider-zod v7 falha com "unidirectional transform"). Separe o schema de entrada (`xInputSchema`, com normalização) do de saída (`xSchema`).
-- Campos numéricos opcionais vindos de formulário: string vazia vira null, nunca 0.
-- Não retorne `reply` de funções async (ele é thenable e trava o await): use `return reply.code(201).send(x)` ou retorne o objeto.
-- Imports relativos da API terminam em `.js` (ESM do Node); no front e no `shared`, sem extensão.
-- Contratos são compartilhados: mudou um schema do `shared`, confira a API, o front e os testes que o usam no mesmo trabalho.
+- Recurso: `modules/<kebab>/routes.ts` exporta `<nome>Routes: FastifyPluginAsyncZod`, registrado em `src/app.ts`. No topo, `app.autenticar` + `app.exigirAcesso('<modulo>')`; escrita com `exigirAcesso('<modulo>', 'editar')` ou `app.exigirAdmin`. Nunca compare nomes de função no código. Rota pública só com motivo explícito (ver `modules/publico`).
+- Toda rota declara `params`/`querystring`/`body` e `response` com schemas do `shared` (sem `response` só 204 e binário/CSV). Validação no schema, não em `if` no handler.
+- Schema de `response` não tem `.transform()`: separe `xInputSchema` (normaliza) de `xSchema`. Tipos derivados com `z.infer`/`z.input`/`z.output`.
+- REST em português, plural, kebab-case (`/tabelas-preco`); ação não CRUD é POST em sub-recurso (`/precos/:id/encerrar`). Status: 201 criação, 204 sem corpo, 400 inválido, 403 sem acesso, 404, 409 conflito/versão/em uso.
+- Erro de negócio: `throw new ErroHttp(status, msg)` ou `naoEncontrado('X')`. O tratador central converte Zod em 400 `{ erro, campos }` e erros do Postgres (23505, 23514, 23P01, 23503); não os trate de novo nas rotas. Mensagem em português, acionável, sem SQL, stack ou nomes internos.
+- Campo numérico opcional de formulário: string vazia vira null, nunca 0.
+- Não retorne `reply` de função async (é thenable e trava o await).
+- Imports relativos terminam em `.js` na API e no `shared`; sem extensão no web.
+- Mudou um schema do `shared`: ajuste a API, o front e os testes no mesmo trabalho.
 
-## Interface
-- Toda cor vem dos tokens de `apps/web/src/index.css` (ver `docs/STYLE_GUIDE.md`). Proibido `slate-*`, `blue-*`, `bg-white`, `text-white` ou hex nas telas.
-- Telas usam os componentes de `apps/web/src/components/ui.tsx` (`Campo`, `Input`, `InputMascara`, `Botao`, `Tabela`, `Abas`, `Vazio`, `Selo`…). Antes de criar um componente, procure ali e em `components/`.
-- Formulários: react-hook-form com `zodResolver(<schema do shared>)` e `mode: 'onTouched'`; erros da API vão para os campos com `aplicarErrosDaApi`. Máscaras vêm de `packages/shared/src/mascaras.ts`, aplicadas com `InputMascara`. Cadastro em etapas: `useAssistente` + `Etapas`.
-- Dados do servidor só via TanStack Query e `api()` de `lib/api.ts` (nunca `fetch` solto, exceto upload/download de arquivo). `queryKey` começa pelo recurso (`['estoque', 'ajustes', id]`); após gravar, invalide as chaves afetadas.
-- Toda página tem o botão Voltar (componente `Voltar` no cabeçalho). Rota nova entra em `main.tsx` e, se for de menu, em `Layout.tsx`.
-- Permissão na tela (`usePode`) só esconde o que o usuário não pode fazer; quem garante é a API.
+## Frontend (visual: `docs/STYLE_GUIDE.md`)
+- Cores só por tokens (`apps/web/src/index.css`). Proibido `slate-*`, `blue-*`, `bg-white`, `text-white` e hex nas telas.
+- Use os componentes de `components/ui.tsx` e `components/` (catálogo no STYLE_GUIDE) antes de criar outros.
+- Dados do servidor: TanStack Query + `api()` (`lib/api.ts`); `fetch` direto só em upload/download e ViaCEP. `queryKey` começa pelo recurso; após gravar, invalide as chaves afetadas.
+- Formulário: react-hook-form + `zodResolver(<schema do shared>)`, `mode: 'onTouched'`, erros da API com `aplicarErrosDaApi`; máscaras de `shared/mascaras.ts` via `InputMascara`; etapas com `useAssistente` + `Etapas`.
+- Rota nova em `main.tsx`; item de menu em `Layout.tsx` (que já tem o `Voltar`).
+- `usePode()`/`useAdmin()` só escondem o que o usuário não pode fazer; quem bloqueia é a API.
 
-## Formatação e identação
-O projeto **não tem formatter nem linter configurado** (não há Prettier, ESLint, EditorConfig). A fonte oficial é o estilo já presente nos arquivos. Não adicione nem configure essas ferramentas sem pedido explícito, e não reformate arquivos inteiros.
-- 2 espaços, sem tabs, em TS/TSX/JSON/CSS. (SQL gerado pelo drizzle-kit fica como é gerado.)
-- Aspas simples em TS; aspas duplas em atributos JSX. Ponto e vírgula sempre. Vírgula final em listas e objetos multilinha. Parênteses sempre em parâmetros de arrow function.
-- Linhas: o projeto aceita linhas longas quando continuam legíveis (até ~160 colunas). Acima disso, ou quando a linha tem várias ideias, quebre no estilo Prettier: um argumento/propriedade por linha, fechamento alinhado ao início.
-- Uma linha em branco entre funções, componentes e blocos lógicos; nenhuma sequência de linhas em branco; sem espaço sobrando no fim da linha; arquivo termina com uma quebra de linha.
-- Imports no topo, em ordem alfabética pelo caminho: pacotes externos e `@mobios/shared` primeiro, depois imports relativos. Itens dentro das chaves também em ordem alfabética. Tipos com `import type` ou `type X` inline (exigido por `verbatimModuleSyntax`). Nada de import não usado.
-- Siga o arquivo que você está editando: o trecho novo deve parecer escrito pela mesma pessoa.
-
-## Tipagem e análise estática
-- `tsc` em modo estrito (`strict`, `noUncheckedIndexedAccess`, `verbatimModuleSyntax`, `tsconfig.base.json`) é a análise estática oficial. `pnpm typecheck` precisa terminar com zero erros. Não altere essas configurações para fazer o código passar.
-- Sem `any`, `@ts-ignore` ou `@ts-expect-error` novos. `as` e `!` só quando o tipo é garantido por algo que o compilador não enxerga (ex.: `[linha]` de um `insert ... returning`), e de preferência com o motivo claro no contexto.
-- Tipos derivados dos schemas (`z.infer`, `z.input`, `z.output`), não redeclarados à mão.
+## Formatação e tipagem
+- **Prettier** (`.prettierrc.json`: 2 espaços, aspas simples, ponto e vírgula, vírgula final, largura 120) e `.editorconfig` decidem; rode `pnpm format`. Ficam fora `*.md`, migrações e arquivos gerados.
+- O que o Prettier não quebra (SQL em template, mensagens, comentários) você quebra à mão acima de ~120 colunas; classes Tailwind podem ficar numa linha. Nada de expressão com vírgula `(a(), b())` nem `if`/`for` denso numa linha.
+- Imports: externos e `@mobios/shared`, depois relativos, em ordem alfabética; tipos com `import type`/`type X`; sem imports não usados.
+- **ESLint** (`eslint.config.js`) e `tsc` estrito terminam sem erros nem avisos. Sem `any`, `@ts-ignore` ou `@ts-expect-error`. `as` e `!` só quando o tipo é garantido fora da visão do compilador. `eslint-disable` só com `-next-line <regra>` e o motivo. Variável ignorada começa com `_`.
+- Formatação em massa vai em commit separado de mudança de comportamento.
 
 ## Nomenclatura
-Domínio em português (clientes, veiculos, ordens_servico); termos técnicos consagrados podem ficar em inglês (`routes`, `schema`, `props`, `use*`). Nomes dizem o que a coisa é ou faz; evite `data`, `obj`, `tmp`, `x`, `value`, `info`, `handle`. Abreviação só quando consagrada (`id`, `tx`, `req`, `cpfCnpj`) ou em callbacks curtos de uma linha (`(m) => m.id`).
+Domínio em português; termos técnicos consagrados em inglês. Nada de nomes genéricos (`data`, `obj`, `tmp`, `value`, `handle`); abreviação só consagrada (`id`, `tx`, `req`).
 
-| O quê | Padrão | Exemplos |
-|---|---|---|
-| Página e componente (arquivo e nome) | PascalCase, `.tsx` | `ClienteForm.tsx`, `Botao`, `AjusteEstoqueForm` |
-| Utilitário/hook do front, módulo do shared | camelCase/minúsculo, `.ts` | `lib/assistente.ts`, `mascaras.ts` |
-| Diretório de módulo da API | kebab-case | `modules/tabelas-preco/` |
-| Hook | `use` + PascalCase | `useAssistente`, `usePode`, `useFormVeiculo` |
-| Função | verbo no infinitivo + objeto | `carregarCliente`, `gravarEnderecos`, `validarReferencia` |
-| Booleano | `tem…`, `pode…`, `é…` implícito ou adjetivo | `temEndereco`, `ativo`, `livre` |
-| Callback em props | `ao` + verbo | `aoSalvar`, `aoCancelar`, `aoTrocar` |
-| Constante de módulo | UPPER_SNAKE | `MODULOS`, `FUNCOES_PADRAO`, `ETAPAS` |
-| Tipo | PascalCase, sem prefixo `I`/`T` | `Cliente`, `VeiculoEntrada`, `Tx` |
-| Schema Zod | camelCase + `Schema` (`Input`/`Filtro`/`Atualizar` quando for o caso) | `clienteSchema`, `clienteInputSchema`, `estoqueFiltroSchema` |
-| Plugin de rotas | camelCase + `Routes` | `clientesRoutes` |
-| Classe | só para erros | `ErroHttp`, `ErroApi` |
-| Teste | `<arquivo>.test.ts`, descrição em português | `mascaras.test.ts` |
+- **Arquivos:** página/componente em PascalCase `.tsx`; utilitário do front e módulo do shared em minúsculo `.ts`; módulo da API em diretório kebab-case; teste `<arquivo>.test.ts`, com descrições em português.
+- **Identificadores:** componente e tipo em PascalCase (tipo sem prefixo `I`/`T`); hook `use` + PascalCase; função = verbo no infinitivo + objeto (`gravarEnderecos`); booleano `tem…`/`pode…` ou adjetivo (`ativo`); callback em props `ao` + verbo (`aoSalvar`); constante de módulo em UPPER_SNAKE.
+- **Específicos:** schema Zod em camelCase + `Schema`, com `Input`/`Filtro`/`Atualizar` quando couber (`clienteInputSchema`); plugin de rotas camelCase + `Routes`; classe só para erros (`ErroHttp`).
 
-## Código limpo e complexidade
-- Uma responsabilidade por função e por componente. Antes de acrescentar lógica, avalie se a função/tela já está difícil de acompanhar (muitos `if` aninhados, vários assuntos no mesmo bloco, muitos parâmetros); se estiver, faça uma decomposição localizada no trecho que você está mexendo. Não há limite numérico rígido: o critério é legibilidade. Referências: `ClienteForm.tsx` e `app.test.ts` já estão no limite do confortável; ao crescer, extraia partes (como `CamposVeiculo`/`NavegacaoEtapas`).
-- Prefira retorno antecipado a `if` aninhado; condicional complexa vira constante ou função com nome.
-- Funções previsíveis: mesmo resultado para a mesma entrada, efeitos colaterais explícitos no nome (`gravar…`, `excluir…`). Com mais de 3–4 parâmetros, receba um objeto.
-- Regras puras (cálculo, validação, formatação) ficam em `packages/shared`, sem acesso a banco ou DOM, para serem testáveis e usadas nos dois lados.
-- Composição em vez de herança; componentes pequenos combinados em vez de um componente com muitas flags.
-- Sem código morto, `console.log` de depuração, código comentado ou TODO sem contexto.
+## Qualidade e manutenção
+- Uma responsabilidade por função/componente; baixo acoplamento. Use retorno antecipado em vez de nesting; dê nome a condição complexa. Com mais de 3–4 parâmetros, receba um objeto. Efeito colateral aparece no nome (`gravar…`, `excluir…`).
+- Função, tela ou arquivo difícil de acompanhar: decomponha só o trecho que você está alterando.
+- Antes de criar arquivo, procure um local existente e apropriado; não crie arquivo para mudança pequena ou responsabilidade isolada sem necessidade.
+- Regra de negócio em um lugar só. Extraia duplicação quando isso clarear o código; 2–3 linhas parecidas não justificam abstração. Nada "para o futuro".
+- Dependência nova só com necessidade real e combinada: antes verifique a stack atual; pese manutenção, segurança, tamanho e licença (projeto AGPL-3.0).
+- Sem código morto, código comentado, `console.log` de depuração ou TODO sem contexto.
+- Comentários explicam o porquê; JSDoc curto em export de finalidade não óbvia. Atualize ou remova comentário desatualizado.
 
-## Reutilização, duplicação e dependências
-- Antes de criar qualquer coisa, procure o que já existe: `packages/shared` (schemas, máscaras, formatos, documentos), `apps/api/src/lib` (erros, cadastro, auth), `apps/web/src/components` e `apps/web/src/lib`. Ordem de preferência: **reutilizar → adaptar → refatorar → criar**.
-- Regra de negócio existe em um lugar só. Duplicação de lógica é extraída quando a extração deixa o código mais claro (ex.: `atualizarVersionado`, `aplicarErrosDaApi`). Duas ou três linhas parecidas não justificam uma abstração artificial.
-- Não crie abstração "para o futuro": generalize quando o segundo ou terceiro caso real aparecer.
-- Dependência nova só com necessidade real e combinada antes: verifique se a stack atual resolve (Zod, Drizzle, TanStack Query, react-hook-form, lucide-react, APIs nativas do Node/navegador), e pese manutenção, segurança, tamanho e licença (o projeto é AGPL-3.0).
-
-## Erros e logs
-- API: erro de regra de negócio é `throw new ErroHttp(status, 'mensagem exibível')` ou `naoEncontrado('Cliente')`. O tratador central (`registrarTratamentoDeErros`) converte validação Zod em 400 com `campos`, erros do Postgres (23505, 23514, 23P01, 23503) em mensagens próprias, e loga só o que vira 500. Não trate essas situações de novo em cada rota; acrescente a mensagem da constraint em `erros.ts`.
-- Mensagem ao usuário: em português, específica e acionável ("Já existe um material com este SKU"), sem detalhes internos (SQL, stack, nomes de tabela). Resposta de erro sempre `{ erro, campos? }`.
-- `catch` só quando há algo a fazer: traduzir o erro (como `excluirSeNaoUsado`), acrescentar contexto ou recuperar. Nunca `catch` vazio nem engolir o erro; relance o que não souber tratar. Exceção aceita: `.catch(() => ({}))` ao ler corpo de erro e acesso a `localStorage`.
-- Front: erros de API chegam como `ErroApi`; mostre com `Alerta`/`aplicarErrosDaApi`. Falha de rede tem mensagem própria.
-- Integrações externas (ex.: ViaCEP): tempo limite, falha tratada sem travar o fluxo e o usuário pode seguir preenchendo à mão.
-- Logs: use o logger do Fastify (`req.log`/`app.log`, pino) na API; `console` só em scripts de linha de comando (`db/migrate.ts`). Nível adequado: `error` para falha inesperada, `warn` para situação anômala recuperável, `info` para eventos operacionais relevantes, `debug` para diagnóstico. Inclua contexto útil (ids, operação), nunca senhas, hashes, tokens, cookies, `JWT_SECRET`, corpo de login, CPF/CNPJ ou outros dados pessoais desnecessários. Não logue em laço nem em todo request além do que o Fastify já faz.
-
-## Segurança
-- Toda entrada é validada pelo schema Zod da rota; o front valida para ajudar o usuário, mas a API é quem decide.
-- Toda rota de negócio: `app.autenticar` + `app.exigirAcesso` (ou `exigirAdmin`); dados sempre via `withTenant` (RLS). Rota pública nova precisa de motivo explícito (ver `modules/publico`).
-- Senha só como hash Argon2id; sessão em cookie `httpOnly` + `sameSite: 'lax'` (base da proteção CSRF — não troque para token em `localStorage`).
-- Resposta expõe só o necessário, definido pelo schema de `response` (ele filtra campos a mais).
-- XSS: nada de `dangerouslySetInnerHTML`; o React já escapa o texto. SQL injection: ver regras de queries parametrizadas.
-- Arquivos: tamanho limitado, tipo validado pelos bytes (`lib/imagem.ts`), guardados no banco.
-- Chamadas externas só para destinos fixos no código ou na configuração, nunca para URL vinda do usuário.
+## Erros, logs e segurança
+- `catch` só para traduzir, contextualizar ou recuperar; nunca vazio nem engolindo o erro; relance o resto. Exceções: `.catch(() => ({}))` ao ler corpo de erro, e acesso a `localStorage`.
+- Front: `ErroApi` exibido com `Alerta`/`aplicarErrosDaApi`. Integração externa tem timeout e, se falhar, não trava o fluxo.
+- Logs só pelo pino (`req.log`/`app.log`); `console` só em scripts CLI (`db/migrate.ts`). Use o nível certo (error/warn/info/debug), com contexto (ids, operação), sem log em laço. Nunca logue senha, hash, token, cookie, `JWT_SECRET`, corpo de login, CPF/CNPJ ou dado pessoal desnecessário.
+- Senha só como hash Argon2id. Sessão em cookie `httpOnly` + `sameSite: 'lax'` (base anti-CSRF); não troque por token em `localStorage`.
+- A resposta expõe só o que está no schema de `response`. Proibido `dangerouslySetInnerHTML`.
+- Arquivo: tamanho limitado, tipo validado pelos bytes (`lib/imagem.ts`), guardado no banco.
+- Chamada externa só para destino fixo em código ou configuração, nunca para URL vinda do usuário.
 
 ## Performance
-Sem otimização prematura, mas sem desperdício óbvio:
-- Nada de consulta dentro de laço (N+1): use join, subconsulta agregada (`json_agg`, como em `clientes/routes.ts`) ou `inArray`.
-- Listas sempre paginadas (`pagina`/`porPagina` com limite) e com `count` separado; selecione só as colunas necessárias.
-- Filtro/ordenação frequente precisa de índice (btree; `pg_trgm` para busca por texto).
-- No front, não repita requisições que o TanStack Query já tem em cache; invalide só as chaves afetadas.
+Sem otimização prematura e sem desperdício óbvio:
+- Nada de N+1: use join, `json_agg` ou `inArray`.
+- Listas paginadas (`pagina`/`porPagina` com limite), com `count` separado e só as colunas necessárias.
+- Filtro novo precisa de índice.
+- No front, não repita requisições que já estão em cache.
 
 ## Testes
-- Vitest. `packages/shared`: testes unitários de regras puras. `apps/api`: testes de integração via `app.inject` contra o banco `mobios_test` (nunca o de uso). O front não tem testes automatizados; valide as telas no navegador.
-- Mudou comportamento: rode os testes relacionados, atualize-os se a regra mudou de propósito e cubra o caso novo — sucesso, erro (400/403/404/409) e limites (valores vazios, zero, datas de borda, permissão, concorrência por `versao`).
-- Tabela nova de negócio entra na lista do teste de RLS. Módulo novo de acesso entra nas expectativas de acessos.
-- Nunca apague, pule (`.skip`) ou afrouxe um teste só para passar. Se o teste estiver errado, explique por quê.
-- Testes independentes entre si: cada um cria os dados de que precisa (helpers no próprio arquivo).
+- Vitest. `shared`: testes unitários; `api`: integração via `app.inject` no banco `mobios_test` (nunca no de uso). O front não tem testes automatizados: confira no navegador sem criar nem alterar dados reais.
+- Mudou comportamento: rode os testes relacionados, atualize os que mudaram de propósito e cubra sucesso, erro (400/403/404/409) e limites (vazio, zero, datas de borda, permissão, `versao`).
+- Tabela nova entra no teste de RLS; módulo de acesso novo, nas expectativas de acessos.
+- Nunca apague, pule (`.skip`) ou afrouxe um teste para passar. Cada teste cria os próprios dados.
 
-## Comentários e documentação
-- Comente o **porquê** (regra de negócio, limitação de biblioteca, decisão não óbvia), não o que o código faz. Exemplo do projeto: `// O Drizzle embrulha o erro do driver em \`cause\`.`
-- JSDoc curto (`/** ... */`) em funções e componentes exportados cuja finalidade não é evidente pelo nome.
-- Comentário desatualizado é pior que nenhum: ao mudar o código, ajuste ou remova o comentário.
-- Regra de negócio nova ou alterada: atualize `docs/ENTREGAVEIS.md` e o documento do módulo em `docs/modulos/`; mudança estrutural: `docs/ARQUITETURA.md`; visual: `docs/STYLE_GUIDE.md`.
+## Alterações e documentação
+- Altere só o necessário; preserve o comportamento não relacionado; não reescreva arquivos nem renomeie por gosto.
+- Antes de mudar função, schema, rota ou tabela, procure os consumidores (API, front, testes, migrações, docs) e ajuste todos juntos. Não quebre contrato; se for inevitável, avise.
+- Melhoria fora do escopo vira recomendação no resumo, salvo se for necessária para a mudança funcionar.
+- Atualize a documentação quando mudar regra de negócio, arquitetura, contrato ou comportamento documentado (não para detalhe interno de implementação): regras em `docs/ENTREGAVEIS.md` e `docs/modulos/`, estrutura em `docs/ARQUITETURA.md`, visual em `docs/STYLE_GUIDE.md`.
 
-## Alterações cirúrgicas e compatibilidade
-- Altere só o necessário para a tarefa; preserve o comportamento não relacionado; não reescreva arquivos inteiros nem renomeie coisas por gosto.
-- Antes de mudar uma função, schema, rota ou tabela, procure quem a usa (API, front, testes, migrações, documentação) e ajuste todos no mesmo trabalho. Evite quebrar contratos (formato de resposta, nomes de campos, rotas); se for inevitável, avise.
-- Melhoria fora do escopo vira recomendação no resumo final, não alteração automática — exceto quando for necessária para a mudança funcionar ou ficar correta.
-- Ambiguidade de regra de negócio: pergunte em vez de assumir. Commit e push só quando pedido.
-
-## Verificação
-`pnpm typecheck && pnpm test` (os testes usam o banco `mobios_test`, nunca o de uso). Para mudança de schema: `pnpm db:generate`, revise o SQL e depois `pnpm db:migrate`. Mudança de tela: confira no navegador sem criar ou alterar dados reais do usuário.
-
-### Checklist antes de concluir
-- **Qualidade:** estilo e identação iguais aos do arquivo? Imports ordenados e sem sobras? Nomes consistentes com a tabela acima? Sem duplicação, código morto, comentário obsoleto ou função difícil de acompanhar?
-- **Arquitetura:** está na camada certa (`shared` / rota / `lib` / página / componente)? Reutilizei o que já existia? Criei abstração, camada ou dependência sem necessidade? Multi-tenancy e escalabilidade horizontal respeitadas?
-- **Segurança:** entrada validada por schema? Rota com autenticação e acesso? Nenhum segredo no código, nenhum dado sensível em log ou resposta?
-- **Performance:** sem N+1, consulta repetida ou lista sem paginação? Índice para o novo filtro?
-- **Testes:** `pnpm typecheck && pnpm test` passam? Comportamento novo coberto (sucesso, erro, limite)? Testes existentes preservados?
-- **Manutenibilidade:** a mudança é pequena e focada? Outra pessoa entenderia sem explicação? Documentação e `ENTREGAVEIS.md` atualizados quando a regra mudou?
+## Definition of Done (checklist final)
+- [ ] Funcionalidade implementada; `pnpm check` passa, com os testes relacionados executados.
+- [ ] Segurança, permissões, multi-tenancy, escalabilidade, integridade de dados e arquitetura preservadas; performance adequada.
+- [ ] Documentação atualizada quando exigido (ver "Alterações e documentação").
+- [ ] Diff revisado: só o escopo pedido, sem comportamento não relacionado, duplicação ou código morto.

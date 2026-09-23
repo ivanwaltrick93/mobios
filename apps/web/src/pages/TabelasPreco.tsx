@@ -118,9 +118,15 @@ function EditorTabela({ tabela, aoConcluir }: { tabela?: TabelaPreco; aoConcluir
         method: tabela ? 'PUT' : 'POST',
         body: { ...dados, versao: tabela?.versao },
       }),
-    onSuccess: () => (queryClient.invalidateQueries({ queryKey: ['tabelas-preco'] }), aoConcluir()),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tabelas-preco'] });
+      aoConcluir();
+    },
   });
-  const enviar = (e: FormEvent) => (e.preventDefault(), salvar.mutate());
+  const enviar = (e: FormEvent) => {
+    e.preventDefault();
+    salvar.mutate();
+  };
   return (
     <form onSubmit={enviar} className="space-y-3">
       <div className="grid gap-3 md:grid-cols-4">

@@ -33,7 +33,7 @@ import { BuscaCliente } from '../components/BuscaCliente';
 import { LinkWhatsApp, SeloPendencias } from '../components/Cliente';
 import { Placa } from '../components/Placa';
 import { Abas, Alerta, BotaoLink, Cartao, classesBotao, Selo, TextoSuave, Vazio } from '../components/ui';
-import { api, ErroApi } from '../lib/api';
+import { api } from '../lib/api';
 import { usePode } from '../lib/sessao';
 
 type Aba = 'resumo' | 'veiculos' | 'enderecos' | 'historico';
@@ -229,13 +229,7 @@ export function ClienteDetalhe() {
               </BotaoLink>
             </div>
           )}
-          {excluir.isError && (
-            <Alerta>
-              {excluir.error instanceof ErroApi && excluir.error.status === 409
-                ? 'Este cliente tem veículos. Remova-os ou transfira-os antes de excluir.'
-                : excluir.error.message}
-            </Alerta>
-          )}
+          {excluir.isError && <Alerta>{excluir.error.message}</Alerta>}
         </div>
       )}
 

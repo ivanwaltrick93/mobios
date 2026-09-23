@@ -63,7 +63,10 @@ export function FotoUsuario({
             type="file"
             accept="image/png,image/jpeg,image/webp"
             className="hidden"
-            onChange={(e) => (escolher(e.target.files?.[0]), (e.target.value = ''))}
+            onChange={(e) => {
+              escolher(e.target.files?.[0]);
+              e.target.value = '';
+            }}
           />
           <Botao
             type="button"

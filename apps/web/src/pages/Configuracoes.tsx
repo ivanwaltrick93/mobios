@@ -121,10 +121,13 @@ export function Configuracoes() {
 
   // Prévia ao vivo na interface inteira; ao sair sem salvar, volta ao tema salvo.
   useEffect(() => aplicarTema(tema), [tema]);
+  // Só na saída da tela: lê do cache o tema salvo mais recente, em vez de depender de `salvo`
+  // (que mudaria a cada gravação e reaplicaria o tema no meio da edição).
   useEffect(
     () => () => aplicarTema(queryClient.getQueryData<{ oficina: { tema: Tema } }>(chaveSessao)?.oficina.tema ?? salvo),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
-  ); // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
   const salvar = useMutation({
     mutationFn: () => api<Tema>('/configuracoes/aparencia', { method: 'PUT', body: temaInputSchema.parse(tema) }),
@@ -298,7 +301,10 @@ function LogoOficina({ versao, nome }: { versao: string | null; nome: string }) 
             type="file"
             accept={IMAGEM_TIPOS.join(',')}
             className="hidden"
-            onChange={(e) => (escolher(e.target.files?.[0]), (e.target.value = ''))}
+            onChange={(e) => {
+              escolher(e.target.files?.[0]);
+              e.target.value = '';
+            }}
           />
           <Botao disabled={enviar.isPending} onClick={() => arquivo.current?.click()}>
             {enviar.isPending ? 'Enviando…' : versao ? 'Trocar logo' : 'Enviar logo'}

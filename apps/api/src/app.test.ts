@@ -354,7 +354,9 @@ describe('clientes e veículos', () => {
     });
     expect((await chamar('POST', '/api/veiculos', veiculo(joao.id, { chassi: '' }))).statusCode).toBe(201);
 
-    expect((await chamar('DELETE', `/api/clientes/${joao.id}`)).statusCode).toBe(409);
+    const exclusao = await chamar('DELETE', `/api/clientes/${joao.id}`);
+    expect(exclusao.statusCode).toBe(409);
+    expect(exclusao.json().erro).toContain('tem veículos');
   });
 
   it('PJ: endereços com finalidades; edição regrava os endereços e mantém um principal', async () => {

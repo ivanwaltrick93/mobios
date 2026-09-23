@@ -645,42 +645,48 @@ export const relatorioFiltroSchema = z
     path: ['ate'],
   });
 
-export type RelatorioDescricao = {
-  id: RelatorioId;
-  titulo: string;
-  descricao: string;
-  colunas: { chave: string; titulo: string }[];
-};
+const colunaRelatorioSchema = z.object({ chave: z.string(), titulo: z.string() });
 
-export type RelatorioPrevia = {
-  colunas: { chave: string; titulo: string }[];
-  linhas: Record<string, string>[];
-  total: number;
-};
+export const relatorioDescricaoSchema = z.object({
+  id: relatorioIdSchema,
+  titulo: z.string(),
+  descricao: z.string(),
+  colunas: z.array(colunaRelatorioSchema),
+});
+export type RelatorioDescricao = z.infer<typeof relatorioDescricaoSchema>;
+
+export const relatorioPreviaSchema = z.object({
+  colunas: z.array(colunaRelatorioSchema),
+  linhas: z.array(z.record(z.string(), z.string())),
+  total: z.number(),
+});
+export type RelatorioPrevia = z.infer<typeof relatorioPreviaSchema>;
 
 // ---------- Painel (página inicial) ----------
 
-export type IndicadorId = 'os_abertas' | 'faturado_hoje' | 'clientes' | 'veiculos';
-
-export type Indicador = {
-  id: IndicadorId;
-  titulo: string;
+export const indicadorSchema = z.object({
+  id: z.enum(['os_abertas', 'faturado_hoje', 'clientes', 'veiculos']),
+  titulo: z.string(),
   /** null = o módulo que fornece o dado ainda não existe (nunca mostrar número inventado). */
-  valor: number | null;
-  formato: 'numero' | 'moeda';
-  detalhe: string;
-  link?: string;
-};
+  valor: z.number().nullable(),
+  formato: z.enum(['numero', 'moeda']),
+  detalhe: z.string(),
+  link: z.string().optional(),
+});
+export type Indicador = z.infer<typeof indicadorSchema>;
+export type IndicadorId = Indicador['id'];
 
-export type AlertaPainel = {
-  nivel: 'aviso' | 'info';
-  mensagem: string;
-  link?: string;
-};
+export const alertaPainelSchema = z.object({
+  nivel: z.enum(['aviso', 'info']),
+  mensagem: z.string(),
+  link: z.string().optional(),
+});
+export type AlertaPainel = z.infer<typeof alertaPainelSchema>;
 
-export type Painel = {
-  indicadores: Indicador[];
-  alertas: AlertaPainel[];
+export const painelSchema = z.object({
+  indicadores: z.array(indicadorSchema),
+  alertas: z.array(alertaPainelSchema),
   /** Módulos ainda não implementados: exibidos como "em breve". */
-  modulosPendentes: string[];
-};
+  modulosPendentes: z.array(z.string()),
+});
+export type Painel = z.infer<typeof painelSchema>;

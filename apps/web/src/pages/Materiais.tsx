@@ -1,10 +1,21 @@
 import type { MaterialResumo } from '@mobios/shared';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { Package, Plus, Search } from 'lucide-react';
+import { Package, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { AbasMateriais } from '../components/AbasMateriais';
-import { Alerta, Botao, Cartao, classesBotao, Input, Selo, Select, TextoSuave, Titulo, Vazio } from '../components/ui';
+import {
+  Alerta,
+  Botao,
+  CampoBusca,
+  Cartao,
+  classesBotao,
+  Select,
+  Selo,
+  TextoSuave,
+  Titulo,
+  Vazio,
+} from '../components/ui';
 import { api } from '../lib/api';
 import { useOpcoes } from '../lib/cadastro';
 import { arvoreCategorias, useCategorias, useMarcas } from '../lib/materiais';
@@ -27,10 +38,10 @@ export function Materiais() {
     queryFn: () => api<{ itens: MaterialResumo[]; total: number }>(`/materiais?${parametros}`),
     placeholderData: keepPreviousData,
   });
-  const mudar = (campo: keyof typeof filtro, valor: string) => (
-    setFiltro((f) => ({ ...f, [campo]: valor })),
-    setQuantidade(POR_PAGINA)
-  );
+  const mudar = (campo: keyof typeof filtro, valor: string) => {
+    setFiltro((f) => ({ ...f, [campo]: valor }));
+    setQuantidade(POR_PAGINA);
+  };
   const dados = materiais.data;
 
   if (!pode('materiais')) return <Alerta>Você não tem permissão para acessar os materiais.</Alerta>;
@@ -51,19 +62,12 @@ export function Materiais() {
       <AbasMateriais />
 
       <div className="space-y-3">
-        <div className="relative">
-          <Search
-            className="pointer-events-none absolute top-1/2 left-4 size-5 -translate-y-1/2 text-texto-suave"
-            aria-hidden
-          />
-          <Input
-            className="h-12 pl-12 text-base"
-            placeholder="SKU, descrição, código do fabricante ou de barras"
-            aria-label="Buscar materiais"
-            value={filtro.q}
-            onChange={(e) => mudar('q', e.target.value)}
-          />
-        </div>
+        <CampoBusca
+          rotulo="Buscar materiais"
+          placeholder="SKU, descrição, código do fabricante ou de barras"
+          valor={filtro.q}
+          aoMudar={(valor) => mudar('q', valor)}
+        />
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Select aria-label="Tipo" value={filtro.tipoId} onChange={(e) => mudar('tipoId', e.target.value)}>
             <option value="">Todos os tipos</option>

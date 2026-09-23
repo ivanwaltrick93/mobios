@@ -88,9 +88,15 @@ function EditorMarca({ marca, aoConcluir }: { marca?: Marca; aoConcluir: () => v
         method: marca ? 'PUT' : 'POST',
         body: { ...dados, versao: marca?.versao },
       }),
-    onSuccess: () => (queryClient.invalidateQueries({ queryKey: ['marcas'] }), aoConcluir()),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['marcas'] });
+      aoConcluir();
+    },
   });
-  const enviar = (e: FormEvent) => (e.preventDefault(), salvar.mutate());
+  const enviar = (e: FormEvent) => {
+    e.preventDefault();
+    salvar.mutate();
+  };
   return (
     <form onSubmit={enviar} className="space-y-3 rounded-md border border-borda bg-superficie-alt p-4">
       <div className="grid gap-3 md:grid-cols-4">

@@ -1,6 +1,7 @@
-import { and, eq, sql, type SQL } from 'drizzle-orm';
+import { and, eq, ilike, or, sql, type SQL } from 'drizzle-orm';
 import type { AnyPgColumn, PgTable } from 'drizzle-orm/pg-core';
 import type { Tx } from '../db/client.js';
+import { materiais } from '../db/schema.js';
 import { ErroHttp, naoEncontrado } from './erros.js';
 
 type TabelaComId = PgTable & { id: AnyPgColumn };
@@ -84,9 +85,9 @@ export async function validarReferencia(
     .select({ ativo })
     .from(tabela as PgTable)
     .where(eq(tabela.id, id));
-  const a = rotulo.endsWith('a') ? 'a' : 'o'; // "Categoria inativa", "Tipo inativo"
-  if (!ref) throw new ErroHttp(400, `${rotulo} não encontrad${a}.`);
-  if (!ref.ativo) throw new ErroHttp(400, `${rotulo} está inativ${a}: escolha outr${a} ou reative.`);
+  // Mensagem sem concordância de gênero: o rótulo pode ser "Categoria pai", "Função do responsável"...
+  if (!ref) throw new ErroHttp(400, `${rotulo}: o item escolhido não foi encontrado.`);
+  if (!ref.ativo) throw new ErroHttp(400, `${rotulo}: o item escolhido está inativo. Escolha outro ou reative-o.`);
 }
 
 /**
@@ -105,4 +106,25 @@ export async function excluirSeNaoUsado(tx: Tx, tabela: TabelaComId, id: string,
 
 /** Filtro "igual ou abaixo" na hierarquia de categorias. */
 export const naCategoriaOuAbaixo = (coluna: AnyPgColumn, categoriaId: string): SQL =>
-  sql`${coluna} in (with recursive sub(id) as (select ${categoriaId}::uuid union select c.id from categorias c join sub on c.categoria_pai_id = sub.id) select id from sub)`;
+  sql`${coluna} in (
+    with recursive sub(id) as (
+      select ${categoriaId}::uuid
+      union select c.id from categorias c join sub on c.categoria_pai_id = sub.id
+    )
+    select id from sub
+  )`;
+
+/**
+ * Busca de material usada em todas as listagens (materiais, estoque, lista de preços):
+ * SKU e código do fabricante por prefixo, código de barras exato (só os dígitos) e descrição por trecho.
+ * Usa as colunas de `materiais` sem apelido: a consulta precisa ter a tabela com esse nome no FROM.
+ */
+export function buscaDeMaterial(q: string): SQL {
+  const prefixo = `${q.toUpperCase()}%`;
+  return or(
+    ilike(materiais.sku, prefixo),
+    ilike(materiais.codigoFabricante, prefixo),
+    eq(materiais.codigoBarras, q.replace(/\D/g, '') || q),
+    ilike(materiais.descricao, `%${q}%`),
+  )!;
+}

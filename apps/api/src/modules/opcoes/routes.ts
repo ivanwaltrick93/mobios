@@ -40,12 +40,17 @@ const listas = {
   tiposDeposito: { tabela: tiposDeposito, nomeTabela: 'tipos_deposito', uso: 'depositos', coluna: 'tipo_id' },
 } satisfies Record<ListaOpcoes, unknown>;
 
-/** Quantos registros usam o item (para responsáveis: clientes distintos). Correlação escrita à mão: o Drizzle não qualifica colunas dentro da subconsulta. */
-const usoDoItem = (lista: ListaOpcoes) =>
-  sql<number>`(select count(distinct ${sql.raw(listas[lista].uso === 'cliente_responsaveis' ? 'u.cliente_id' : 'u.id')}) from ${sql.identifier(listas[lista].uso)} u
-    where u.${sql.identifier(listas[lista].coluna)} = ${sql.identifier(listas[lista].nomeTabela)}."id")`.mapWith(
-    Number,
-  );
+/**
+ * Quantos registros usam o item (para responsáveis: clientes distintos).
+ * Correlação escrita à mão: o Drizzle não qualifica colunas dentro da subconsulta.
+ */
+const usoDoItem = (lista: ListaOpcoes) => {
+  const { uso, coluna, nomeTabela } = listas[lista];
+  // sql.raw/identifier só recebem valores fixos do objeto `listas`, nunca da requisição.
+  const contado = sql.raw(uso === 'cliente_responsaveis' ? 'u.cliente_id' : 'u.id');
+  return sql<number>`(select count(distinct ${contado}) from ${sql.identifier(uso)} u
+    where u.${sql.identifier(coluna)} = ${sql.identifier(nomeTabela)}."id")`.mapWith(Number);
+};
 
 const listaParam = z.object({ lista: listaOpcoesSchema });
 

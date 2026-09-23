@@ -124,13 +124,16 @@ function EditorDeposito({ deposito, aoConcluir }: { deposito?: Deposito; aoConcl
         method: deposito ? 'PUT' : 'POST',
         body: { ...dados, versao: deposito?.versao },
       }),
-    onSuccess: () => (
-      queryClient.invalidateQueries({ queryKey: ['depositos'] }),
-      queryClient.invalidateQueries({ queryKey: ['opcoes'] }),
-      aoConcluir()
-    ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['depositos'] });
+      queryClient.invalidateQueries({ queryKey: ['opcoes'] });
+      aoConcluir();
+    },
   });
-  const enviar = (e: FormEvent) => (e.preventDefault(), salvar.mutate());
+  const enviar = (e: FormEvent) => {
+    e.preventDefault();
+    salvar.mutate();
+  };
   return (
     <form onSubmit={enviar} className="space-y-4">
       <div className="grid gap-3 md:grid-cols-4">

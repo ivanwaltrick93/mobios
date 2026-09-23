@@ -1,4 +1,4 @@
-import { temAcesso, type AlertaPainel, type Indicador, type Painel } from '@mobios/shared';
+import { painelSchema, temAcesso, type AlertaPainel, type Indicador, type Painel } from '@mobios/shared';
 import { count, sql } from 'drizzle-orm';
 import type { PgColumn } from 'drizzle-orm/pg-core';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
@@ -15,7 +15,7 @@ const hoje = (coluna: PgColumn) => sql`(${coluna} at time zone ${FUSO})::date = 
 export const painelRoutes: FastifyPluginAsyncZod = async (app) => {
   app.addHook('onRequest', app.autenticar);
 
-  app.get('/', async (req): Promise<Painel> =>
+  app.get('/', { schema: { response: { 200: painelSchema } } }, async (req): Promise<Painel> =>
     withTenant(req.user.tid, async (tx) => {
       const [c] = await tx
         .select({

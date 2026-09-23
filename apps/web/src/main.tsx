@@ -1,8 +1,9 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MutationCache, QueryCache, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createBrowserRouter, RouterProvider } from 'react-router';
 import { Layout } from './components/Layout';
+import { ErroApi } from './lib/api';
 import './index.css';
 import { Categorias } from './pages/Categorias';
 import { Depositos } from './pages/Depositos';
@@ -30,7 +31,28 @@ import { ListasCadastro } from './pages/ListasCadastro';
 import { Relatorios } from './pages/Relatorios';
 import { Usuarios } from './pages/Usuarios';
 
-const queryClient = new QueryClient({ defaultOptions: { queries: { refetchOnWindowFocus: false } } });
+/**
+ * Sessão expirada ou acesso desativado no meio do uso (401 fora da tela de login): descarta os dados
+ * em cache do usuário e volta para o login, em vez de cada tela mostrar o erro.
+ */
+function aoErroDaApi(erro: unknown) {
+  if (erro instanceof ErroApi && erro.status === 401 && router.state.location.pathname !== '/entrar') {
+    queryClient.clear();
+    void router.navigate('/entrar', { replace: true });
+  }
+}
+
+const queryClient = new QueryClient({
+  queryCache: new QueryCache({ onError: aoErroDaApi }),
+  mutationCache: new MutationCache({ onError: aoErroDaApi }),
+  defaultOptions: {
+    queries: {
+      refetchOnWindowFocus: false,
+      // Erro 4xx (sem permissão, não encontrado, sessão expirada) não melhora com nova tentativa.
+      retry: (falhas, erro) => !(erro instanceof ErroApi && erro.status < 500) && falhas < 3,
+    },
+  },
+});
 
 const router = createBrowserRouter([
   { path: '/entrar', element: <Entrar /> },

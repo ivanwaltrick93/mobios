@@ -6,12 +6,12 @@ import {
   UNIDADES,
   type Saldo,
 } from '@mobios/shared';
-import { and, asc, count, desc, eq, gt, ilike, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gt, or, sql, type SQL } from 'drizzle-orm';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { withTenant, type Tx } from '../../db/client.js';
 import { depositos, estoqueAjustes, estoques, materiais } from '../../db/schema.js';
-import { nomeUsuario } from '../../lib/cadastro.js';
+import { buscaDeMaterial, nomeUsuario } from '../../lib/cadastro.js';
 import { ErroHttp, naoEncontrado } from '../../lib/erros.js';
 
 const chaveParams = z.object({ materialId: z.uuid(), depositoId: z.uuid() });
@@ -75,14 +75,7 @@ export const estoqueRoutes: FastifyPluginAsyncZod = async (app) => {
           sql`${estoques.materialId} is not null`,
           and(eq(materiais.ativo, true), eq(materiais.controlaEstoque, true), eq(depositos.ativo, true)),
         ),
-        q
-          ? or(
-              ilike(materiais.sku, `${q.toUpperCase()}%`),
-              ilike(materiais.descricao, `%${q}%`),
-              ilike(materiais.codigoFabricante, `${q.toUpperCase()}%`),
-              eq(materiais.codigoBarras, q),
-            )
-          : undefined,
+        q ? buscaDeMaterial(q) : undefined,
         depositoId ? eq(depositos.id, depositoId) : undefined,
         materialId ? eq(materiais.id, materialId) : undefined,
         comSaldo === 'true' ? or(gt(estoques.disponivel, 0), gt(estoques.reservado, 0)) : undefined,
@@ -174,7 +167,7 @@ export const estoqueRoutes: FastifyPluginAsyncZod = async (app) => {
           .where(and(eq(estoques.materialId, materialId), eq(estoques.depositoId, depositoId)))
           .for('update');
         if (atual) {
-          if (versao == null) throw new ErroHttp(400, 'Informe a versão do saldo (campo "versao").');
+          // Sem versão com a linha já existente = a tela leu o saldo zerado e alguém gravou antes: também é conflito.
           if (versao !== atual.versao)
             throw new ErroHttp(
               409,

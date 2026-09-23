@@ -114,7 +114,13 @@ function Extracao({ relatorio }: { relatorio: RelatorioDescricao }) {
             </Campo>
           </div>
           {(de || ate) && (
-            <Botao variante="secundario" onClick={() => (setDe(''), setAte(''))}>
+            <Botao
+              variante="secundario"
+              onClick={() => {
+                setDe('');
+                setAte('');
+              }}
+            >
               Limpar período
             </Botao>
           )}

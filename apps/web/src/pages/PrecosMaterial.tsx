@@ -164,6 +164,7 @@ function useInvalidarPrecos(materialId: string) {
   return () => {
     queryClient.invalidateQueries({ queryKey: ['precos', materialId] });
     queryClient.invalidateQueries({ queryKey: ['tabelas-preco'] });
+    queryClient.invalidateQueries({ queryKey: ['lista-precos'] });
   };
 }
 
@@ -195,9 +196,15 @@ function NovaVigencia({
           dataFim: fim || null,
         },
       }),
-    onSuccess: () => (invalidar(), aoConcluir()),
+    onSuccess: () => {
+      invalidar();
+      aoConcluir();
+    },
   });
-  const enviar = (e: FormEvent) => (e.preventDefault(), salvar.mutate());
+  const enviar = (e: FormEvent) => {
+    e.preventDefault();
+    salvar.mutate();
+  };
 
   return (
     <form onSubmit={enviar} className="space-y-3 rounded-md border border-borda bg-superficie-alt p-4">
@@ -277,7 +284,10 @@ function AcoesPreco({ preco }: { preco: Preco }) {
       if (acao === 'encerrar') return api(`/precos/${preco.id}/encerrar`, { method: 'POST', body: { dataFim: data } });
       return api(`/precos/${preco.id}/cancelar`, { method: 'POST', body: { motivo } });
     },
-    onSuccess: () => (invalidar(), setAcao(null)),
+    onSuccess: () => {
+      invalidar();
+      setAcao(null);
+    },
   });
   const futuro = preco.situacao === 'futuro';
 
@@ -286,7 +296,14 @@ function AcoesPreco({ preco }: { preco: Preco }) {
       <div className="flex flex-wrap gap-4 text-sm">
         {futuro && <BotaoLink onClick={() => setAcao('editar')}>Editar</BotaoLink>}
         {(futuro || preco.situacao === 'vigente') && (
-          <BotaoLink onClick={() => (setData(preco.dataFim ?? hojeIso()), setAcao('encerrar'))}>Encerrar</BotaoLink>
+          <BotaoLink
+            onClick={() => {
+              setData(preco.dataFim ?? hojeIso());
+              setAcao('encerrar');
+            }}
+          >
+            Encerrar
+          </BotaoLink>
         )}
         {futuro && (
           <BotaoLink perigo onClick={() => setAcao('cancelar')}>
@@ -299,7 +316,10 @@ function AcoesPreco({ preco }: { preco: Preco }) {
       {acao && acao !== 'eventos' && (
         <form
           className="flex flex-wrap items-end gap-3 rounded-md bg-superficie-alt p-3"
-          onSubmit={(e) => (e.preventDefault(), executar.mutate())}
+          onSubmit={(e) => {
+            e.preventDefault();
+            executar.mutate();
+          }}
         >
           {acao === 'editar' && (
             <>

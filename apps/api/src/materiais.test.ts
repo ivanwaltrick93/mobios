@@ -122,7 +122,9 @@ describe('categorias e marcas', () => {
       categoriaId: motor.id,
       unidade: 'UN',
     });
-    expect(novo.json().erro).toBe('Categoria está inativa: escolha outra ou reative.');
+    expect(novo.json().erro).toBe('Categoria: o item escolhido está inativo. Escolha outro ou reative-o.');
+    const subDeInativa = await o.chamar('POST', '/api/categorias', { nome: 'Velas', categoriaPaiId: motor.id });
+    expect(subDeInativa.json().erro).toBe('Categoria pai: o item escolhido está inativo. Escolha outro ou reative-o.');
     expect(
       (await o.chamar('GET', '/api/categorias')).json().find((c: { id: string }) => c.id === filtros.id).materiais,
     ).toBe(1);
@@ -331,7 +333,8 @@ describe('preços por vigência', () => {
     const inserir = (inicio: string, fim: string | null) =>
       withTenant(o.tid, (tx) =>
         tx.execute(
-          sql`insert into materiais_precos (material_id, tabela_preco_id, preco_centavos, data_inicio, data_fim) values (${material.id}, ${tabela.id}, 100, ${inicio}, ${fim})`,
+          sql`insert into materiais_precos (material_id, tabela_preco_id, preco_centavos, data_inicio, data_fim)
+            values (${material.id}, ${tabela.id}, 100, ${inicio}, ${fim})`,
         ),
       );
     await inserir('2027-01-01', '2027-12-31');
@@ -440,8 +443,8 @@ describe('estoque por material + depósito', () => {
       atualizadoPor: 'Admin Teste',
     });
 
-    // Versão: sem versão ou com versão antiga não sobrescreve.
-    expect((await ajustar(loja.id, { disponivel: 8, reservado: 2, motivo: 'Venda' })).statusCode).toBe(400);
+    // Versão: sem versão (a tela leu o saldo zerado e alguém gravou antes) ou com versão antiga não sobrescreve.
+    expect((await ajustar(loja.id, { disponivel: 8, reservado: 2, motivo: 'Venda' })).statusCode).toBe(409);
     expect((await ajustar(loja.id, { disponivel: 8, reservado: 2, motivo: 'Venda', versao: 1 })).json()).toMatchObject({
       disponivel: 8,
       versao: 2,
@@ -498,6 +501,13 @@ describe('estoque por material + depósito', () => {
     ]);
     expect(await linhas(`depositoId=${oficina.id}&comSaldo=true`)).toEqual([['OLE-1', 'OFI', 20.5, 0.25]]);
     expect(await linhas('q=fil')).toHaveLength(2);
+    // Mesma busca das outras listagens: código de barras pelos dígitos, mesmo digitado com espaços.
+    expect(await linhas(`q=${encodeURIComponent('7891 0003 15507')}`)).toHaveLength(2);
+
+    // Material com saldo não pode ser excluído (a mensagem cita o estoque, não só preços).
+    const exclusao = await o.chamar('DELETE', `/api/materiais/${material.id}`);
+    expect(exclusao.statusCode).toBe(409);
+    expect(exclusao.json().erro).toContain('saldo de estoque');
 
     // Material que não controla estoque, ou inativo: sem ajuste.
     await o.chamar('PATCH', `/api/materiais/${oleo.id}/status`, { ativo: false });
@@ -610,6 +620,11 @@ describe('lista de preços', () => {
         .itens.map((i: { sku: string }) => i.sku),
     ).toEqual(['FIL-001']);
     expect((await o.chamar('GET', `/api/precos/lista?tabelaPrecoId=${tabela.id}&q=filtro`)).json().total).toBe(1);
+    // Busca igual à de Materiais: SKU em minúsculas e código de barras.
+    expect((await o.chamar('GET', `/api/precos/lista?tabelaPrecoId=${tabela.id}&q=fil-0`)).json().total).toBe(1);
+    expect((await o.chamar('GET', `/api/precos/lista?tabelaPrecoId=${tabela.id}&q=7891000315507`)).json().total).toBe(
+      1,
+    );
 
     // Sem acesso ao Estoque, a coluna de disponível vem vazia.
     const financeiro = await o.pessoa('Financeiro');

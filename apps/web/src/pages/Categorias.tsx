@@ -128,12 +128,18 @@ function EditorCategoria({
         method: c ? 'PUT' : 'POST',
         body: { ...dados, versao: c?.versao },
       }),
-    onSuccess: () => (queryClient.invalidateQueries({ queryKey: ['categorias'] }), aoConcluir()),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['categorias'] });
+      aoConcluir();
+    },
   });
   // Pai possível: ativa (ou a atual) e que não seja a própria categoria nem uma descendente dela.
   const proibidos = c ? descendentes(todas, c.id) : new Set<string>();
   const pais = arvoreCategorias(todas).filter((p) => !proibidos.has(p.id) && (p.ativa || p.id === edicao.paiId));
-  const enviar = (e: FormEvent) => (e.preventDefault(), salvar.mutate());
+  const enviar = (e: FormEvent) => {
+    e.preventDefault();
+    salvar.mutate();
+  };
 
   return (
     <form onSubmit={enviar} className="space-y-3 rounded-md border border-borda bg-superficie-alt p-4">

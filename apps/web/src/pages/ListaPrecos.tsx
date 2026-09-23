@@ -1,6 +1,6 @@
 import { formatarDataIso, formatarMoeda, formatarQuantidade, type ItemListaPrecos } from '@mobios/shared';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { Search, Tag } from 'lucide-react';
+import { Tag } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import { AbasPrecos } from '../components/AbasPrecos';
@@ -8,8 +8,8 @@ import {
   Alerta,
   Botao,
   Cabecalho,
+  CampoBusca,
   classesBotao,
-  Input,
   Linha,
   LinhaVazia,
   Marcador,
@@ -96,7 +96,10 @@ export function ListaPrecos() {
             <Select
               aria-label="Tabela de preço"
               value={tabela?.id ?? ''}
-              onChange={(e) => (setTabelaId(e.target.value), setQuantidade(POR_PAGINA))}
+              onChange={(e) => {
+                setTabelaId(e.target.value);
+                setQuantidade(POR_PAGINA);
+              }}
             >
               {ativas.map((t) => (
                 <option key={t.id} value={t.id}>
@@ -104,20 +107,16 @@ export function ListaPrecos() {
                 </option>
               ))}
             </Select>
-            <div className="relative">
-              <Search
-                className="pointer-events-none absolute top-1/2 left-4 size-5 -translate-y-1/2 text-texto-suave"
-                aria-hidden
-              />
-              <Input
-                autoFocus
-                className="h-12 pl-12 text-base"
-                placeholder="SKU, descrição, código do fabricante ou de barras"
-                aria-label="Buscar na lista de preços"
-                value={busca}
-                onChange={(e) => (setBusca(e.target.value), setQuantidade(POR_PAGINA))}
-              />
-            </div>
+            <CampoBusca
+              autoFocus
+              rotulo="Buscar na lista de preços"
+              placeholder="SKU, descrição, código do fabricante ou de barras"
+              valor={busca}
+              aoMudar={(valor) => {
+                setBusca(valor);
+                setQuantidade(POR_PAGINA);
+              }}
+            />
             <Marcador rotulo="Só com preço" checked={soComPreco} onChange={(e) => setSoComPreco(e.target.checked)} />
           </div>
 

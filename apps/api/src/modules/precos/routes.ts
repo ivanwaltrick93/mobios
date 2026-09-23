@@ -1,4 +1,5 @@
 import {
+  formatarDataIso,
   hojeIso,
   idParamSchema,
   precoAtualizarSchema,
@@ -20,7 +21,7 @@ import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { withTenant, type Tx } from '../../db/client.js';
 import { materiais, materiaisPrecos, precosEventos, tabelasPreco } from '../../db/schema.js';
-import { nomeUsuario } from '../../lib/cadastro.js';
+import { buscaDeMaterial, nomeUsuario } from '../../lib/cadastro.js';
 import { ErroHttp, naoEncontrado } from '../../lib/erros.js';
 
 /** Dia anterior de uma data AAAA-MM-DD (sem fuso: só a data). */
@@ -155,23 +156,26 @@ export const precosRoutes: FastifyPluginAsyncZod = async (app) => {
       const { tabelaPrecoId, q, comPreco, pagina, porPagina } = req.query;
       const hoje = hojeIso();
       const verEstoque = temAcesso(req.user.acessos, 'estoque');
-      const busca = q
-        ? sql`and (m.sku like ${`${q.toUpperCase()}%`} or m.descricao ilike ${`%${q}%`} or m.codigo_fabricante like ${`${q.toUpperCase()}%`} or m.codigo_barras = ${q})`
-        : sql``;
+      const busca = q ? sql`and ${buscaDeMaterial(q)}` : sql``;
       const soComPreco = comPreco === 'true' ? sql`and v.preco_centavos is not null` : sql``;
+      // `materiais` sem apelido: o filtro de busca (buscaDeMaterial) usa as colunas com o nome da tabela.
       const base = sql`
-        from materiais m
-        left join marcas ma on ma.id = m.marca_id
+        from materiais
+        left join marcas ma on ma.id = materiais.marca_id
         left join lateral (
           select p.preco_centavos, p.data_inicio, p.data_fim from materiais_precos p
-          where p.material_id = m.id and p.tabela_preco_id = ${tabelaPrecoId} and not p.cancelado
+          where p.material_id = materiais.id and p.tabela_preco_id = ${tabelaPrecoId} and not p.cancelado
             and p.data_inicio <= ${hoje}::date and (p.data_fim is null or p.data_fim >= ${hoje}::date)
           limit 1) v on true
         left join lateral (
           select p.preco_centavos, p.data_inicio from materiais_precos p
-          where p.material_id = m.id and p.tabela_preco_id = ${tabelaPrecoId} and not p.cancelado and p.data_inicio > ${hoje}::date
+          where p.material_id = materiais.id and p.tabela_preco_id = ${tabelaPrecoId} and not p.cancelado
+            and p.data_inicio > ${hoje}::date
           order by p.data_inicio limit 1) f on true
-        where m.ativo ${busca} ${soComPreco}`;
+        where materiais.ativo ${busca} ${soComPreco}`;
+      const disponivel = verEstoque
+        ? sql`(select coalesce(sum(e.disponivel), 0) from estoques e where e.material_id = materiais.id)::float8`
+        : sql`null`;
       return withTenant(req.user.tid, async (tx) => {
         const [tabela] = await tx
           .select({ id: tabelasPreco.id })
@@ -179,12 +183,16 @@ export const precosRoutes: FastifyPluginAsyncZod = async (app) => {
           .where(eq(tabelasPreco.id, tabelaPrecoId));
         if (!tabela) throw naoEncontrado('Tabela de preço');
         const linhas = (await tx.execute(sql`
-          select m.id as "materialId", m.sku, m.descricao, ma.nome as "marcaNome", m.unidade::text as unidade,
-            v.preco_centavos::float8 as "precoCentavos", v.data_inicio::text as "vigenteDesde", v.data_fim::text as "vigenteAte",
-            f.preco_centavos::float8 as "proximoPrecoCentavos", f.data_inicio::text as "proximoInicio",
-            ${verEstoque ? sql`(select coalesce(sum(e.disponivel), 0) from estoques e where e.material_id = m.id)::float8` : sql`null`} as disponivel
+          select materiais.id as "materialId", materiais.sku, materiais.descricao,
+            ma.nome as "marcaNome", materiais.unidade::text as unidade,
+            v.preco_centavos::float8 as "precoCentavos",
+            v.data_inicio::text as "vigenteDesde",
+            v.data_fim::text as "vigenteAte",
+            f.preco_centavos::float8 as "proximoPrecoCentavos",
+            f.data_inicio::text as "proximoInicio",
+            ${disponivel} as disponivel
           ${base}
-          order by m.descricao, m.sku
+          order by materiais.descricao, materiais.sku
           limit ${porPagina} offset ${(pagina - 1) * porPagina}`)) as unknown as ItemListaPrecos[];
         const [{ total }] = (await tx.execute(sql`select count(*)::int as total ${base}`)) as unknown as [
           { total: number },
@@ -278,7 +286,8 @@ export const precosRoutes: FastifyPluginAsyncZod = async (app) => {
           else if (dataFim >= proximo.dataInicio) {
             throw new ErroHttp(
               409,
-              `Já existe preço programado a partir de ${proximo.dataInicio.split('-').reverse().join('/')}. Termine a nova vigência antes dessa data.`,
+              `Já existe preço programado a partir de ${formatarDataIso(proximo.dataInicio)}. ` +
+                'Termine a nova vigência antes dessa data.',
             );
           }
         }
@@ -286,7 +295,7 @@ export const precosRoutes: FastifyPluginAsyncZod = async (app) => {
         // A nova só substitui a atual se cobrir o resto do período dela; terminar no meio partiria a vigência
         // em duas (com um buraco sem preço) — isso é sobreposição e é recusado.
         if (atual && dataFim && (atual.dataFim === null || dataFim < atual.dataFim)) {
-          const fimAtual = atual.dataFim ? `até ${atual.dataFim.split('-').reverse().join('/')}` : 'sem data de fim';
+          const fimAtual = atual.dataFim ? `até ${formatarDataIso(atual.dataFim)}` : 'sem data de fim';
           throw new ErroHttp(
             409,
             `O período se sobrepõe ao preço vigente (${fimAtual}). Deixe a nova vigência sem fim ou termine-a depois do fim da atual.`,

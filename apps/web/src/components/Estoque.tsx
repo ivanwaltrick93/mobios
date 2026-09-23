@@ -41,7 +41,10 @@ export function AjusteEstoqueForm({ saldo, aoConcluir }: { saldo: Saldo; aoConcl
       aoConcluir();
     },
   });
-  const enviar = (e: FormEvent) => (e.preventDefault(), salvar.mutate());
+  const enviar = (e: FormEvent) => {
+    e.preventDefault();
+    salvar.mutate();
+  };
 
   return (
     <form onSubmit={enviar} className="space-y-3 rounded-md border border-borda bg-superficie-alt p-4">

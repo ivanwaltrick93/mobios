@@ -1,8 +1,9 @@
 import {
   hojeIso,
+  relatorioDescricaoSchema,
   relatorioFiltroSchema,
   relatorioIdSchema,
-  type RelatorioDescricao,
+  relatorioPreviaSchema,
   type RelatorioId,
 } from '@mobios/shared';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
@@ -29,17 +30,21 @@ export const relatoriosRoutes: FastifyPluginAsyncZod = async (app) => {
   };
 
   /** Relatórios que o usuário logado pode extrair. */
-  app.get('/', async (req): Promise<RelatorioDescricao[]> =>
+  app.get('/', { schema: { response: { 200: z.array(relatorioDescricaoSchema) } } }, async (req) =>
     Object.values(relatorios)
       .filter((r) => permitido(r.id, req.user.admin))
       .map(({ id, titulo, descricao, colunas }) => ({ id, titulo, descricao, colunas })),
   );
 
-  app.get('/:id', { schema: { params: paramsSchema, querystring: relatorioFiltroSchema } }, async (req) => {
-    const def = definicaoPermitida(req.params.id, req.user.admin);
-    const { linhas, total } = await withTenant(req.user.tid, (tx) => def.consultar(tx, req.query, LIMITE_PREVIA));
-    return { colunas: def.colunas, linhas, total };
-  });
+  app.get(
+    '/:id',
+    { schema: { params: paramsSchema, querystring: relatorioFiltroSchema, response: { 200: relatorioPreviaSchema } } },
+    async (req) => {
+      const def = definicaoPermitida(req.params.id, req.user.admin);
+      const { linhas, total } = await withTenant(req.user.tid, (tx) => def.consultar(tx, req.query, LIMITE_PREVIA));
+      return { colunas: def.colunas, linhas, total };
+    },
+  );
 
   app.get('/:id/csv', { schema: { params: paramsSchema, querystring: relatorioFiltroSchema } }, async (req, reply) => {
     const def = definicaoPermitida(req.params.id, req.user.admin);

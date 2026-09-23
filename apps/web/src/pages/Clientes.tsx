@@ -6,7 +6,7 @@ import { Link } from 'react-router';
 import { Iniciais } from '../components/Avatar';
 import { LinkWhatsApp, SeloPendencias } from '../components/Cliente';
 import { Placa } from '../components/Placa';
-import { Botao, Cartao, classesBotao, Input, Selo, TextoSuave, Titulo, Vazio } from '../components/ui';
+import { Botao, CampoBusca, Cartao, classesBotao, Selo, TextoSuave, Titulo, Vazio } from '../components/ui';
 import { api } from '../lib/api';
 import { usePode } from '../lib/sessao';
 
@@ -41,19 +41,15 @@ export function Clientes() {
         Clientes
       </Titulo>
 
-      <div className="relative">
-        <Search
-          className="pointer-events-none absolute top-1/2 left-4 size-5 -translate-y-1/2 text-texto-suave"
-          aria-hidden
-        />
-        <Input
-          className="h-12 pl-12 text-base"
-          placeholder="Buscar por nome, placa, CPF/CNPJ ou telefone"
-          aria-label="Buscar clientes"
-          value={busca}
-          onChange={(e) => (setBusca(e.target.value), setQuantidade(POR_PAGINA))}
-        />
-      </div>
+      <CampoBusca
+        rotulo="Buscar clientes"
+        placeholder="Buscar por nome, placa, CPF/CNPJ ou telefone"
+        valor={busca}
+        aoMudar={(valor) => {
+          setBusca(valor);
+          setQuantidade(POR_PAGINA);
+        }}
+      />
 
       {dados && dados.itens.length === 0 ? (
         busca ? (

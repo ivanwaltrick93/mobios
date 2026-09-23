@@ -7,7 +7,7 @@ import {
   statusInputSchema,
   type Material,
 } from '@mobios/shared';
-import { and, asc, count, eq, ilike, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, count, eq, sql, type SQL } from 'drizzle-orm';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { withTenant, type Tx } from '../../db/client.js';
@@ -15,6 +15,7 @@ import { categorias, marcas, materiais, tiposMaterial } from '../../db/schema.js
 import {
   alterarAtivo,
   atualizarVersionado,
+  buscaDeMaterial,
   excluirSeNaoUsado,
   exigirVersao,
   naCategoriaOuAbaixo,
@@ -106,14 +107,7 @@ export const materiaisRoutes: FastifyPluginAsyncZod = async (app) => {
     async (req) => {
       const { q, tipoId, categoriaId, marcaId, ativo, pagina, porPagina } = req.query;
       const filtros: (SQL | undefined)[] = [
-        q
-          ? or(
-              ilike(materiais.sku, `${q.toUpperCase()}%`),
-              eq(materiais.codigoBarras, q.replace(/\D/g, '') || q),
-              ilike(materiais.codigoFabricante, `${q.toUpperCase()}%`),
-              ilike(materiais.descricao, `%${q}%`),
-            )
-          : undefined,
+        q ? buscaDeMaterial(q) : undefined,
         tipoId ? eq(materiais.tipoId, tipoId) : undefined,
         categoriaId ? naCategoriaOuAbaixo(materiais.categoriaId, categoriaId) : undefined,
         marcaId ? eq(materiais.marcaId, marcaId) : undefined,
@@ -189,7 +183,7 @@ export const materiaisRoutes: FastifyPluginAsyncZod = async (app) => {
       }),
   );
 
-  /** Só material nunca precificado pode ser excluído (o histórico de preços não se perde). */
+  /** Só material nunca precificado nem movimentado no estoque pode ser excluído (o histórico não se perde). */
   app.delete('/:id', { ...editar, schema: { params: idParamSchema } }, async (req, reply) => {
     await withTenant(req.user.tid, (tx) =>
       excluirSeNaoUsado(
@@ -197,7 +191,7 @@ export const materiaisRoutes: FastifyPluginAsyncZod = async (app) => {
         materiais,
         req.params.id,
         'Material',
-        'Este material tem preços cadastrados e não pode ser excluído (o histórico é mantido). Inative-o.',
+        'Este material já tem preços ou saldo de estoque e não pode ser excluído (o histórico é mantido). Inative-o.',
       ),
     );
     return reply.code(204).send();

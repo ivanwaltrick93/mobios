@@ -27,7 +27,6 @@ import { Etapas } from '../components/Etapas';
 import {
   Alerta,
   AreaTexto,
-  Botao,
   BotaoLink,
   Campo,
   Input,
@@ -509,10 +508,12 @@ function Responsaveis({ form, atuais }: { form: Form; atuais: string[] }) {
   const erroLista = form.formState.errors.responsaveis;
   const mensagemLista = erroLista?.message ?? erroLista?.root?.message;
 
-  // Empresa sem responsável: já abre um em branco para preencher.
+  // Empresa sem responsável: já abre um em branco para preencher. Só ao montar, para não recriar
+  // a linha quando o usuário remove o último responsável de propósito.
   useEffect(() => {
     if (fields.length === 0) append(responsavelVazio(true), { shouldFocus: false });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function marcarPrincipal(indice: number) {
     fields.forEach((_, i) => form.setValue(`responsaveis.${i}.principal`, i === indice, { shouldDirty: true }));

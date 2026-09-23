@@ -23,7 +23,8 @@ import {
   origensCliente,
   relacionamentosCliente,
 } from '../../db/schema.js';
-import { ErroHttp, naoEncontrado } from '../../lib/erros.js';
+import { excluirSeNaoUsado, validarReferencia } from '../../lib/cadastro.js';
+import { naoEncontrado } from '../../lib/erros.js';
 
 // Correlação escrita à mão: dentro da subconsulta o Drizzle não qualifica as colunas.
 const temEndereco = sql<boolean>`exists (select 1 from cliente_enderecos e where e.cliente_id = "clientes"."id")`;
@@ -128,19 +129,30 @@ async function carregarCliente(tx: Tx, id: string): Promise<Cliente> {
 }
 
 /**
- * Item de lista (origem/relacionamento) precisa estar ativo para ser escolhido.
- * Na edição, o cliente pode manter o item que já tinha, mesmo que tenha sido desativado depois.
+ * Origem e relacionamento escolhidos precisam estar ativos. Na edição, o cliente pode manter o item
+ * que já tinha, mesmo que tenha sido desativado depois.
  */
-async function validarOpcao(
+async function validarOpcoes(
   tx: Tx,
-  tabela: typeof origensCliente,
-  id: string | null,
-  atual: string | null | string[],
-  campo: string,
+  dados: { origemId: string | null; relacionamentoId: string | null },
+  atual?: { origemId: string | null; relacionamentoId: string | null },
 ) {
-  if (!id || (Array.isArray(atual) ? atual.includes(id) : id === atual)) return;
-  const [opcao] = await tx.select({ ativa: tabela.ativa }).from(tabela).where(eq(tabela.id, id));
-  if (!opcao?.ativa) throw new ErroHttp(400, `${campo}: escolha um item ativo da lista`);
+  await validarReferencia(
+    tx,
+    origensCliente,
+    origensCliente.ativa,
+    dados.origemId,
+    atual?.origemId,
+    'Origem do cliente',
+  );
+  await validarReferencia(
+    tx,
+    relacionamentosCliente,
+    relacionamentosCliente.ativa,
+    dados.relacionamentoId,
+    atual?.relacionamentoId,
+    'Tipo de relacionamento',
+  );
 }
 
 async function gravarEnderecos(tx: Tx, clienteId: string, enderecos: ClienteDados['enderecos']) {
@@ -160,8 +172,10 @@ async function gravarResponsaveis(tx: Tx, clienteId: string, responsaveis: Clien
       .from(clienteResponsaveis)
       .where(eq(clienteResponsaveis.clienteId, clienteId))
   ).map((r) => r.cargoId);
-  for (const cargoId of new Set(responsaveis.map((r) => r.cargoId)))
-    await validarOpcao(tx, cargosResponsavel, cargoId, atuais, 'Função do responsável');
+  for (const cargoId of new Set(responsaveis.map((r) => r.cargoId))) {
+    const jaUsada = atuais.includes(cargoId) ? cargoId : null;
+    await validarReferencia(tx, cargosResponsavel, cargosResponsavel.ativa, cargoId, jaUsada, 'Função do responsável');
+  }
   await tx.delete(clienteResponsaveis).where(eq(clienteResponsaveis.clienteId, clienteId));
   if (responsaveis.length) await tx.insert(clienteResponsaveis).values(responsaveis.map((r) => ({ ...r, clienteId })));
 }
@@ -223,8 +237,7 @@ export const clientesRoutes: FastifyPluginAsyncZod = async (app) => {
     async (req, reply) => {
       const { enderecos, responsaveis, ...dados } = req.body;
       const cliente = await withTenant(req.user.tid, async (tx) => {
-        await validarOpcao(tx, origensCliente, dados.origemId, null, 'Origem do cliente');
-        await validarOpcao(tx, relacionamentosCliente, dados.relacionamentoId, null, 'Tipo de relacionamento');
+        await validarOpcoes(tx, dados);
         const [{ id }] = (await tx.insert(clientes).values(dados).returning({ id: clientes.id })) as [{ id: string }];
         await gravarEnderecos(tx, id, enderecos);
         await gravarResponsaveis(tx, id, responsaveis);
@@ -246,14 +259,7 @@ export const clientesRoutes: FastifyPluginAsyncZod = async (app) => {
           .where(eq(clientes.id, req.params.id))
           .for('update');
         if (!atual) throw naoEncontrado('Cliente');
-        await validarOpcao(tx, origensCliente, dados.origemId, atual.origemId, 'Origem do cliente');
-        await validarOpcao(
-          tx,
-          relacionamentosCliente,
-          dados.relacionamentoId,
-          atual.relacionamentoId,
-          'Tipo de relacionamento',
-        );
+        await validarOpcoes(tx, dados, atual);
         await tx.update(clientes).set(dados).where(eq(clientes.id, req.params.id));
         await gravarEnderecos(tx, req.params.id, enderecos);
         await gravarResponsaveis(tx, req.params.id, responsaveis);
@@ -262,11 +268,17 @@ export const clientesRoutes: FastifyPluginAsyncZod = async (app) => {
     },
   );
 
+  /** Endereços e responsáveis saem junto (cascade); veículos não (FK RESTRICT): transferir ou remover antes. */
   app.delete('/:id', { ...editar, schema: { params: idParamSchema } }, async (req, reply) => {
-    const removidos = await withTenant(req.user.tid, (tx) =>
-      tx.delete(clientes).where(eq(clientes.id, req.params.id)).returning({ id: clientes.id }),
+    await withTenant(req.user.tid, (tx) =>
+      excluirSeNaoUsado(
+        tx,
+        clientes,
+        req.params.id,
+        'Cliente',
+        'Este cliente tem veículos e não pode ser excluído. Transfira ou remova os veículos, ou inative o cliente.',
+      ),
     );
-    if (removidos.length === 0) throw naoEncontrado('Cliente');
     return reply.code(204).send();
   });
 };
