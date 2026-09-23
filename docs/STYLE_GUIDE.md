@@ -87,6 +87,7 @@ Em [`components/ui.tsx`](../apps/web/src/components/ui.tsx). Use-os em vez de re
 ## Padrões de tela
 
 - **Listas de cadastro** em cartões (quem é, como falar, o que tem), não em tabelas. Tabelas ficam para relatórios.
+- **Voltar** fica no topo, à esquerda, em todas as páginas menos o Início (componente `Voltar`, no `Layout`). Páginas raiz do menu voltam ao Início; as demais, à página anterior. Não crie links de voltar dentro das páginas.
 - **Detalhe** como perfil: cabeçalho com ações rápidas (WhatsApp, Editar) e abas.
 - **Cadastro novo** em etapas curtas, com botões grandes para escolhas (ex.: Pessoa física / jurídica).
 

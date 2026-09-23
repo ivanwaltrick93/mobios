@@ -14,7 +14,7 @@ import {
   type Veiculo,
 } from '@mobios/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, ArrowLeft, CarFront, History, MapPin, MessageCircle, Pencil, Plus, Repeat, Star, Trash2 } from 'lucide-react';
+import { AlertTriangle, CarFront, History, MapPin, MessageCircle, Pencil, Plus, Repeat, Star, Trash2 } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { Iniciais } from '../components/Avatar';
@@ -69,10 +69,6 @@ export function ClienteDetalhe() {
 
   return (
     <div className="space-y-6">
-      <Link to="/clientes" className="inline-flex items-center gap-1 text-sm text-primaria hover:underline">
-        <ArrowLeft className="size-4" aria-hidden /> Clientes
-      </Link>
-
       <Cartao>
         <div className="flex flex-wrap items-center gap-5">
           <Iniciais nome={c.nome} tamanho="perfil" />

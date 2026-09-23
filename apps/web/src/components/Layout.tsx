@@ -5,6 +5,7 @@ import { Link, Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react
 import { api } from '../lib/api';
 import { useSessao } from '../lib/sessao';
 import { aplicarTema, urlLogo } from '../lib/tema';
+import { Voltar } from './Voltar';
 import { Avatar } from './Avatar';
 import { LogoMobiOS, Rodape } from './Marca';
 
@@ -76,7 +77,9 @@ export function Layout() {
         </nav>
       </aside>
       <div className="flex flex-1 flex-col">
-        <header className="flex items-center justify-end gap-3 border-b border-borda bg-superficie px-6 py-3 text-sm">
+        <header className="flex items-center gap-3 border-b border-borda bg-superficie px-6 py-3 text-sm">
+          <Voltar raizes={[...menu.map((m) => m.para), '/perfil']} />
+          <span className="flex-1" />
           <Link to="/perfil" className="flex items-center gap-2 rounded-full py-1 pr-3 pl-1 hover:bg-superficie-alt" title="Meu perfil">
             <Avatar nome={usuario.nome} usuarioId={usuario.id} fotoVersao={usuario.fotoVersao} tamanho="sm" />
             <span className="text-texto">
