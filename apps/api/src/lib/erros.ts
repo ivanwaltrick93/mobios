@@ -29,7 +29,31 @@ const mensagensUnicidade: Record<string, string> = {
   origens_cliente_nome_unico: 'Já existe um item com este nome',
   relacionamentos_cliente_nome_unico: 'Já existe um item com este nome',
   cargos_responsavel_nome_unico: 'Já existe um item com este nome',
+  tipos_material_nome_unico: 'Já existe um item com este nome',
+  tipos_deposito_nome_unico: 'Já existe um item com este nome',
+  materiais_sku_unico: 'Já existe um material com este SKU',
+  materiais_codigo_barras_unico: 'Já existe um material com este código de barras',
+  categorias_codigo_unico: 'Já existe uma categoria com este código',
+  categorias_nome_unico: 'Já existe uma categoria com este nome neste nível',
+  marcas_codigo_unico: 'Já existe uma marca com este código',
+  marcas_nome_unico: 'Já existe uma marca com este nome',
+  depositos_codigo_unico: 'Já existe um depósito com este código',
+  depositos_nome_unico: 'Já existe um depósito com este nome',
+  tabelas_preco_codigo_unico: 'Já existe uma tabela de preço com este código',
+  tabelas_preco_nome_unico: 'Já existe uma tabela de preço com este nome',
+  // Duas pessoas criando o primeiro saldo do mesmo material no mesmo depósito ao mesmo tempo.
+  estoques_material_id_deposito_id_pk: 'O saldo foi alterado por outra pessoa enquanto você editava. Recarregue e refaça o ajuste.',
   veiculos_tenant_id_chassi_index: 'Já existe um veículo com este chassi',
+};
+
+/** Violações de CHECK/trigger com mensagem própria (as demais caem em "Dados inválidos"). */
+const mensagensCheck: Record<string, string> = {
+  categorias_sem_ciclo: 'Uma categoria não pode ficar abaixo dela mesma nem de uma subcategoria sua.',
+  categorias_pai_diferente: 'Uma categoria não pode ser pai dela mesma.',
+  materiais_precos_vigencia_valida: 'O fim da vigência deve ser igual ou posterior ao início.',
+  materiais_precos_valor_positivo: 'O preço não pode ser negativo.',
+  estoques_disponivel_positivo: 'O disponível não pode ser negativo.',
+  estoques_reservado_positivo: 'O reservado não pode ser negativo.',
 };
 
 export function registrarTratamentoDeErros(app: FastifyInstance) {
@@ -47,6 +71,13 @@ export function registrarTratamentoDeErros(app: FastifyInstance) {
     const pg = erroPostgres(err);
     if (pg?.code === '23505') {
       return reply.code(409).send({ erro: mensagensUnicidade[pg.constraint_name ?? ''] ?? 'Registro duplicado' });
+    }
+    if (pg?.code === '23514') {
+      return reply.code(400).send({ erro: mensagensCheck[pg.constraint_name ?? ''] ?? 'Dados inválidos' });
+    }
+    // Constraint EXCLUDE: duas vigências do mesmo material e tabela no mesmo período.
+    if (pg?.code === '23P01') {
+      return reply.code(409).send({ erro: 'Já existe preço deste material nesta tabela em parte do período informado.' });
     }
     if (pg?.code === '23503') {
       return reply.code(409).send({ erro: 'Registro vinculado a outros dados ou referência inexistente' });

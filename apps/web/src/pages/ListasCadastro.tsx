@@ -7,7 +7,7 @@ import { api } from '../lib/api';
 import { chaveOpcoes, useOpcoes } from '../lib/cadastro';
 import { useAdmin } from '../lib/sessao';
 
-/** Configurações → Cadastros: listas editáveis usadas no cadastro de clientes. */
+/** Configurações → Cadastros: listas editáveis usadas nos cadastros de clientes, materiais e depósitos. */
 export function ListasCadastro() {
   const admin = useAdmin();
   if (!admin) return <Alerta>Você não tem permissão para alterar as configurações.</Alerta>;
@@ -17,7 +17,7 @@ export function ListasCadastro() {
       <Titulo>Configurações</Titulo>
       <AbasConfiguracoes />
       <TextoSuave>
-        Opções que a equipe escolhe no cadastro de clientes. Um item desativado deixa de aparecer para novos cadastros, mas continua nos clientes que já o usam.
+        Opções que a equipe escolhe nos cadastros de clientes, materiais e depósitos. Um item desativado deixa de aparecer para novos cadastros, mas continua nos registros que já o usam.
       </TextoSuave>
       <div className="grid gap-6 lg:grid-cols-2">
         {(Object.keys(LISTAS_OPCOES) as ListaOpcoes[]).map((lista) => (
@@ -84,7 +84,9 @@ function Lista({ lista }: { lista: ListaOpcoes }) {
                 <span className="flex items-center gap-2">
                   <span className={o.ativa ? '' : 'text-texto-suave line-through'}>{o.nome}</span>
                   {!o.ativa && <Selo>Desativado</Selo>}
-                  <span className="text-xs text-texto-suave">{o.clientes} cliente(s)</span>
+                  <span className="text-xs text-texto-suave">
+                    {o.usos} {LISTAS_OPCOES[lista].uso}
+                  </span>
                 </span>
                 <span className="flex gap-4">
                   <BotaoLink onClick={() => setEditando({ id: o.id, nome: o.nome })}>Renomear</BotaoLink>

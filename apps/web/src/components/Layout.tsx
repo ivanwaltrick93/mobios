@@ -14,8 +14,10 @@ import { LogoMobiOS, Rodape } from './Marca';
 const menu: { para: string; rotulo: string; modulo?: ModuloId; somenteAdmin?: boolean; tambem?: string[] }[] = [
   { para: '/', rotulo: 'Início' },
   { para: '/clientes', rotulo: 'Clientes e veículos', modulo: 'clientes', tambem: ['/veiculos'] },
-  { para: '/os', rotulo: 'Ordens de serviço', modulo: 'os' },
+  { para: '/materiais', rotulo: 'Materiais', modulo: 'materiais' },
+  { para: '/precos', rotulo: 'Lista de preços', modulo: 'precos', tambem: ['/tabelas-preco'] },
   { para: '/estoque', rotulo: 'Estoque', modulo: 'estoque' },
+  { para: '/os', rotulo: 'Ordens de serviço', modulo: 'os' },
   { para: '/financeiro', rotulo: 'Financeiro', modulo: 'financeiro' },
   { para: '/relatorios', rotulo: 'Relatórios', modulo: 'relatorios' },
   { para: '/usuarios', rotulo: 'Equipe', somenteAdmin: true },
@@ -76,7 +78,7 @@ export function Layout() {
             ))}
         </nav>
       </aside>
-      <div className="flex flex-1 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex items-center gap-3 border-b border-borda bg-superficie px-6 py-3 text-sm">
           <Voltar raizes={[...menu.map((m) => m.para), '/perfil']} />
           <span className="flex-1" />

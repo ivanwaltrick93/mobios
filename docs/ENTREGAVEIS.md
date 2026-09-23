@@ -35,18 +35,19 @@ Definido pelo dono do produto: o admin configura em **Configurações → Funç�
 - **Desativar uma função** retira na hora o acesso que vinha dela; reativar devolve. Mudanças valem na hora, inclusive para quem está logado.
 - Limite conhecido do nível por módulo: quem pode *Editar* a O.S. faz todas as ações da O.S. (abrir, diagnosticar, confirmar execução, entregar).
 
-**Módulos da matriz:** Clientes e veículos · Ordem de Serviço · **Peças na O.S.** · Estoque · **Recebimentos** · Financeiro · Relatórios.
+**Módulos da matriz:** Clientes e veículos · Ordem de Serviço · **Peças na O.S.** · **Materiais** · **Preços** · Estoque · **Recebimentos** · Financeiro · Relatórios.
+*Materiais* (materiais, categorias, marcas, depósitos) e *Preços* (tabelas e vigências) são separados para o almoxarife cadastrar peças sem mexer em preço (decisão de 23/09/2026).
 Os módulos *Peças na O.S.* e *Recebimentos* existem para separar ações que, dentro da O.S., não devem ir para todos os que editam a O.S.: o mecânico edita a O.S. (diagnóstico, solicitar peças, execução), mas **não adiciona peças nem registra pagamento**.
 
 **Funções iniciais** de toda oficina (editáveis; `FUNCOES_PADRAO` em `packages/shared/src/acessos.ts`):
 
-| Função | Clientes/veículos | O.S. | Peças na O.S. | Estoque | Recebimentos | Financeiro | Relatórios |
-|---|---|---|---|---|---|---|---|
-| Administrador (fixo) | Editar | Editar | Editar | Editar | Editar | Editar | Consultar |
-| Atendente | Editar | Editar | Editar | Editar | Editar | — | — |
-| Mecânico | Consultar | Editar | — | Consultar | — | — | — |
-| Almoxarife | Consultar | Consultar | Editar | Consultar | — | — | — |
-| Financeiro | Consultar | Consultar | — | — | Editar | Editar | Consultar |
+| Função | Clientes/veículos | O.S. | Peças na O.S. | Materiais | Preços | Estoque | Recebimentos | Financeiro | Relatórios |
+|---|---|---|---|---|---|---|---|---|---|
+| Administrador (fixo) | Editar | Editar | Editar | Editar | Editar | Editar | Editar | Editar | Consultar |
+| Atendente | Editar | Editar | Editar | Consultar | Consultar | Editar | Editar | — | — |
+| Mecânico | Consultar | Editar | — | Consultar | — | Consultar | — | — | — |
+| Almoxarife | Consultar | Consultar | Editar | Editar | Consultar | Consultar | — | — | — |
+| Financeiro | Consultar | Consultar | — | Consultar | Editar | — | Editar | Editar | Consultar |
 
 **Decisões do dono do produto (registro):**
 - **Peças:** o **Almoxarife** adiciona a peça **na O.S. aberta**; o **Atendente** também pode. O Mecânico só solicita. Entradas de compra no estoque ficam com quem tem *Editar* no Estoque (Atendente).
@@ -154,7 +155,12 @@ flowchart LR
 
 | Código | Entregável | Proposta |
 |---|---|---|
-| EST-01 | Cadastro de peças: código, código do fabricante, descrição, unidade, custo, preço de venda, localização na prateleira | 🟢 |
+| EST-01 | Cadastro de materiais: SKU, código de barras, descrição, tipo, categoria, marca, unidade, código do fabricante, dados fiscais e controles (ver `docs/modulos/MATERIAIS_E_PRECOS.md`). Custo e localização ficam com o estoque | ✅ |
+| EST-11 | Categorias hierárquicas e marcas | ✅ |
+| EST-12 | Cadastro de depósitos (local lógico; saldo por depósito vem com o estoque) | ✅ |
+| EST-13 | Tabelas de preço e preço por vigência, com histórico, preços programados, consulta do preço vigente e trilha de auditoria | ✅ |
+| EST-14 | **Lista de preços** no menu: uma tabela por vez, busca rápida, preço vigente, próximo preço e disponível total | ✅ |
+| EST-15 | **Tabela de estoque** por SKU + depósito: disponível (livre), reservado e físico; ajuste manual com motivo e histórico, até existir movimentação automática (EST-02, EST-04, EST-10) | ✅ |
 | EST-02 | Entrada manual (compra) com fornecedor, quantidade e custo | 🟢 |
 | EST-03 | Entrada automática pela **importação do XML da nota fiscal do fornecedor** | 🟡 |
 | EST-04 | Saída pela O.S.: **reserva** na aprovação e **baixa** na execução; estorno no cancelamento | 🟢 |

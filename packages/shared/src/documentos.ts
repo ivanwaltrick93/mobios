@@ -52,3 +52,15 @@ export const normalizarChassi = (valor: string) => valor.replace(/[^a-zA-Z0-9]/g
 export const chassiValido = (valor: string) => /^[A-HJ-NPR-Z0-9]{17}$/.test(normalizarChassi(valor));
 
 export const cepValido = (valor: string) => /^\d{8}$/.test(somenteDigitos(valor));
+
+/** Código de barras GTIN-8/12/13/14 (EAN/UPC) com dígito verificador (pesos 3 e 1 a partir da direita). */
+export function gtinValido(valor: string): boolean {
+  const g = somenteDigitos(valor);
+  if (![8, 12, 13, 14].includes(g.length) || g.length !== valor.trim().length) return false;
+  const corpo = g.slice(0, -1);
+  const soma = [...corpo].reverse().reduce((acc, d, i) => acc + Number(d) * (i % 2 === 0 ? 3 : 1), 0);
+  return (10 - (soma % 10)) % 10 === Number(g[g.length - 1]);
+}
+
+export const ncmValido = (valor: string) => /^\d{8}$/.test(somenteDigitos(valor));
+export const cestValido = (valor: string) => /^\d{7}$/.test(somenteDigitos(valor));

@@ -29,3 +29,6 @@ export const formatarCep = (cep: string) => (/^\d{8}$/.test(cep) ? `${cep.slice(
 
 /** Data sem hora (AAAA-MM-DD) em DD/MM/AAAA, sem passar por fuso horário. */
 export const formatarDataIso = (data: string | null) => (data ? data.split('-').reverse().join('/') : '—');
+
+/** Quantidade em estoque: até 3 casas, sem zeros sobrando (12 · 20,5 · 0,25). */
+export const formatarQuantidade = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 3 });

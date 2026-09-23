@@ -85,6 +85,20 @@
       "when": 1790133571531,
       "tag": "0011_responsaveis_pj",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1790135386632,
+      "tag": "0012_materiais_precos",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1790136765705,
+      "tag": "0013_estoque_saldos",
+      "breakpoints": true
     }
   ]
 }

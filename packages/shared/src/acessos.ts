@@ -16,7 +16,9 @@ export const MODULOS = [
   { id: 'clientes', nome: 'Clientes e veículos', niveis: ['consultar', 'editar'], disponivel: true, descricao: 'Editar = cadastrar e alterar clientes e veículos.' },
   { id: 'os', nome: 'Ordem de Serviço', niveis: ['consultar', 'editar'], disponivel: false, descricao: 'Editar = abrir O.S., diagnóstico, solicitar peças, execução e entrega.' },
   { id: 'pecas_os', nome: 'Peças na O.S.', niveis: ['editar'], disponivel: false, descricao: 'Editar = adicionar/separar peças em O.S. aberta, com baixa no estoque.' },
-  { id: 'estoque', nome: 'Estoque', niveis: ['consultar', 'editar'], disponivel: false, descricao: 'Editar = venda no balcão, entradas e ajustes de estoque.' },
+  { id: 'materiais', nome: 'Materiais', niveis: ['consultar', 'editar'], disponivel: true, descricao: 'Editar = cadastrar materiais, categorias, marcas e depósitos.' },
+  { id: 'precos', nome: 'Preços', niveis: ['consultar', 'editar'], disponivel: true, descricao: 'Editar = tabelas de preço e novas vigências de preço.' },
+  { id: 'estoque', nome: 'Estoque', niveis: ['consultar', 'editar'], disponivel: true, descricao: 'Consultar = ver saldos por depósito. Editar = ajustar saldos (e, no futuro, entradas e venda no balcão).' },
   { id: 'recebimentos', nome: 'Recebimentos', niveis: ['consultar', 'editar'], disponivel: false, descricao: 'Editar = registrar pagamentos, na O.S. ou no Financeiro.' },
   { id: 'financeiro', nome: 'Financeiro', niveis: ['consultar', 'editar'], disponivel: false, descricao: 'Contas, caixa e faturamento. Consultar mostra o faturado na página inicial.' },
   { id: 'relatorios', nome: 'Relatórios', niveis: ['consultar'], disponivel: true, descricao: 'Consultar = visualizar e extrair em CSV.' },
@@ -58,13 +60,19 @@ export const NOME_FUNCAO_ADMIN = 'Administrador';
 
 /**
  * Funções criadas em toda oficina nova (matriz aprovada pelo dono do produto, docs/ENTREGAVEIS.md §1.1).
- * As migrações 0005 e 0008 aplicam o mesmo às oficinas que já existiam: mantenha tudo igual.
+ * As migrações 0005, 0008 e 0012 aplicam o mesmo às oficinas que já existiam: mantenha tudo igual.
  */
 export const FUNCOES_PADRAO: { nome: string; acessos: Partial<Acessos> }[] = [
-  { nome: 'Atendente', acessos: { clientes: 'editar', os: 'editar', pecas_os: 'editar', estoque: 'editar', recebimentos: 'editar' } },
-  { nome: 'Mecânico', acessos: { clientes: 'consultar', os: 'editar', estoque: 'consultar' } },
-  { nome: 'Almoxarife', acessos: { clientes: 'consultar', os: 'consultar', pecas_os: 'editar', estoque: 'consultar' } },
-  { nome: 'Financeiro', acessos: { clientes: 'consultar', os: 'consultar', recebimentos: 'editar', financeiro: 'editar', relatorios: 'consultar' } },
+  {
+    nome: 'Atendente',
+    acessos: { clientes: 'editar', os: 'editar', pecas_os: 'editar', materiais: 'consultar', precos: 'consultar', estoque: 'editar', recebimentos: 'editar' },
+  },
+  { nome: 'Mecânico', acessos: { clientes: 'consultar', os: 'editar', materiais: 'consultar', estoque: 'consultar' } },
+  { nome: 'Almoxarife', acessos: { clientes: 'consultar', os: 'consultar', pecas_os: 'editar', materiais: 'editar', precos: 'consultar', estoque: 'consultar' } },
+  {
+    nome: 'Financeiro',
+    acessos: { clientes: 'consultar', os: 'consultar', materiais: 'consultar', precos: 'editar', recebimentos: 'editar', financeiro: 'editar', relatorios: 'consultar' },
+  },
 ];
 
 // ---------- Schemas da API ----------

@@ -5,6 +5,7 @@ Web, multi-tenant (SaaS) desde o primeiro dia, open core, 100% sobre software li
 
 > Status: v0 (scaffold). Este documento registra as decisões e o porquê de cada uma.
 > Mudou uma decisão? Atualize aqui no mesmo PR.
+> Arquitetura detalhada por módulo: [`docs/modulos/`](modulos/) (ex.: [Materiais e Preços](modulos/MATERIAIS_E_PRECOS.md)).
 
 ---
 

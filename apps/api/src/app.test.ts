@@ -281,7 +281,7 @@ describe('clientes e veículos', () => {
     await admin.chamar('PUT', `/api/opcoes/cargos/${cargo('Motorista')}`, { nome: 'Motorista', ativa: false });
     expect((await chamar('PUT', `/api/clientes/${pj.id}`, pjDados({ cpfCnpj: '11222333000181', responsaveis: [CARLOS, motorista] }))).statusCode).toBe(200);
     expect((await chamar('POST', '/api/clientes', pjDados({ cpfCnpj: '11.444.777/0001-61', responsaveis: [motorista] }))).statusCode).toBe(400);
-    expect((await chamar('GET', '/api/opcoes/cargos')).json().find((c: { nome: string }) => c.nome === 'Motorista')).toMatchObject({ ativa: false, clientes: 1 });
+    expect((await chamar('GET', '/api/opcoes/cargos')).json().find((c: { nome: string }) => c.nome === 'Motorista')).toMatchObject({ ativa: false, usos: 1 });
 
     // PF não guarda responsáveis.
     expect((await chamar('POST', '/api/clientes', cliente({ responsaveis: [CARLOS] }))).json().responsaveis).toEqual([]);
@@ -300,7 +300,7 @@ describe('clientes e veículos', () => {
 
     // Desativado: some da escolha para clientes novos, mas quem já tinha mantém.
     const desativada = (await admin.chamar('PUT', `/api/opcoes/origens/${whats.id}`, { nome: 'WhatsApp', ativa: false })).json();
-    expect(desativada).toMatchObject({ ativa: false, clientes: 1 });
+    expect(desativada).toMatchObject({ ativa: false, usos: 1 });
     expect((await admin.chamar('POST', '/api/clientes', cliente({ origemId: whats.id }))).statusCode).toBe(400);
     expect((await admin.chamar('PUT', `/api/clientes/${c.id}`, cliente({ cpfCnpj: c.cpfCnpj, origemId: whats.id }))).statusCode).toBe(200);
 
@@ -402,7 +402,7 @@ describe('personas e permissões', () => {
 });
 
 describe('funções e permissões configuráveis', () => {
-  const acessos = (a: Partial<Record<string, string | null>> = {}) => ({ clientes: null, os: null, pecas_os: null, estoque: null, recebimentos: null, financeiro: null, relatorios: null, ...a });
+  const acessos = (a: Partial<Record<string, string | null>> = {}) => ({ clientes: null, os: null, pecas_os: null, materiais: null, precos: null, estoque: null, recebimentos: null, financeiro: null, relatorios: null, ...a });
 
   it('toda oficina nasce com Administrador fixo e as funções padrão aprovadas', async () => {
     const admin = await novaOficina('Oficina Funções Padrão');
@@ -416,14 +416,18 @@ describe('funções e permissões configuráveis', () => {
     ]);
     const porNome = Object.fromEntries(lista.map((f: { nome: string }) => [f.nome, f]));
     expect(porNome.Administrador.acessos).toEqual(
-      acessos({ clientes: 'editar', os: 'editar', pecas_os: 'editar', estoque: 'editar', recebimentos: 'editar', financeiro: 'editar', relatorios: 'consultar' }),
+      acessos({ clientes: 'editar', os: 'editar', pecas_os: 'editar', materiais: 'editar', precos: 'editar', estoque: 'editar', recebimentos: 'editar', financeiro: 'editar', relatorios: 'consultar' }),
     );
-    expect(porNome.Atendente.acessos).toEqual(acessos({ clientes: 'editar', os: 'editar', pecas_os: 'editar', estoque: 'editar', recebimentos: 'editar' }));
-    expect(porNome['Mecânico'].acessos).toEqual(acessos({ clientes: 'consultar', os: 'editar', estoque: 'consultar' }));
+    expect(porNome.Atendente.acessos).toEqual(
+      acessos({ clientes: 'editar', os: 'editar', pecas_os: 'editar', materiais: 'consultar', precos: 'consultar', estoque: 'editar', recebimentos: 'editar' }),
+    );
+    expect(porNome['Mecânico'].acessos).toEqual(acessos({ clientes: 'consultar', os: 'editar', materiais: 'consultar', estoque: 'consultar' }));
     // Almoxarife: adiciona peças pela O.S. aberta; só consulta clientes, veículos, O.S. e estoque.
-    expect(porNome.Almoxarife.acessos).toEqual(acessos({ clientes: 'consultar', os: 'consultar', pecas_os: 'editar', estoque: 'consultar' }));
+    expect(porNome.Almoxarife.acessos).toEqual(acessos({ clientes: 'consultar', os: 'consultar', pecas_os: 'editar', materiais: 'editar', precos: 'consultar', estoque: 'consultar' }));
     // Pagamento: só quem tem Recebimentos (Atendente e Financeiro); o Mecânico não.
-    expect(porNome.Financeiro.acessos).toEqual(acessos({ clientes: 'consultar', os: 'consultar', recebimentos: 'editar', financeiro: 'editar', relatorios: 'consultar' }));
+    expect(porNome.Financeiro.acessos).toEqual(
+      acessos({ clientes: 'consultar', os: 'consultar', materiais: 'consultar', precos: 'editar', recebimentos: 'editar', financeiro: 'editar', relatorios: 'consultar' }),
+    );
     expect(porNome.Administrador.usuarios).toBe(1);
     expect(porNome.Almoxarife.usuarios).toBe(0);
   });
@@ -452,7 +456,9 @@ describe('funções e permissões configuráveis', () => {
     const email = emailAleatorio();
     await admin.chamar('POST', '/api/usuarios', { nome: 'Dupla', email, funcoes: [await admin.funcao('Mecânico'), await admin.funcao('Financeiro')], senha: SENHA });
     const dupla = await entrar(email);
-    expect(dupla.res.json().acessos).toEqual(acessos({ clientes: 'consultar', os: 'editar', estoque: 'consultar', recebimentos: 'editar', financeiro: 'editar', relatorios: 'consultar' }));
+    expect(dupla.res.json().acessos).toEqual(
+      acessos({ clientes: 'consultar', os: 'editar', materiais: 'consultar', precos: 'editar', estoque: 'consultar', recebimentos: 'editar', financeiro: 'editar', relatorios: 'consultar' }),
+    );
     expect(dupla.res.json().usuario.funcoes.map((f: { nome: string }) => f.nome)).toEqual(['Financeiro', 'Mecânico']);
   });
 
@@ -757,7 +763,7 @@ describe('isolamento entre oficinas (RLS)', () => {
   });
 
   it('sem tenant definido, o banco não devolve nenhuma linha', async () => {
-    for (const tabela of ['clientes', 'veiculos', 'users', 'tenant_logos', 'tenant_aparencia', 'funcoes', 'funcao_permissoes', 'usuario_funcoes', 'usuario_fotos', 'cliente_enderecos', 'origens_cliente', 'relacionamentos_cliente', 'cliente_responsaveis', 'cargos_responsavel']) {
+    for (const tabela of ['clientes', 'veiculos', 'users', 'tenant_logos', 'tenant_aparencia', 'funcoes', 'funcao_permissoes', 'usuario_funcoes', 'usuario_fotos', 'cliente_enderecos', 'origens_cliente', 'relacionamentos_cliente', 'cliente_responsaveis', 'cargos_responsavel', 'tipos_material', 'tipos_deposito', 'categorias', 'marcas', 'materiais', 'depositos', 'tabelas_preco', 'materiais_precos', 'precos_eventos', 'estoques', 'estoque_ajustes']) {
       const linhas = await db.execute(sql`select count(*)::int as n from ${sql.identifier(tabela)}`);
       expect(linhas[0]!.n, tabela).toBe(0);
     }

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { acessosSchema, funcaoResumoSchema } from './acessos.js';
+import { acessosSchema, funcaoResumoSchema, type ModuloId } from './acessos.js';
 import { cepValido, chassiValido, cnpjValido, cpfValido, normalizarChassi, normalizarDocumento, normalizarPlaca, placaValida, renavamValido, somenteDigitos, telefoneValido } from './documentos.js';
 import { hojeIso } from './formatos.js';
 
@@ -115,23 +115,31 @@ export type UsuarioAtualizarInput = z.input<typeof usuarioAtualizarSchema>;
 
 // ---------- Listas configuráveis por oficina (Configurações → Cadastros) ----------
 
+/**
+ * Listas editáveis por oficina. `modulo`: quem acessa esse módulo consulta a lista (para preencher formulários);
+ * só o admin altera. `uso`: como contar quem usa o item.
+ */
 export const LISTAS_OPCOES = {
-  origens: { titulo: 'Origem do cliente', descricao: 'Como o cliente conheceu a oficina.' },
-  relacionamentos: { titulo: 'Tipo de relacionamento', descricao: 'Perfil comercial do cliente.' },
-  cargos: { titulo: 'Função do responsável (PJ)', descricao: 'Papel da pessoa que responde pela empresa cliente.' },
-} as const;
+  origens: { titulo: 'Origem do cliente', descricao: 'Como o cliente conheceu a oficina.', modulo: 'clientes', uso: 'cliente(s)' },
+  relacionamentos: { titulo: 'Tipo de relacionamento', descricao: 'Perfil comercial do cliente.', modulo: 'clientes', uso: 'cliente(s)' },
+  cargos: { titulo: 'Função do responsável (PJ)', descricao: 'Papel da pessoa que responde pela empresa cliente.', modulo: 'clientes', uso: 'cliente(s)' },
+  tiposMaterial: { titulo: 'Tipo de material', descricao: 'Classificação de peças, pneus, lubrificantes, insumos...', modulo: 'materiais', uso: 'material(is)' },
+  tiposDeposito: { titulo: 'Tipo de depósito', descricao: 'Natureza do local de armazenamento.', modulo: 'materiais', uso: 'depósito(s)' },
+} as const satisfies Record<string, { titulo: string; descricao: string; modulo: ModuloId; uso: string }>;
 export type ListaOpcoes = keyof typeof LISTAS_OPCOES;
-export const listaOpcoesSchema = z.enum(['origens', 'relacionamentos', 'cargos']);
+export const listaOpcoesSchema = z.enum(['origens', 'relacionamentos', 'cargos', 'tiposMaterial', 'tiposDeposito']);
 
-/** Itens criados em toda oficina nova (as migrações 0009 e 0011 aplicam o mesmo às que já existiam). */
+/** Itens criados em toda oficina nova (as migrações 0009, 0011 e 0012 aplicam o mesmo às que já existiam). */
 export const OPCOES_PADRAO: Record<ListaOpcoes, string[]> = {
   origens: ['Indicação', 'Site', 'Campanha', 'Loja', 'Concessionária'],
   relacionamentos: ['Consumidor final', 'Empresa', 'Frota', 'Seguradora'],
   cargos: ['Sócio / Proprietário', 'Gestor de frota', 'Financeiro', 'Compras', 'Motorista'],
+  tiposMaterial: ['Peça', 'Acessório', 'Pneu', 'Lubrificante', 'Fluido', 'Insumo', 'Outro'],
+  tiposDeposito: ['Loja', 'Oficina', 'Central', 'Garantia', 'Trânsito', 'Outro'],
 };
 
-/** `clientes`: quantos clientes usam o item (no caso de função do responsável, clientes com algum responsável nela). */
-export const opcaoSchema = z.object({ id: z.uuid(), nome: z.string(), ativa: z.boolean(), clientes: z.number() });
+/** `usos`: quantos registros usam o item (clientes, materiais ou depósitos; ver LISTAS_OPCOES.uso). */
+export const opcaoSchema = z.object({ id: z.uuid(), nome: z.string(), ativa: z.boolean(), usos: z.number() });
 export type Opcao = z.infer<typeof opcaoSchema>;
 
 export const opcaoInputSchema = z.object({

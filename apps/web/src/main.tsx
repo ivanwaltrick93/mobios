@@ -4,6 +4,16 @@ import { createRoot } from 'react-dom/client';
 import { createBrowserRouter, RouterProvider } from 'react-router';
 import { Layout } from './components/Layout';
 import './index.css';
+import { Categorias } from './pages/Categorias';
+import { Depositos } from './pages/Depositos';
+import { EditarMaterial } from './pages/EditarMaterial';
+import { Marcas } from './pages/Marcas';
+import { MaterialDetalhe } from './pages/MaterialDetalhe';
+import { Materiais } from './pages/Materiais';
+import { NovoMaterial } from './pages/NovoMaterial';
+import { TabelasPreco } from './pages/TabelasPreco';
+import { ListaPrecos } from './pages/ListaPrecos';
+import { Estoque } from './pages/Estoque';
 import { ClienteDetalhe } from './pages/ClienteDetalhe';
 import { Clientes } from './pages/Clientes';
 import { EmBreve } from './pages/EmBreve';
@@ -34,8 +44,17 @@ const router = createBrowserRouter([
       { path: '/clientes/:id', element: <ClienteDetalhe /> },
       { path: '/clientes/:id/editar', element: <EditarCliente /> },
       { path: '/veiculos/:id/editar', element: <EditarVeiculo /> },
+      { path: '/materiais', element: <Materiais /> },
+      { path: '/materiais/novo', element: <NovoMaterial /> },
+      { path: '/materiais/categorias', element: <Categorias /> },
+      { path: '/materiais/marcas', element: <Marcas /> },
+      { path: '/materiais/depositos', element: <Depositos /> },
+      { path: '/materiais/:id', element: <MaterialDetalhe /> },
+      { path: '/materiais/:id/editar', element: <EditarMaterial /> },
+      { path: '/tabelas-preco', element: <TabelasPreco /> },
+      { path: '/precos', element: <ListaPrecos /> },
       { path: '/os', element: <EmBreve titulo="Ordens de serviço" /> },
-      { path: '/estoque', element: <EmBreve titulo="Estoque" /> },
+      { path: '/estoque', element: <Estoque /> },
       { path: '/financeiro', element: <EmBreve titulo="Financeiro" /> },
       { path: '/relatorios', element: <Relatorios /> },
       { path: '/usuarios', element: <Usuarios /> },

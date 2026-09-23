@@ -55,3 +55,46 @@ export function mascaraKm(v: string): string {
 
 /** E-mail: sem espaços e em minúsculas. */
 export const mascaraEmail = (v: string) => v.replace(/\s/g, '').toLowerCase();
+
+/** Valor em reais com centavos ("1.234,56"): os dígitos digitados são os centavos. */
+export function mascaraMoeda(v: string): string {
+  const d = v.replace(/\D/g, '').replace(/^0+(?=\d)/, '').slice(0, 11);
+  if (!d) return '';
+  return (Number(d) / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+/** "1.234,56" → 123456 (centavos). Vazio → null. */
+export const moedaParaCentavos = (v: string): number | null => (v.replace(/\D/g, '') ? Number(v.replace(/\D/g, '')) : null);
+
+export const mascaraNcm = (v: string) => {
+  const d = v.replace(/\D/g, '').slice(0, 8);
+  return d.length > 6 ? `${d.slice(0, 4)}.${d.slice(4, 6)}.${d.slice(6)}` : d.length > 4 ? `${d.slice(0, 4)}.${d.slice(4)}` : d;
+};
+export const mascaraCest = (v: string) => {
+  const d = v.replace(/\D/g, '').slice(0, 7);
+  return d.length > 5 ? `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5)}` : d.length > 2 ? `${d.slice(0, 2)}.${d.slice(2)}` : d;
+};
+/** Códigos de cadastro (SKU, código de depósito...): maiúsculas, sem espaços. */
+export const mascaraCodigo = (v: string) => v.toUpperCase().replace(/\s/g, '');
+export const mascaraGtin = (v: string) => v.replace(/\D/g, '').slice(0, 14);
+
+/**
+ * Quantidade: inteira para unidades que não se fracionam (UN, PC...); até 3 casas decimais para L, KG e M.
+ * Digitação no padrão brasileiro ("1.234,5").
+ */
+export function mascaraQuantidade(v: string, fracionada: boolean): string {
+  if (!fracionada) {
+    const d = v.replace(/\D/g, '').replace(/^0+(?=\d)/, '').slice(0, 9);
+    return d ? Number(d).toLocaleString('pt-BR') : '';
+  }
+  const [inteira = '', ...resto] = v.replace(/[^\d,]/g, '').split(',');
+  const i = inteira.replace(/^0+(?=\d)/, '').slice(0, 9);
+  const parteInteira = i ? Number(i).toLocaleString('pt-BR') : resto.length ? '0' : '';
+  return resto.length ? `${parteInteira},${resto.join('').slice(0, 3)}` : parteInteira;
+}
+
+/** "1.234,5" → 1234.5. Vazio → null. */
+export const quantidadeParaNumero = (v: string): number | null => {
+  const limpo = v.replace(/\./g, '').replace(',', '.');
+  return limpo === '' || Number.isNaN(Number(limpo)) ? null : Number(limpo);
+};
