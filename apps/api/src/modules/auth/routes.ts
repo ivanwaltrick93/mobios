@@ -3,8 +3,9 @@ import { loginSchema, sessaoSchema, type Papel, type Sessao } from '@mobios/shar
 import { eq, sql } from 'drizzle-orm';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { db, withTenant } from '../../db/client.js';
-import { tenantLogos, tenants, users } from '../../db/schema.js';
+import { tenants, users } from '../../db/schema.js';
 import { ErroHttp } from '../../lib/erros.js';
+import { lerTema, lerVersaoLogo } from '../../lib/marca.js';
 
 // Hash fixo usado quando o e-mail não existe, para o tempo de resposta não revelar contas cadastradas.
 const HASH_FALSO = await hash('senha-inexistente');
@@ -12,22 +13,15 @@ const HASH_FALSO = await hash('senha-inexistente');
 type Credencial = { id: string; tenant_id: string; senha_hash: string; papel: Papel; ativo: boolean };
 
 async function carregarSessao(userId: string, tenantId: string): Promise<Sessao | undefined> {
-  const [linha] = await withTenant(tenantId, (tx) =>
-    tx
-      .select({
-        usuario: { id: users.id, nome: users.nome, email: users.email, papel: users.papel },
-        oficina: { id: tenants.id, nome: tenants.nome, corPrimaria: tenants.corPrimaria, corMenu: tenants.corMenu },
-        logoAtualizadoEm: tenantLogos.atualizadoEm,
-      })
+  return withTenant(tenantId, async (tx) => {
+    const [linha] = await tx
+      .select({ usuario: { id: users.id, nome: users.nome, email: users.email, papel: users.papel }, oficina: { id: tenants.id, nome: tenants.nome } })
       .from(users)
       .innerJoin(tenants, eq(tenants.id, users.tenantId))
-      .leftJoin(tenantLogos, eq(tenantLogos.tenantId, users.tenantId))
-      .where(eq(users.id, userId)),
-  );
-  if (!linha) return undefined;
-  const { corPrimaria, corMenu, ...oficina } = linha.oficina;
-  const logoVersao = linha.logoAtualizadoEm ? String(linha.logoAtualizadoEm.getTime()) : null;
-  return { usuario: linha.usuario, oficina: { ...oficina, tema: { corPrimaria, corMenu }, logoVersao } };
+      .where(eq(users.id, userId));
+    if (!linha) return undefined;
+    return { usuario: linha.usuario, oficina: { ...linha.oficina, tema: await lerTema(tx), logoVersao: await lerVersaoLogo(tx) } };
+  });
 }
 
 export const authRoutes: FastifyPluginAsyncZod = async (app) => {

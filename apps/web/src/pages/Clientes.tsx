@@ -1,5 +1,5 @@
 import { formatarDocumento, type Cliente } from '@mobios/shared';
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { Botao, Cabecalho, Cartao, Input, Linha, LinhaVazia, Tabela, Td, TextoSuave, Th, Titulo } from '../components/ui';
@@ -8,6 +8,7 @@ import { ClienteForm } from './ClienteForm';
 
 export function Clientes() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [busca, setBusca] = useState('');
   const [novo, setNovo] = useState(false);
   const clientes = useQuery({
@@ -23,7 +24,13 @@ export function Clientes() {
       {novo && (
         <Cartao>
           <h2 className="mb-4 font-medium">Novo cliente</h2>
-          <ClienteForm aoSalvar={(c) => navigate(`/clientes/${c.id}`)} aoCancelar={() => setNovo(false)} />
+          <ClienteForm
+            aoSalvar={(c) => {
+              queryClient.invalidateQueries({ queryKey: ['painel'] });
+              navigate(`/clientes/${c.id}`);
+            }}
+            aoCancelar={() => setNovo(false)}
+          />
         </Cartao>
       )}
 

@@ -13,3 +13,6 @@ export const formatarData = (data: Date) => data.toLocaleDateString('pt-BR', { t
 
 /** Data de hoje (Brasília) em AAAA-MM-DD, para nomes de arquivo e filtros. */
 export const hojeIso = () => new Date().toLocaleDateString('en-CA', { timeZone: FUSO });
+
+/** Valores monetários são guardados em centavos (inteiro). */
+export const formatarMoeda = (centavos: number) => (centavos / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });

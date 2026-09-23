@@ -94,6 +94,7 @@ MobiOS/
 - Um teste automatizado falha se alguma tabela com `tenant_id` estiver sem RLS.
 - `users` também está sob RLS. A única leitura sem tenant definido é o login (busca por e-mail), feita pela função `auth_usuario_por_email` (`SECURITY DEFINER`, executável só por `mobios_app`), que devolve apenas o necessário para autenticar.
 - Só `tenants` fica fora do RLS.
+- **Rotas públicas** (`/api/publico/*`, sem login) expõem apenas a marca da oficina (nome, cores, logo) para a tela de entrada. A oficina vem de `?oficina=<id>` ou, sem parâmetro, é a única da instalação; com várias oficinas e sem parâmetro, devolvem o tema padrão (não listam oficinas).
 
 **Por que não um banco por cliente?** Custo e operação (migrações × N bancos) não se justificam para oficinas pequenas. Se um cliente grande exigir isolamento físico, o mesmo código roda em um banco dedicado — basta outra `DATABASE_URL`.
 
@@ -107,7 +108,9 @@ Chaves e índices (obrigatório em toda tabela):
 - **Índice em toda FK** e nas colunas usadas em filtro/ordenação frequentes, começando por `tenant_id` quando a consulta é por oficina.
 
 ```
-tenants (id, nome, cnpj, plano, cor_primaria?, cor_menu?, criado_em)   -- cores: aparência da oficina
+tenants (id, nome, cnpj, plano, criado_em)
+tenant_aparencia (tenant_id [PK/FK], cor_primaria?, cor_menu?, cor_botao_primario?, cor_botao_primario_texto?,
+                  cor_botao_secundario?, cor_botao_secundario_texto?)   -- style guide da oficina
 tenant_logos (tenant_id [PK/FK], conteudo bytea, tipo, tamanho, atualizado_em)   -- logo, até 1 MB, no próprio banco
 users (id, tenant_id, nome, email [único global], senha_hash, papel, ativo)
     papel: admin | atendente | mecanico | financeiro
@@ -222,6 +225,8 @@ Kubernetes **não** faz parte do MVP: a carga de uma oficina é baixa e uma VPS 
 | **0.1** ✅ | Admin inicial, gestão de usuários e funções (sem cadastro público) |
 | **0.1b** ✅ | Style guide com tokens, cores parametrizáveis por oficina, aba de Relatórios com exportação CSV |
 | **0.1c** ✅ | Logo da oficina (upload pelo admin, salvo no banco) |
+| **0.1d** ✅ | Página inicial: atalhos do balcão (novo cliente, novo veículo, O.S., estoque, relatórios), indicadores e alertas vindos do banco (`GET /api/painel`); indicadores de módulos futuros aparecem como "em breve", nunca com número inventado |
+| **0.1e** ✅ | Style guide configurável: botões principal/secundário (fundo e texto), aviso de contraste; tela de login com a marca da oficina (`/api/publico/*`) |
 | **0.2** | Rate limit no login (no Postgres, pela regra §9.2) e "alterar minha senha" antes de qualquer deploy público |
 | **1 — O.S.** | Abertura, itens (serviço/peça), orçamento, aprovação, status, checklist de entrada, PDF da O.S. |
 | **2 — Estoque** | Peças, fornecedores, entradas, baixa automática pela O.S., alerta de estoque mínimo |

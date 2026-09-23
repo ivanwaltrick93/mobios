@@ -37,9 +37,6 @@ export const tenants = pgTable('tenants', {
   nome: text().notNull(),
   cnpj: text(),
   plano: text().notNull().default('gratuito'),
-  // Aparência: null = cor padrão do style guide.
-  corPrimaria: text(),
-  corMenu: text(),
   ...timestamps,
 });
 
@@ -128,4 +125,20 @@ export const tenantLogos = pgTable(
     ...timestamps,
   },
   () => [isolamentoPorTenant('tenant_logos')],
+);
+
+/** Tokens do style guide configurados pela oficina (um registro por oficina; null = padrão). */
+export const tenantAparencia = pgTable(
+  'tenant_aparencia',
+  {
+    tenantId: tenantId().primaryKey(),
+    corPrimaria: text(),
+    corMenu: text(),
+    corBotaoPrimario: text(),
+    corBotaoPrimarioTexto: text(),
+    corBotaoSecundario: text(),
+    corBotaoSecundarioTexto: text(),
+    ...timestamps,
+  },
+  () => [isolamentoPorTenant('tenant_aparencia')],
 );

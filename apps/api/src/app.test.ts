@@ -3,6 +3,7 @@ import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { criarApp } from './app.js';
 import { db, sqlClient, withTenant } from './db/client.js';
+import { TEMA_VAZIO } from '@mobios/shared';
 import { criarOficinaComAdmin } from './db/admin-inicial.js';
 import { COOKIE_SESSAO } from './lib/auth.js';
 
@@ -158,22 +159,50 @@ describe('clientes e veículos', () => {
 });
 
 describe('aparência', () => {
-  it('admin define cores; todos recebem o tema na sessão; outros papéis não alteram', async () => {
+  it('admin define cores e botões; todos recebem o tema na sessão; outros papéis não alteram', async () => {
     const admin = await novaOficina('Oficina Cores');
-    expect((await admin.chamar('GET', '/api/auth/sessao')).json().oficina.tema).toEqual({ corPrimaria: null, corMenu: null });
+    expect((await admin.chamar('GET', '/api/auth/sessao')).json().oficina.tema).toEqual(TEMA_VAZIO);
 
-    const salvo = await admin.chamar('PUT', '/api/configuracoes/aparencia', { corPrimaria: '#C2410C', corMenu: '#1E293B' });
-    expect(salvo.json()).toEqual({ corPrimaria: '#c2410c', corMenu: '#1e293b' });
-    expect((await admin.chamar('PUT', '/api/configuracoes/aparencia', { corPrimaria: 'laranja', corMenu: null })).statusCode).toBe(400);
+    const tema = { ...TEMA_VAZIO, corPrimaria: '#C2410C', corMenu: '#1E293B', corBotaoPrimario: '#15803D', corBotaoSecundario: '#F1F5F9', corBotaoSecundarioTexto: '#0F172A' };
+    const salvo = await admin.chamar('PUT', '/api/configuracoes/aparencia', tema);
+    expect(salvo.json()).toEqual({
+      corPrimaria: '#c2410c',
+      corMenu: '#1e293b',
+      corBotaoPrimario: '#15803d',
+      corBotaoPrimarioTexto: null,
+      corBotaoSecundario: '#f1f5f9',
+      corBotaoSecundarioTexto: '#0f172a',
+    });
+    // Salvar de novo atualiza a mesma linha (upsert pela PK tenant_id).
+    expect((await admin.chamar('PUT', '/api/configuracoes/aparencia', { ...tema, corBotaoPrimarioTexto: '#FFFFFF' })).json().corBotaoPrimarioTexto).toBe('#ffffff');
+    expect((await admin.chamar('PUT', '/api/configuracoes/aparencia', { ...TEMA_VAZIO, corPrimaria: 'laranja' })).statusCode).toBe(400);
 
     const email = emailAleatorio();
     await admin.chamar('POST', '/api/usuarios', { nome: 'Mecânico', email, papel: 'mecanico', senha: SENHA });
     const mecanico = await entrar(email);
-    expect(mecanico.res.json().oficina.tema.corPrimaria).toBe('#c2410c');
-    expect((await mecanico.chamar('PUT', '/api/configuracoes/aparencia', { corPrimaria: null, corMenu: null })).statusCode).toBe(403);
+    expect(mecanico.res.json().oficina.tema).toMatchObject({ corPrimaria: '#c2410c', corBotaoPrimario: '#15803d' });
+    expect((await mecanico.chamar('PUT', '/api/configuracoes/aparencia', TEMA_VAZIO)).statusCode).toBe(403);
 
     const outra = await novaOficina('Oficina Sem Cores');
-    expect((await outra.chamar('GET', '/api/configuracoes/aparencia')).json()).toEqual({ corPrimaria: null, corMenu: null });
+    expect((await outra.chamar('GET', '/api/configuracoes/aparencia')).json()).toEqual(TEMA_VAZIO);
+  });
+});
+
+describe('marca pública (tela de login)', () => {
+  it('entrega nome, tema e logo da oficina sem login, e nada além disso', async () => {
+    const admin = await novaOficina('Oficina Pública');
+    const { oficina } = (await admin.chamar('GET', '/api/auth/sessao')).json();
+    await admin.chamar('PUT', '/api/configuracoes/aparencia', { ...TEMA_VAZIO, corPrimaria: '#7C3AED' });
+
+    const res = await app.inject({ method: 'GET', url: `/api/publico/aparencia?oficina=${oficina.id}` });
+    expect(res.json()).toEqual({ oficinaId: oficina.id, nome: 'Oficina Pública', tema: { ...TEMA_VAZIO, corPrimaria: '#7c3aed' }, logoVersao: null });
+    expect((await app.inject({ method: 'GET', url: `/api/publico/logo?oficina=${oficina.id}` })).statusCode).toBe(404);
+
+    // Várias oficinas no banco e nenhuma indicada: tema padrão, sem vazar nomes.
+    const semParametro = (await app.inject({ method: 'GET', url: '/api/publico/aparencia' })).json();
+    expect(semParametro).toEqual({ oficinaId: null, nome: null, tema: TEMA_VAZIO, logoVersao: null });
+    expect((await app.inject({ method: 'GET', url: '/api/publico/aparencia?oficina=nao-e-uuid' })).json().nome).toBeNull();
+    expect((await app.inject({ method: 'GET', url: `/api/publico/aparencia?oficina=${randomUUID()}` })).json().nome).toBeNull();
   });
 });
 
@@ -225,6 +254,37 @@ describe('logo da oficina', () => {
     const res = await enviar(admin, grande);
     expect(res.statusCode).toBe(413);
     expect(res.json().erro).toBe('Arquivo grande demais.');
+  });
+});
+
+describe('painel', () => {
+  it('mostra indicadores reais, alertas e módulos pendentes sem números inventados', async () => {
+    const a = await novaOficina('Oficina Painel');
+    const vazio = (await a.chamar('GET', '/api/painel')).json();
+    expect(vazio.indicadores.map((i: { id: string; valor: number | null }) => [i.id, i.valor])).toEqual([
+      ['os_abertas', null],
+      ['faturado_hoje', null],
+      ['clientes', 0],
+      ['veiculos', 0],
+    ]);
+    expect(vazio.alertas).toEqual([]);
+
+    const c = (await a.chamar('POST', '/api/clientes', { nome: 'Sem Telefone' })).json();
+    await a.chamar('POST', '/api/clientes', { nome: 'Com Telefone', telefone: '48999990000' });
+    await a.chamar('POST', '/api/veiculos', { clienteId: c.id, placa: 'ABC1D23', marca: 'Fiat', modelo: 'Uno' });
+
+    const painel = (await a.chamar('GET', '/api/painel')).json();
+    const porId = Object.fromEntries(painel.indicadores.map((i: { id: string }) => [i.id, i]));
+    expect(porId.clientes).toMatchObject({ valor: 2, detalhe: '2 cadastrado(s) hoje' });
+    expect(porId.veiculos).toMatchObject({ valor: 1, detalhe: '1 cadastrado(s) hoje' });
+    expect(painel.alertas.map((x: { mensagem: string }) => x.mensagem)).toEqual([
+      '1 cliente(s) sem telefone: não será possível avisar quando o veículo ficar pronto.',
+      '1 cliente(s) sem veículo cadastrado.',
+    ]);
+
+    const b = await novaOficina('Outra Oficina Painel');
+    expect((await b.chamar('GET', '/api/painel')).json().indicadores[2].valor).toBe(0);
+    expect((await app.inject({ method: 'GET', url: '/api/painel' })).statusCode).toBe(401);
   });
 });
 
@@ -295,7 +355,7 @@ describe('isolamento entre oficinas (RLS)', () => {
   });
 
   it('sem tenant definido, o banco não devolve nenhuma linha', async () => {
-    for (const tabela of ['clientes', 'veiculos', 'users', 'tenant_logos']) {
+    for (const tabela of ['clientes', 'veiculos', 'users', 'tenant_logos', 'tenant_aparencia']) {
       const linhas = await db.execute(sql`select count(*)::int as n from ${sql.identifier(tabela)}`);
       expect(linhas[0]!.n, tabela).toBe(0);
     }

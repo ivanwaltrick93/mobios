@@ -29,6 +29,13 @@
       "when": 1790126287492,
       "tag": "0003_logo_oficina",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790127190888,
+      "tag": "0004_aparencia_tabela",
+      "breakpoints": true
     }
   ]
 }

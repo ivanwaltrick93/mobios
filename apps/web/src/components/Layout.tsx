@@ -7,6 +7,7 @@ import { useSessao } from '../lib/sessao';
 import { aplicarTema, urlLogo } from '../lib/tema';
 
 const menu: { para: string; rotulo: string; papeis?: Papel[] }[] = [
+  { para: '/', rotulo: 'Início' },
   { para: '/clientes', rotulo: 'Clientes e veículos' },
   { para: '/os', rotulo: 'Ordens de serviço' },
   { para: '/estoque', rotulo: 'Estoque' },
@@ -30,7 +31,7 @@ export function Layout() {
     mutationFn: () => api('/auth/logout', { method: 'POST' }),
     onSuccess: () => {
       queryClient.clear();
-      aplicarTema({ corPrimaria: null, corMenu: null });
+      // A tela de login aplica a marca pública da oficina.
       navigate('/entrar');
     },
   });
@@ -57,6 +58,7 @@ export function Layout() {
               <NavLink
                 key={item.para}
                 to={item.para}
+                end={item.para === '/'}
                 className={({ isActive }) =>
                   `whitespace-nowrap rounded-md border-l-4 px-3 py-2 text-sm ${
                     isActive ? 'border-primaria bg-menu-ativo font-semibold' : 'border-transparent opacity-85 hover:bg-menu-ativo hover:opacity-100'

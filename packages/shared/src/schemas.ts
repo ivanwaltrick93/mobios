@@ -41,20 +41,40 @@ const corHex = z
   .regex(/^#[0-9a-fA-F]{6}$/, 'Use uma cor no formato #RRGGBB')
   .transform((v) => v.toLowerCase());
 
-/** Tema salvo. null = usar a cor padrão do style guide. Sem transformações: é usado em respostas. */
-export const temaSchema = z.object({
-  corPrimaria: z.string().nullable(),
-  corMenu: z.string().nullable(),
-});
+/**
+ * Tokens do style guide configuráveis por oficina. null = padrão do style guide;
+ * nas cores de texto, null = automático (maior contraste com o fundo).
+ */
+export const CAMPOS_TEMA = [
+  'corPrimaria',
+  'corMenu',
+  'corBotaoPrimario',
+  'corBotaoPrimarioTexto',
+  'corBotaoSecundario',
+  'corBotaoSecundarioTexto',
+] as const;
+export type CampoTema = (typeof CAMPOS_TEMA)[number];
+
+/** Tema salvo. Sem transformações: é usado em respostas. */
+export const temaSchema = z.object(Object.fromEntries(CAMPOS_TEMA.map((c) => [c, z.string().nullable()])) as Record<CampoTema, z.ZodNullable<z.ZodString>>);
 export type Tema = z.infer<typeof temaSchema>;
 
 /** Entrada do formulário de aparência: valida e normaliza as cores. */
-export const temaInputSchema = z.object({
-  corPrimaria: corHex.nullable(),
-  corMenu: corHex.nullable(),
-});
+export const temaInputSchema = z.object(Object.fromEntries(CAMPOS_TEMA.map((c) => [c, corHex.nullable()])) as Record<CampoTema, z.ZodNullable<typeof corHex>>);
 
-export const TEMA_PADRAO = { corPrimaria: '#1d4ed8', corMenu: '#ffffff' } as const;
+export const TEMA_VAZIO: Tema = Object.fromEntries(CAMPOS_TEMA.map((c) => [c, null])) as Tema;
+
+/** Padrões do style guide (quando o campo do tema é null). */
+export const TEMA_PADRAO = { corPrimaria: '#1d4ed8', corMenu: '#ffffff', corBotaoSecundario: '#ffffff' } as const;
+
+/** Marca da oficina exibida antes do login (cores, logo e nome: nada sensível). */
+export const aparenciaPublicaSchema = z.object({
+  oficinaId: z.string().nullable(),
+  nome: z.string().nullable(),
+  tema: temaSchema,
+  logoVersao: z.string().nullable(),
+});
+export type AparenciaPublica = z.infer<typeof aparenciaPublicaSchema>;
 
 // SVG fica de fora: pode conter scripts.
 export const LOGO_TIPOS = ['image/png', 'image/jpeg', 'image/webp'] as const;
@@ -206,4 +226,31 @@ export type RelatorioPrevia = {
   colunas: { chave: string; titulo: string }[];
   linhas: Record<string, string>[];
   total: number;
+};
+
+// ---------- Painel (página inicial) ----------
+
+export type IndicadorId = 'os_abertas' | 'faturado_hoje' | 'clientes' | 'veiculos';
+
+export type Indicador = {
+  id: IndicadorId;
+  titulo: string;
+  /** null = o módulo que fornece o dado ainda não existe (nunca mostrar número inventado). */
+  valor: number | null;
+  formato: 'numero' | 'moeda';
+  detalhe: string;
+  link?: string;
+};
+
+export type AlertaPainel = {
+  nivel: 'aviso' | 'info';
+  mensagem: string;
+  link?: string;
+};
+
+export type Painel = {
+  indicadores: Indicador[];
+  alertas: AlertaPainel[];
+  /** Módulos ainda não implementados: exibidos como "em breve". */
+  modulosPendentes: string[];
 };

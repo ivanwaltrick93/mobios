@@ -29,8 +29,8 @@ export const Select = ({ className = '', ...props }: SelectHTMLAttributes<HTMLSe
 type Variante = 'primario' | 'secundario' | 'perigo';
 
 const coresBotao: Record<Variante, string> = {
-  primario: 'bg-primaria text-sobre-primaria hover:bg-primaria-hover',
-  secundario: 'border border-borda-forte bg-superficie text-texto hover:bg-superficie-alt',
+  primario: 'bg-botao-primario text-botao-primario-texto hover:bg-botao-primario-hover',
+  secundario: 'border border-botao-secundario-borda bg-botao-secundario text-botao-secundario-texto hover:bg-botao-secundario-hover',
   perigo: 'bg-perigo text-sobre-perigo hover:bg-perigo-hover',
 };
 

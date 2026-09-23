@@ -1,15 +1,12 @@
-import { zodResolver } from '@hookform/resolvers/zod';
-import { formatarDocumento, formatarPlaca, veiculoInputSchema, type Cliente, type Veiculo } from '@mobios/shared';
+import { formatarDocumento, formatarPlaca, type Cliente, type Veiculo } from '@mobios/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { useForm } from 'react-hook-form';
 import { Link, useNavigate, useParams } from 'react-router';
-import type { z } from 'zod';
-import { Alerta, Botao, BotaoLink, Campo, Cartao, Input, TextoSuave } from '../components/ui';
+import { Alerta, Botao, BotaoLink, Cartao, TextoSuave } from '../components/ui';
 import { api, ErroApi } from '../lib/api';
 
-import { aplicarErrosDaApi } from '../lib/formulario';
 import { ClienteForm } from './ClienteForm';
+import { VeiculoForm } from './VeiculoForm';
 
 export function ClienteDetalhe() {
   const { id } = useParams() as { id: string };
@@ -73,29 +70,18 @@ export function ClienteDetalhe() {
   );
 }
 
-type Entrada = z.input<typeof veiculoInputSchema>;
-type Saida = z.output<typeof veiculoInputSchema>;
-
 function Veiculos({ clienteId }: { clienteId: string }) {
   const queryClient = useQueryClient();
   const [novo, setNovo] = useState(false);
   const chave = ['veiculos', clienteId];
   const veiculos = useQuery({ queryKey: chave, queryFn: () => api<Veiculo[]>(`/veiculos?clienteId=${clienteId}`) });
-
-  const form = useForm<Entrada, unknown, Saida>({ resolver: zodResolver(veiculoInputSchema), defaultValues: { clienteId } });
-  const salvar = useMutation({
-    mutationFn: (dados: Saida) => api<Veiculo>('/veiculos', { method: 'POST', body: dados }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: chave });
-      form.reset({ clienteId });
-      setNovo(false);
-    },
-  });
   const remover = useMutation({
     mutationFn: (id: string) => api(`/veiculos/${id}`, { method: 'DELETE' }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: chave }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: chave });
+      queryClient.invalidateQueries({ queryKey: ['painel'] });
+    },
   });
-  const erros = form.formState.errors;
 
   return (
     <Cartao>
@@ -105,42 +91,9 @@ function Veiculos({ clienteId }: { clienteId: string }) {
       </div>
 
       {novo && (
-        <form className="mb-6 grid gap-4 rounded-md bg-superficie-alt p-4 md:grid-cols-4" onSubmit={form.handleSubmit((d) => salvar.mutate(d))}>
-          <div className="md:col-span-4">
-            <Alerta>{salvar.isError && aplicarErrosDaApi(salvar.error, form.setError)}</Alerta>
-          </div>
-          <Campo rotulo="Placa" erro={erros.placa}>
-            <Input className="uppercase" {...form.register('placa')} />
-          </Campo>
-          <Campo rotulo="Marca" erro={erros.marca}>
-            <Input {...form.register('marca')} />
-          </Campo>
-          <Campo rotulo="Modelo" erro={erros.modelo}>
-            <Input {...form.register('modelo')} />
-          </Campo>
-          <Campo rotulo="Ano" erro={erros.ano}>
-            <Input type="number" {...form.register('ano')} />
-          </Campo>
-          <Campo rotulo="Cor" erro={erros.cor}>
-            <Input {...form.register('cor')} />
-          </Campo>
-          <Campo rotulo="Km atual" erro={erros.kmAtual}>
-            <Input type="number" {...form.register('kmAtual')} />
-          </Campo>
-          <div className="md:col-span-2">
-            <Campo rotulo="Chassi" erro={erros.chassi}>
-              <Input className="uppercase" {...form.register('chassi')} />
-            </Campo>
-          </div>
-          <div className="flex gap-2 md:col-span-4">
-            <Botao type="submit" disabled={salvar.isPending}>
-              Salvar veículo
-            </Botao>
-            <Botao type="button" variante="secundario" onClick={() => setNovo(false)}>
-              Cancelar
-            </Botao>
-          </div>
-        </form>
+        <div className="mb-6 rounded-md bg-superficie-alt p-4">
+          <VeiculoForm clienteId={clienteId} aoSalvar={() => setNovo(false)} aoCancelar={() => setNovo(false)} />
+        </div>
       )}
 
       {veiculos.data?.length === 0 && !novo && <TextoSuave>Nenhum veículo cadastrado.</TextoSuave>}

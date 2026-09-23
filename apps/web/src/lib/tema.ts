@@ -9,24 +9,44 @@ function luminancia(hex: string): number {
   return 0.2126 * canal(1) + 0.7152 * canal(3) + 0.0722 * canal(5);
 }
 
-const contraste = (a: number, b: number) => (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+/** Razão de contraste WCAG entre duas cores (1 a 21). Texto normal pede ao menos 4,5. */
+export function contraste(a: string, b: string): number {
+  const [la, lb] = [luminancia(a), luminancia(b)];
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+}
+
+export const CONTRASTE_MINIMO = 4.5;
 
 /** Texto branco ou escuro, o que tiver mais contraste com o fundo informado. */
 export function textoSobre(fundo: string, escuro = '#0f172a'): string {
-  const l = luminancia(fundo);
-  return contraste(l, 1) >= contraste(l, luminancia(escuro)) ? '#ffffff' : escuro;
+  return contraste(fundo, '#ffffff') >= contraste(fundo, escuro) ? '#ffffff' : escuro;
 }
 
-/** Aplica as cores da oficina nos tokens do style guide (index.css). null = padrão. */
-export function aplicarTema(tema: Tema) {
-  const raiz = document.documentElement.style;
+/** Cores efetivas do tema: aplica padrões e o contraste automático dos textos não configurados. */
+export function resolverTema(tema: Tema) {
   const primaria = tema.corPrimaria ?? TEMA_PADRAO.corPrimaria;
   const menu = tema.corMenu ?? TEMA_PADRAO.corMenu;
-  raiz.setProperty('--cor-primaria', primaria);
-  raiz.setProperty('--cor-sobre-primaria', textoSobre(primaria));
-  raiz.setProperty('--cor-menu', menu);
-  raiz.setProperty('--cor-menu-texto', textoSobre(menu, '#334155'));
+  const botaoPrimario = tema.corBotaoPrimario ?? primaria;
+  const botaoSecundario = tema.corBotaoSecundario ?? TEMA_PADRAO.corBotaoSecundario;
+  return {
+    '--cor-primaria': primaria,
+    '--cor-sobre-primaria': textoSobre(primaria),
+    '--cor-menu': menu,
+    '--cor-menu-texto': textoSobre(menu, '#334155'),
+    '--cor-botao-primario': botaoPrimario,
+    '--cor-botao-primario-texto': tema.corBotaoPrimarioTexto ?? textoSobre(botaoPrimario),
+    '--cor-botao-secundario': botaoSecundario,
+    '--cor-botao-secundario-texto': tema.corBotaoSecundarioTexto ?? textoSobre(botaoSecundario),
+  };
+}
+
+/** Aplica as cores da oficina nos tokens do style guide (index.css). */
+export function aplicarTema(tema: Tema) {
+  const raiz = document.documentElement.style;
+  for (const [token, valor] of Object.entries(resolverTema(tema))) raiz.setProperty(token, valor);
 }
 
 /** A versão na URL muda a cada novo logo, então o navegador pode guardar a imagem em cache sem risco. */
 export const urlLogo = (versao: string) => `/api/configuracoes/logo?v=${versao}`;
+export const urlLogoPublico = (versao: string, oficinaId: string | null) =>
+  `/api/publico/logo?${new URLSearchParams({ v: versao, ...(oficinaId && { oficina: oficinaId }) })}`;

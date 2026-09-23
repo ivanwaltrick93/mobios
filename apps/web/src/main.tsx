@@ -1,12 +1,15 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { createBrowserRouter, Navigate, RouterProvider } from 'react-router';
+import { createBrowserRouter, RouterProvider } from 'react-router';
 import { Layout } from './components/Layout';
 import './index.css';
 import { ClienteDetalhe } from './pages/ClienteDetalhe';
 import { Clientes } from './pages/Clientes';
 import { EmBreve } from './pages/EmBreve';
+import { Inicio } from './pages/Inicio';
+import { NovoCliente } from './pages/NovoCliente';
+import { NovoVeiculo } from './pages/NovoVeiculo';
 import { Entrar } from './pages/Entrar';
 import { Configuracoes } from './pages/Configuracoes';
 import { Relatorios } from './pages/Relatorios';
@@ -19,7 +22,9 @@ const router = createBrowserRouter([
   {
     element: <Layout />,
     children: [
-      { index: true, element: <Navigate to="/clientes" replace /> },
+      { index: true, element: <Inicio /> },
+      { path: '/clientes/novo', element: <NovoCliente /> },
+      { path: '/veiculos/novo', element: <NovoVeiculo /> },
       { path: '/clientes', element: <Clientes /> },
       { path: '/clientes/:id', element: <ClienteDetalhe /> },
       { path: '/os', element: <EmBreve titulo="Ordens de serviço" /> },

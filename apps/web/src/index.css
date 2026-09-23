@@ -5,7 +5,8 @@
  * Nenhum componente usa cor fixa do Tailwind (slate-*, blue-*...): só os tokens abaixo.
  *
  * Parametrizáveis por oficina (tela Configurações → Aparência), aplicados em runtime por lib/tema.ts:
- *   --cor-primaria, --cor-menu  (+ --cor-sobre-primaria e --cor-menu-texto, calculadas para contraste)
+ *   --cor-primaria, --cor-menu, --cor-botao-primario(-texto), --cor-botao-secundario(-texto)
+ *   (cores de texto não configuradas são calculadas para contraste)
  * As variações (hover, fundo suave, item ativo) derivam delas com color-mix, então acompanham a troca.
  */
 :root {
@@ -14,6 +15,12 @@
   --cor-sobre-primaria: #ffffff;
   --cor-menu: #ffffff;
   --cor-menu-texto: #334155;
+
+  /* Botões: principal (salvar, confirmar) e secundário (cancelar, voltar) */
+  --cor-botao-primario: var(--cor-primaria);
+  --cor-botao-primario-texto: var(--cor-sobre-primaria);
+  --cor-botao-secundario: #ffffff;
+  --cor-botao-secundario-texto: #0f172a;
 
   /* Neutros */
   --cor-fundo: #f8fafc;
@@ -33,9 +40,13 @@
   /* Derivadas: não configurar diretamente */
   --cor-primaria-hover: color-mix(in oklab, var(--cor-primaria), black 15%);
   --cor-primaria-suave: color-mix(in oklab, var(--cor-primaria) 10%, var(--cor-superficie));
+  --cor-botao-primario-hover: color-mix(in oklab, var(--cor-botao-primario), black 15%);
+  --cor-botao-secundario-hover: color-mix(in oklab, var(--cor-botao-secundario-texto) 8%, var(--cor-botao-secundario));
+  --cor-botao-secundario-borda: color-mix(in oklab, var(--cor-botao-secundario-texto) 25%, var(--cor-botao-secundario));
   --cor-menu-ativo: color-mix(in oklab, var(--cor-menu-texto) 12%, var(--cor-menu));
   --cor-menu-borda: color-mix(in oklab, var(--cor-menu-texto) 15%, var(--cor-menu));
   --cor-sucesso-suave: color-mix(in oklab, var(--cor-sucesso) 12%, var(--cor-superficie));
+  --cor-alerta-suave: color-mix(in oklab, var(--cor-alerta) 12%, var(--cor-superficie));
   --cor-perigo-suave: color-mix(in oklab, var(--cor-perigo) 10%, var(--cor-superficie));
   --cor-perigo-hover: color-mix(in oklab, var(--cor-perigo), black 15%);
 }
@@ -46,6 +57,13 @@
   --color-primaria-hover: var(--cor-primaria-hover);
   --color-primaria-suave: var(--cor-primaria-suave);
   --color-sobre-primaria: var(--cor-sobre-primaria);
+  --color-botao-primario: var(--cor-botao-primario);
+  --color-botao-primario-texto: var(--cor-botao-primario-texto);
+  --color-botao-primario-hover: var(--cor-botao-primario-hover);
+  --color-botao-secundario: var(--cor-botao-secundario);
+  --color-botao-secundario-texto: var(--cor-botao-secundario-texto);
+  --color-botao-secundario-hover: var(--cor-botao-secundario-hover);
+  --color-botao-secundario-borda: var(--cor-botao-secundario-borda);
   --color-menu: var(--cor-menu);
   --color-menu-texto: var(--cor-menu-texto);
   --color-menu-ativo: var(--cor-menu-ativo);
@@ -64,6 +82,7 @@
   --color-perigo-hover: var(--cor-perigo-hover);
   --color-sobre-perigo: var(--cor-sobre-perigo);
   --color-alerta: var(--cor-alerta);
+  --color-alerta-suave: var(--cor-alerta-suave);
 }
 
 body {

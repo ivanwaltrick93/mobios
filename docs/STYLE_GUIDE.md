@@ -7,15 +7,19 @@ Nenhuma tela usa cor fixa do Tailwind (`slate-*`, `blue-*`, `bg-white`, hex solt
 
 ### Parametrizáveis por oficina
 
-Configuradas pelo admin em **Configurações → Aparência** e salvas na tabela `tenants` (`cor_primaria`, `cor_menu`; `null` = padrão).
-Aplicadas em runtime por [`lib/tema.ts`](../apps/web/src/lib/tema.ts), que também calcula a cor do texto por contraste (WCAG).
+Configuradas pelo admin em **Configurações → Aparência** e salvas na tabela `tenant_aparencia` (uma linha por oficina; `null` = padrão, e nas cores de texto `null` = contraste automático).
+Aplicadas em runtime por [`lib/tema.ts`](../apps/web/src/lib/tema.ts), inclusive na **tela de login** (via `GET /api/publico/aparencia`). A tela de configuração avisa quando uma combinação fica abaixo do contraste WCAG AA (4,5:1).
 
 | Token | Classe Tailwind | Padrão | Uso |
 |---|---|---|---|
-| `--cor-primaria` | `bg-primaria`, `text-primaria`, `border-primaria` | `#1d4ed8` | Botões, links, destaques, item ativo |
+| `--cor-primaria` | `bg-primaria`, `text-primaria`, `border-primaria` | `#1d4ed8` | Links, destaques, ícones, item ativo (e fundo padrão do botão principal) |
 | `--cor-sobre-primaria` | `text-sobre-primaria` | calculada | Texto sobre a cor principal |
 | `--cor-menu` | `bg-menu` | `#ffffff` | Fundo do menu lateral |
 | `--cor-menu-texto` | `text-menu-texto` | calculada | Texto do menu |
+| `--cor-botao-primario` | `bg-botao-primario` | = cor principal | Fundo do botão principal (Salvar, Entrar, Confirmar) |
+| `--cor-botao-primario-texto` | `text-botao-primario-texto` | automático | Escrita do botão principal |
+| `--cor-botao-secundario` | `bg-botao-secundario` | `#ffffff` | Fundo do botão secundário (Cancelar, Voltar) |
+| `--cor-botao-secundario-texto` | `text-botao-secundario-texto` | automático | Escrita do botão secundário |
 
 ### Derivadas (não configurar diretamente)
 
@@ -23,10 +27,12 @@ Calculadas com `color-mix()` a partir das parametrizáveis, então acompanham a 
 
 | Token | Classe | Uso |
 |---|---|---|
-| `--cor-primaria-hover` | `hover:bg-primaria-hover` | Hover do botão principal |
+| `--cor-primaria-hover` | `hover:bg-primaria-hover` | Hover de elementos na cor principal (reservado) |
 | `--cor-primaria-suave` | `bg-primaria-suave` | Fundo de item selecionado, selo de destaque |
 | `--cor-menu-ativo` | `bg-menu-ativo` | Item ativo/hover no menu |
 | `--cor-menu-borda` | `border-menu-borda` | Divisória do menu |
+| `--cor-botao-primario-hover` / `--cor-botao-secundario-hover` | `hover:bg-botao-*-hover` | Hover dos botões |
+| `--cor-botao-secundario-borda` | `border-botao-secundario-borda` | Borda do botão secundário (acompanha o texto) |
 
 ### Neutros e estados (fixos)
 
@@ -49,7 +55,7 @@ Em [`components/ui.tsx`](../apps/web/src/components/ui.tsx). Use-os em vez de re
 |---|---|
 | `Titulo` | Título da página, com ação opcional à direita |
 | `Cartao` | Bloco de conteúdo (`className` substitui o padding padrão) |
-| `Botao` (`primario` / `secundario` / `perigo`), `BotaoLink` | Ações |
+| `Botao` (`primario` = confirmar / `secundario` = cancelar, voltar / `perigo` = excluir), `BotaoLink` | Ações. Use sempre a variante pela função do botão, para o tema da oficina valer |
 | `Campo` + `Input` / `Select` | Formulários, com rótulo, dica e erro |
 | `Alerta` | Mensagem de erro |
 | `Selo` (`sucesso` / `neutro` / `primario`) | Status curtos |
