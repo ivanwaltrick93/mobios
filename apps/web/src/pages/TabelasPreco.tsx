@@ -3,7 +3,6 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { FileUp, Plus, Tag } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router';
-import { AbasPrecos } from '../components/AbasPrecos';
 import { ImportarCsv } from '../components/ImportarCsv';
 import {
   Alerta,
@@ -71,9 +70,8 @@ export function TabelasPreco() {
           )
         }
       >
-        Política Comercial
+        Tabelas de Preço
       </Titulo>
-      <AbasPrecos />
       <TextoSuave>
         Abra uma tabela para ver e cadastrar os preços dela (com vigência ou padrão). Para muitos preços de uma vez, use
         a importação por planilha.
@@ -87,7 +85,7 @@ export function TabelasPreco() {
           nomeModelo="modelo-precos.csv"
           aoConcluir={() => {
             queryClient.invalidateQueries({ queryKey: ['tabelas-preco'] });
-            queryClient.invalidateQueries({ queryKey: ['lista-precos'] });
+            queryClient.invalidateQueries({ queryKey: ['linhas-preco'] });
             queryClient.invalidateQueries({ queryKey: ['precos'] });
           }}
           aoFechar={() => setImportando(false)}

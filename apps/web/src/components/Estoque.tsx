@@ -43,7 +43,6 @@ export function AjusteEstoqueForm({ saldo, aoConcluir }: { saldo: Saldo; aoConcl
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['estoque'] });
-      queryClient.invalidateQueries({ queryKey: ['lista-precos'] });
       aoConcluir();
     },
   });
@@ -143,7 +142,6 @@ export function LancamentoEstoqueForm({ aoConcluir }: { aoConcluir: () => void }
     mutationFn: (dados: LancamentoSaida) => api<Saldo>('/estoque/lancamento', { method: 'POST', body: dados }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['estoque'] });
-      queryClient.invalidateQueries({ queryKey: ['lista-precos'] });
       aoConcluir();
     },
   });

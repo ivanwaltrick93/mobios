@@ -534,9 +534,9 @@ describe('estoque por material + depósito', () => {
   });
 });
 
-describe('lista de preços', () => {
-  it('preço vigente e próximo por tabela, com disponível total para quem vê o estoque', async () => {
-    const o = await novaOficina('Oficina Lista');
+describe('linhas de preço', () => {
+  it('uma linha por vigência (com início, fim e situação) e outra para o preço padrão, filtradas por situação', async () => {
+    const o = await novaOficina('Oficina Linhas');
     const { material, tabela, filtros } = await catalogoBasico(o);
     await o.chamar('POST', '/api/materiais', {
       sku: 'SEM-PRECO',
@@ -545,98 +545,78 @@ describe('lista de preços', () => {
       categoriaId: filtros.id,
       unidade: 'UN',
     });
-    await o.chamar('POST', '/api/precos', {
-      materialId: material.id,
-      tabelaPrecoId: tabela.id,
-      precoCentavos: 4990,
-      dataInicio: dia(0),
-    });
-    await o.chamar('POST', '/api/precos', {
-      materialId: material.id,
-      tabelaPrecoId: tabela.id,
-      precoCentavos: 5290,
-      dataInicio: dia(30),
-    });
-    const loja = (
-      await o.chamar('POST', '/api/depositos', {
-        codigo: 'LOJA',
-        nome: 'Loja',
-        tipoId: await o.tipo('tiposDeposito', 'Loja'),
-      })
-    ).json();
-    const oficina = (
-      await o.chamar('POST', '/api/depositos', {
-        codigo: 'OFI',
-        nome: 'Oficina',
-        tipoId: await o.tipo('tiposDeposito', 'Oficina'),
-      })
-    ).json();
-    await o.chamar('PUT', `/api/estoque/${material.id}/${loja.id}`, {
-      disponivel: 3,
-      reservado: 1,
-      motivo: 'Inventário',
-    });
-    await o.chamar('PUT', `/api/estoque/${material.id}/${oficina.id}`, {
-      disponivel: 4,
-      reservado: 0,
-      motivo: 'Inventário',
-    });
-
-    const lista = (await o.chamar('GET', `/api/precos/lista?tabelaPrecoId=${tabela.id}`)).json();
-    expect(lista.total).toBe(2);
-    expect(lista.itens).toEqual(
-      [
-        {
-          materialId: expect.any(String),
-          sku: 'SEM-PRECO',
-          descricao: 'Arruela',
-          marcaNome: null,
-          unidade: 'UN',
-          precoCentavos: null,
-          origem: null,
-          vigenteDesde: null,
-          vigenteAte: null,
-          proximoPrecoCentavos: null,
-          proximoInicio: null,
-          disponivel: 0,
-        },
-        {
+    const vigencia = async (precoCentavos: number, dataInicio: string) =>
+      (
+        await o.chamar('POST', '/api/precos', {
           materialId: material.id,
-          sku: 'FIL-001',
-          descricao: 'Filtro de óleo W712',
-          marcaNome: 'Mann Filter',
-          unidade: 'UN',
-          precoCentavos: 4990,
-          origem: 'vigencia',
-          vigenteDesde: dia(0),
-          vigenteAte: dia(29),
-          proximoPrecoCentavos: 5290,
-          proximoInicio: dia(30),
-          disponivel: 7,
-        },
-      ].sort((a, b) => a.descricao.localeCompare(b.descricao)),
+          tabelaPrecoId: tabela.id,
+          precoCentavos,
+          dataInicio,
+        })
+      ).json();
+    // Uma vigência já encerrada (o passado não se cadastra pela API).
+    await withTenant(o.tid, (tx) =>
+      tx.execute(
+        sql`insert into materiais_precos (material_id, tabela_preco_id, preco_centavos, data_inicio, data_fim)
+          values (${material.id}, ${tabela.id}, 3990, ${dia(-30)}, ${dia(-1)})`,
+      ),
     );
-    expect(
-      (await o.chamar('GET', `/api/precos/lista?tabelaPrecoId=${tabela.id}&comPreco=true`))
-        .json()
-        .itens.map((i: { sku: string }) => i.sku),
-    ).toEqual(['FIL-001']);
-    expect((await o.chamar('GET', `/api/precos/lista?tabelaPrecoId=${tabela.id}&q=filtro`)).json().total).toBe(1);
-    // Busca igual à de Materiais: SKU em minúsculas e código de barras.
-    expect((await o.chamar('GET', `/api/precos/lista?tabelaPrecoId=${tabela.id}&q=fil-0`)).json().total).toBe(1);
-    expect((await o.chamar('GET', `/api/precos/lista?tabelaPrecoId=${tabela.id}&q=7891000315507`)).json().total).toBe(
-      1,
-    );
+    const atual = await vigencia(4990, dia(0));
+    const futura = await vigencia(5290, dia(30));
+    const cancelada = await vigencia(5590, dia(60));
+    await o.chamar('POST', `/api/precos/${cancelada.id}/cancelar`, { motivo: 'Reajuste adiado' });
+    await o.chamar('PUT', '/api/precos/padrao', {
+      materialId: material.id,
+      tabelaPrecoId: tabela.id,
+      precoCentavos: 4500,
+    });
 
-    // Sem acesso ao Estoque, a coluna de disponível vem vazia.
-    const financeiro = await o.pessoa('Financeiro');
+    const linhas = async (filtro = '') =>
+      (await o.chamar('GET', `/api/precos/linhas?tabelaPrecoId=${tabela.id}${filtro}`)).json();
+    const base = { materialId: material.id, sku: 'FIL-001', descricao: 'Filtro de óleo W712' };
+
+    // Padrão: vigentes, futuras e o padrão; o material sem preço não aparece; nada de estoque.
+    expect(await linhas()).toEqual({
+      total: 3,
+      itens: [
+        { ...base, id: atual.id, precoCentavos: 4990, dataInicio: dia(0), dataFim: dia(29), situacao: 'vigente' },
+        { ...base, id: futura.id, precoCentavos: 5290, dataInicio: dia(30), dataFim: null, situacao: 'futuro' },
+        {
+          ...base,
+          id: `padrao:${material.id}`,
+          precoCentavos: 4500,
+          dataInicio: null,
+          dataFim: null,
+          situacao: 'padrao',
+        },
+      ],
+    });
+    const situacoes = async (filtro: string) =>
+      (await linhas(`&situacao=${filtro}`)).itens.map((l: { situacao: string; precoCentavos: number }) => [
+        l.situacao,
+        l.precoCentavos,
+      ]);
+    expect(await situacoes('todas')).toEqual([
+      ['encerrado', 3990],
+      ['vigente', 4990],
+      ['futuro', 5290],
+      ['cancelado', 5590],
+      ['padrao', 4500],
+    ]);
+    expect(await situacoes('encerrado')).toEqual([['encerrado', 3990]]);
+    expect(await situacoes('cancelado')).toEqual([['cancelado', 5590]]);
+    expect(await situacoes('futuro')).toEqual([['futuro', 5290]]);
+    expect(await situacoes('padrao')).toEqual([['padrao', 4500]]);
+
+    // Busca igual à de Materiais (SKU em minúsculas, código de barras) e paginação.
+    expect((await linhas('&q=fil-0')).total).toBe(3);
+    expect((await linhas('&q=7891000315507')).total).toBe(3);
+    expect((await linhas('&q=arruela')).total).toBe(0);
+    expect((await linhas('&situacao=todas&porPagina=2&pagina=3')).itens).toHaveLength(1);
+
     expect(
-      (await financeiro('GET', `/api/precos/lista?tabelaPrecoId=${tabela.id}&comPreco=true`)).json().itens[0]
-        .disponivel,
-    ).toBeNull();
-    expect((await (await o.pessoa('Mecânico'))('GET', `/api/precos/lista?tabelaPrecoId=${tabela.id}`)).statusCode).toBe(
-      403,
-    );
+      (await (await o.pessoa('Mecânico'))('GET', `/api/precos/linhas?tabelaPrecoId=${tabela.id}`)).statusCode,
+    ).toBe(403);
   });
 });
 
@@ -844,5 +824,108 @@ describe('lançamento e importação de estoque', () => {
         })
       ).statusCode,
     ).toBe(403);
+  });
+});
+
+describe('importação de categorias e materiais por planilha', () => {
+  const importar = (o: Awaited<ReturnType<typeof novaOficina>>, url: string, texto: string) =>
+    o.chamar('POST', url, texto, { 'content-type': 'text/csv' });
+
+  it('categorias: hierarquia na ordem do arquivo, atualiza pelo código e relata pai inexistente ou repetido', async () => {
+    const o = await novaOficina('Oficina Importa Categorias');
+    const resultado = (
+      await importar(
+        o,
+        '/api/categorias/importar',
+        planilha(
+          'nome;codigo;pai;descricao',
+          'Peças;PEC;;',
+          'Motor;;PEC;Partes do motor',
+          'Filtros;FIL;Peças > Motor;',
+          'Filtros;;Peças > Motor;',
+          'Velas;;Elétrica;',
+          'Peças Novas;PEC;;Renomeada pelo código',
+        ),
+      )
+    ).json();
+    expect(resultado).toEqual({
+      linhas: 6,
+      importadas: 4,
+      ignoradas: 0,
+      erros: [
+        { linha: 5, mensagem: 'Categoria repetido na planilha (já aparece na linha 4).' },
+        { linha: 6, mensagem: 'pai: categoria "Elétrica" não encontrada.' },
+      ],
+    });
+    const lista = (await o.chamar('GET', '/api/categorias')).json() as { nome: string; codigo: string | null }[];
+    expect(lista.map((c) => [c.nome, c.codigo])).toEqual([
+      ['Filtros', 'FIL'],
+      ['Motor', null],
+      ['Peças Novas', 'PEC'],
+    ]);
+  });
+
+  it('materiais: cria e atualiza pelo SKU, resolve tipo, categoria e marca e relata referências inválidas', async () => {
+    const o = await novaOficina('Oficina Importa Materiais');
+    const { material } = await catalogoBasico(o); // FIL-001 em Peças > Filtros, marca Mann Filter
+    // Outro "Filtros" (em Motor): só pelo nome, a categoria fica ambígua.
+    const motor = (await o.chamar('POST', '/api/categorias', { nome: 'Motor' })).json();
+    await o.chamar('POST', '/api/categorias', { nome: 'Filtros', categoriaPaiId: motor.id });
+
+    const resultado = (
+      await importar(
+        o,
+        '/api/materiais/importar',
+        planilha(
+          'sku;descricao;tipo;categoria;unidade;marca;ncm;controla_estoque',
+          'fil-001;Filtro de óleo W712 (novo nome);peça;PEC;un;;;',
+          'OLE-5W30;Óleo 5W30;Peça;Peças > Filtros;l;mann filter;27101932;sim',
+          'X-1;Item;Serviço inexistente;PEC;UN;;;',
+          'X-2;Item;Peça;Filtros;UN;;;',
+          'X-3;Item;Peça;PEC;UN;Marca Nenhuma;;',
+          'X-4;Item;Peça;PEC;CAIXOTE;;123;talvez',
+          'OLE-5W30;Repetido;Peça;PEC;UN;;;',
+        ),
+      )
+    ).json();
+    expect(resultado).toMatchObject({ linhas: 7, importadas: 2 });
+    expect(resultado.erros).toEqual([
+      { linha: 4, mensagem: 'tipo: "Serviço inexistente" não está na lista de tipos de material.' },
+      {
+        linha: 5,
+        mensagem:
+          'categoria: há mais de uma categoria "Filtros" (Motor > Filtros; Peças > Filtros). Informe o código ou o caminho completo.',
+      },
+      { linha: 6, mensagem: 'marca: "Marca Nenhuma" não encontrada.' },
+      { linha: 7, mensagem: 'controla_estoque: use "sim" ou "não" (recebido "talvez").' },
+      { linha: 8, mensagem: 'SKU OLE-5W30 repetido na planilha (já aparece na linha 3).' },
+    ]);
+
+    // Atualizado: descrição nova, marca limpa (coluna presente e vazia), código de barras mantido (coluna ausente).
+    expect((await o.chamar('GET', `/api/materiais/${material.id}`)).json()).toMatchObject({
+      descricao: 'Filtro de óleo W712 (novo nome)',
+      marcaId: null,
+      codigoBarras: '7891000315507',
+      versao: 2,
+    });
+    const [oleo] = (await o.chamar('GET', '/api/materiais?q=OLE-5W30')).json().itens;
+    expect(oleo).toMatchObject({ unidade: 'L', marcaNome: 'Mann Filter', categoriaNome: 'Filtros' });
+  });
+
+  it('linhas de preço: a tabela da tela vale quando a coluna tabela fica vazia', async () => {
+    const o = await novaOficina('Oficina Importa Linhas');
+    const { material, tabela } = await catalogoBasico(o);
+    const resultado = (
+      await importar(o, `/api/precos/importar?tabelaPrecoId=${tabela.id}`, planilha('sku;preco', 'FIL-001;39,90'))
+    ).json();
+    expect(resultado).toMatchObject({ importadas: 1, erros: [] });
+    const vigente = (
+      await o.chamar('GET', `/api/precos/vigente?materialId=${material.id}&tabelaPrecoId=${tabela.id}`)
+    ).json();
+    expect(vigente).toMatchObject({ valorCentavos: 3990, origem: 'padrao' });
+    // Sem a tabela da tela, a coluna continua obrigatória.
+    expect((await importar(o, '/api/precos/importar', planilha('sku;preco', 'FIL-001;1'))).json().erro).toContain(
+      'tabela',
+    );
   });
 });

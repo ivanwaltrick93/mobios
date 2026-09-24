@@ -1,10 +1,18 @@
-import { formatarDataIso, formatarDocumento, type ClienteFiltro, type ClienteResumo } from '@mobios/shared';
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { ChevronDown, Plus, Search, SlidersHorizontal, Users } from 'lucide-react';
+import {
+  COLUNAS_IMPORTACAO_CLIENTES,
+  formatarDataIso,
+  formatarDocumento,
+  type ClienteFiltro,
+  type ClienteResumo,
+} from '@mobios/shared';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
+import { ChevronDown, FileUp, Plus, Search, SlidersHorizontal, Users } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router';
-import { LinkWhatsApp, SeloAniversario, SeloPendencias } from '../components/Cliente';
+import { SeloAniversario, SeloPendencias } from '../components/Cliente';
+import { ImportarCsv } from '../components/ImportarCsv';
 import {
+  Botao,
   BotaoLink,
   BotaoVisualizar,
   Cabecalho,
@@ -47,6 +55,8 @@ export function Clientes() {
   const relacionamentos = useOpcoes('relacionamentos');
   const [filtro, setFiltro] = useState<Filtro>(FILTRO_INICIAL);
   const [pagina, setPagina] = useState(1);
+  const [importando, setImportando] = useState(false);
+  const queryClient = useQueryClient();
   const parametros = new URLSearchParams(
     Object.entries({ ...filtro, pagina: String(pagina), porPagina: String(POR_PAGINA) }).filter(([, v]) => v),
   );
@@ -72,14 +82,30 @@ export function Clientes() {
       <Titulo
         acao={
           podeEditar && (
-            <Link to="/clientes/novo" className={classesBotao('primario')}>
-              <Plus className="mr-1.5 size-4" aria-hidden /> Novo cliente
-            </Link>
+            <div className="flex flex-wrap gap-2">
+              <Botao variante="secundario" onClick={() => setImportando(!importando)}>
+                <FileUp className="mr-1.5 size-4" aria-hidden /> Importar planilha
+              </Botao>
+              <Link to="/clientes/novo" className={classesBotao('primario')}>
+                <Plus className="mr-1.5 size-4" aria-hidden /> Novo cliente
+              </Link>
+            </div>
           )
         }
       >
         Clientes
       </Titulo>
+
+      {importando && (
+        <ImportarCsv
+          titulo="Importar clientes"
+          colunas={COLUNAS_IMPORTACAO_CLIENTES}
+          url="/clientes/importar"
+          nomeModelo="modelo-clientes.csv"
+          aoConcluir={() => queryClient.invalidateQueries({ queryKey: ['clientes'] })}
+          aoFechar={() => setImportando(false)}
+        />
+      )}
 
       <div className="space-y-3">
         <CampoBusca
@@ -188,8 +214,6 @@ export function Clientes() {
             <Th>Nome / Razão social</Th>
             <Th>Tipo</Th>
             <Th>CPF/CNPJ</Th>
-            <Th>WhatsApp</Th>
-            <Th>Cidade</Th>
             <Th>Cliente desde</Th>
             <Th className="text-right">Veículos</Th>
             <Th>Status</Th>
@@ -224,8 +248,6 @@ function LinhaCliente({ cliente: c }: { cliente: ClienteResumo }) {
       <Td suave className="whitespace-nowrap">
         {formatarDocumento(c.cpfCnpj)}
       </Td>
-      <Td className="whitespace-nowrap">{c.whatsapp ? <LinkWhatsApp numero={c.whatsapp} /> : '—'}</Td>
-      <Td suave>{c.cidade ?? '—'}</Td>
       <Td suave className="whitespace-nowrap">
         {c.clienteDesde ? formatarDataIso(c.clienteDesde) : '—'}
       </Td>

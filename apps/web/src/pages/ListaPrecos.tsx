@@ -1,9 +1,12 @@
-import { Tag } from 'lucide-react';
+import { COLUNAS_IMPORTACAO_LINHAS_PRECO } from '@mobios/shared';
+import { useQueryClient } from '@tanstack/react-query';
+import { FileUp, Plus, Tag } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
-import { AbasPrecos } from '../components/AbasPrecos';
-import { ListaDePrecos } from '../components/ListaDePrecos';
-import { Alerta, classesBotao, Select, TextoSuave, Titulo, Vazio } from '../components/ui';
+import { ImportarCsv } from '../components/ImportarCsv';
+import { LinhasDePreco } from '../components/LinhasDePreco';
+import { NovoPreco } from '../components/NovoPreco';
+import { Alerta, Botao, classesBotao, Select, Titulo, Vazio } from '../components/ui';
 import { useTabelasPreco } from '../lib/materiais';
 import { usePode } from '../lib/sessao';
 
@@ -18,13 +21,15 @@ const lerTabelaSalva = () => {
   }
 };
 
-/** Aba "Lista de preços" da Política Comercial: consulta rápida no atendimento, uma tabela por vez. */
+/** Linhas de Preço (Política Comercial): consulta rápida no atendimento, uma tabela por vez, e importação. */
 export function ListaPrecos() {
   const pode = usePode();
   const tabelas = useTabelasPreco(pode('precos'));
   const ativas = tabelas.data?.filter((t) => t.ativa) ?? [];
   const [tabelaId, setTabelaId] = useState(lerTabelaSalva);
   const tabela = ativas.find((t) => t.id === tabelaId) ?? ativas[0];
+  const [painel, setPainel] = useState<'cadastro' | 'importacao' | null>(null);
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     if (!tabela) return;
@@ -39,8 +44,39 @@ export function ListaPrecos() {
 
   return (
     <div className="space-y-6">
-      <Titulo>Política Comercial</Titulo>
-      <AbasPrecos />
+      <Titulo
+        acao={
+          pode('precos', 'editar') &&
+          tabela && (
+            <div className="flex flex-wrap gap-2">
+              <Botao variante="secundario" onClick={() => setPainel(painel === 'importacao' ? null : 'importacao')}>
+                <FileUp className="mr-1.5 size-4" aria-hidden /> Importar planilha
+              </Botao>
+              <Botao onClick={() => setPainel(painel === 'cadastro' ? null : 'cadastro')}>
+                <Plus className="mr-1.5 size-4" aria-hidden /> Cadastrar preço
+              </Botao>
+            </div>
+          )
+        }
+      >
+        Linhas de Preço
+      </Titulo>
+
+      {painel === 'cadastro' && tabela && <NovoPreco tabela={tabela} aoConcluir={() => setPainel(null)} />}
+      {painel === 'importacao' && tabela && (
+        <ImportarCsv
+          titulo={`Importar linhas de preço — ${tabela.nome}`}
+          colunas={COLUNAS_IMPORTACAO_LINHAS_PRECO}
+          url={`/precos/importar?tabelaPrecoId=${tabela.id}`}
+          nomeModelo="modelo-linhas-de-preco.csv"
+          aoConcluir={() => {
+            queryClient.invalidateQueries({ queryKey: ['linhas-preco'] });
+            queryClient.invalidateQueries({ queryKey: ['tabelas-preco'] });
+            queryClient.invalidateQueries({ queryKey: ['precos'] });
+          }}
+          aoFechar={() => setPainel(null)}
+        />
+      )}
 
       {tabelas.data && ativas.length === 0 ? (
         <Vazio
@@ -70,9 +106,8 @@ export function ListaPrecos() {
                   </option>
                 ))}
               </Select>
-              {pode('estoque') && <TextoSuave className="text-xs">Disponível somado de todos os depósitos.</TextoSuave>}
             </div>
-            <ListaDePrecos key={tabela.id} tabelaPrecoId={tabela.id} autoFocus />
+            <LinhasDePreco key={tabela.id} tabelaPrecoId={tabela.id} autoFocus />
           </>
         )
       )}

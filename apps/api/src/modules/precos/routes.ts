@@ -1,4 +1,5 @@
 import {
+  COLUNAS_IMPORTACAO_LINHAS_PRECO,
   COLUNAS_IMPORTACAO_PRECOS,
   eventoPrecoPadraoSchema,
   hojeIso,
@@ -13,13 +14,12 @@ import {
   precoSchema,
   precoVigenteQuerySchema,
   precoVigenteSchema,
-  itemListaPrecosSchema,
-  listaPrecosQuerySchema,
+  linhaPrecoSchema,
+  linhasPrecoQuerySchema,
   resultadoImportacaoSchema,
   situacaoPreco,
-  temAcesso,
   type EventoPrecoPadrao,
-  type ItemListaPrecos,
+  type LinhaPreco,
   type Preco,
 } from '@mobios/shared';
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
@@ -141,68 +141,65 @@ export const precosRoutes: FastifyPluginAsyncZod = async (app) => {
   );
 
   /**
-   * Lista de preços de uma tabela (consulta rápida no atendimento): material ativo, preço de hoje (vigência ou,
-   * sem ela, o padrão), próximo preço programado e o disponível somado dos depósitos (só para quem acessa o Estoque).
-   * Preço e próximo preço vêm de subconsultas LATERAL que usam o índice (material, tabela, início).
+   * Linhas de Preço de uma tabela: cada vigência é uma linha (com início, fim e situação) e o preço padrão
+   * é outra. Só preço: sem estoque nem outros dados do material além de SKU e descrição.
+   * Filtro de situação: por padrão, o que vale hoje, o que vem depois e o padrão.
    */
   app.get(
-    '/lista',
+    '/linhas',
     {
       schema: {
-        querystring: listaPrecosQuerySchema,
-        response: { 200: z.object({ itens: z.array(itemListaPrecosSchema), total: z.number() }) },
+        querystring: linhasPrecoQuerySchema,
+        response: { 200: z.object({ itens: z.array(linhaPrecoSchema), total: z.number() }) },
       },
     },
     async (req) => {
-      const { tabelaPrecoId, q, comPreco, pagina, porPagina } = req.query;
+      const { tabelaPrecoId, q, situacao, pagina, porPagina } = req.query;
       const hoje = hojeIso();
-      const verEstoque = temAcesso(req.user.acessos, 'estoque');
+      // Mesma regra de situacaoPreco (shared), calculada no banco para poder filtrar e paginar.
+      const situacaoDaVigencia = sql`case
+        when p.cancelado then 'cancelado'
+        when p.data_inicio > ${hoje}::date then 'futuro'
+        when p.data_fim < ${hoje}::date then 'encerrado'
+        else 'vigente' end`;
+      const filtroSituacao =
+        situacao === 'todas'
+          ? sql``
+          : situacao === 'atuais'
+            ? sql`and l.situacao in ('vigente', 'futuro', 'padrao')`
+            : sql`and l.situacao = ${situacao}`;
       const busca = q ? sql`and ${buscaDeMaterial(q)}` : sql``;
-      const soComPreco =
-        comPreco === 'true' ? sql`and (v.preco_centavos is not null or pp.preco_centavos is not null)` : sql``;
       // `materiais` sem apelido: o filtro de busca (buscaDeMaterial) usa as colunas com o nome da tabela.
       const base = sql`
-        from materiais
-        left join marcas ma on ma.id = materiais.marca_id
-        left join lateral (
-          select p.preco_centavos, p.data_inicio, p.data_fim from materiais_precos p
-          where p.material_id = materiais.id and p.tabela_preco_id = ${tabelaPrecoId} and not p.cancelado
-            and p.data_inicio <= ${hoje}::date and (p.data_fim is null or p.data_fim >= ${hoje}::date)
-          limit 1) v on true
-        left join lateral (
-          select p.preco_centavos, p.data_inicio from materiais_precos p
-          where p.material_id = materiais.id and p.tabela_preco_id = ${tabelaPrecoId} and not p.cancelado
-            and p.data_inicio > ${hoje}::date
-          order by p.data_inicio limit 1) f on true
-        left join precos_padrao pp on pp.material_id = materiais.id and pp.tabela_preco_id = ${tabelaPrecoId}
-        where materiais.ativo ${busca} ${soComPreco}`;
-      const disponivel = verEstoque
-        ? sql`(select coalesce(sum(e.disponivel), 0) from estoques e where e.material_id = materiais.id)::float8`
-        : sql`null`;
+        from (
+          select p.id::text as id, p.material_id, p.preco_centavos, p.data_inicio, p.data_fim,
+            ${situacaoDaVigencia} as situacao, 1 as ordem
+          from materiais_precos p where p.tabela_preco_id = ${tabelaPrecoId}
+          union all
+          select 'padrao:' || pp.material_id, pp.material_id, pp.preco_centavos, null, null, 'padrao', 2
+          from precos_padrao pp where pp.tabela_preco_id = ${tabelaPrecoId}
+        ) l
+        join materiais on materiais.id = l.material_id
+        where materiais.ativo ${busca} ${filtroSituacao}`;
       return withTenant(req.user.tid, async (tx) => {
         const [tabela] = await tx
           .select({ id: tabelasPreco.id })
           .from(tabelasPreco)
           .where(eq(tabelasPreco.id, tabelaPrecoId));
         if (!tabela) throw naoEncontrado('Tabela de preço');
-        const linhas = (await tx.execute(sql`
-          select materiais.id as "materialId", materiais.sku, materiais.descricao,
-            ma.nome as "marcaNome", materiais.unidade::text as unidade,
-            coalesce(v.preco_centavos, pp.preco_centavos)::float8 as "precoCentavos",
-            case when v.preco_centavos is not null then 'vigencia'
-              when pp.preco_centavos is not null then 'padrao' end as origem,
-            v.data_inicio::text as "vigenteDesde",
-            v.data_fim::text as "vigenteAte",
-            f.preco_centavos::float8 as "proximoPrecoCentavos",
-            f.data_inicio::text as "proximoInicio",
-            ${disponivel} as disponivel
+        const itens = (await tx.execute(sql`
+          select l.id, materiais.id as "materialId", materiais.sku, materiais.descricao,
+            l.preco_centavos::float8 as "precoCentavos",
+            l.data_inicio::text as "dataInicio",
+            l.data_fim::text as "dataFim",
+            l.situacao
           ${base}
-          order by materiais.descricao, materiais.sku
-          limit ${porPagina} offset ${(pagina - 1) * porPagina}`)) as unknown as ItemListaPrecos[];
+          order by materiais.descricao, materiais.sku, l.ordem, l.data_inicio
+          limit ${porPagina} offset ${(pagina - 1) * porPagina}`)) as unknown as LinhaPreco[];
         const [{ total }] = (await tx.execute(sql`select count(*)::int as total ${base}`)) as unknown as [
           { total: number },
         ];
-        return { itens: linhas, total };
+        return { itens, total };
       });
     },
   );
@@ -464,54 +461,77 @@ export const precosRoutes: FastifyPluginAsyncZod = async (app) => {
 
   /**
    * Preços em massa por CSV (colunas em COLUNAS_IMPORTACAO_PRECOS; a 1ª linha é o cabeçalho).
+   * Com `?tabelaPrecoId` (tela Linhas de Preço), a coluna `tabela` é opcional e, vazia, usa essa tabela.
    * Linha com `inicio` = nova vigência (mesmas regras da tela); sem `inicio` = preço padrão.
    * Grava as linhas válidas e devolve o erro de cada uma das outras, com o número da linha.
    */
-  app.post('/importar', { ...editar, schema: { response: { 200: resultadoImportacaoSchema } } }, async (req) => {
-    const linhas = lerPlanilhaEnviada(req.body, COLUNAS_IMPORTACAO_PRECOS);
-    return withTenant(req.user.tid, async (tx) => {
-      // Tabelas e materiais da planilha lidos de uma vez, não uma consulta por linha.
-      const tabelas = new Map(
-        (await tx.select({ id: tabelasPreco.id, codigo: tabelasPreco.codigo }).from(tabelasPreco)).map((t) => [
-          t.codigo,
-          t.id,
-        ]),
+  app.post(
+    '/importar',
+    {
+      ...editar,
+      schema: {
+        querystring: z.object({ tabelaPrecoId: z.uuid().optional() }),
+        response: { 200: resultadoImportacaoSchema },
+      },
+    },
+    async (req) => {
+      const tabelaDaTela = req.query.tabelaPrecoId;
+      const linhas = lerPlanilhaEnviada(
+        req.body,
+        tabelaDaTela ? COLUNAS_IMPORTACAO_LINHAS_PRECO : COLUNAS_IMPORTACAO_PRECOS,
       );
-      const skus = [...new Set(linhas.map((l) => (l.valores.sku ?? '').toUpperCase()).filter(Boolean))];
-      const encontrados = skus.length
-        ? await tx
-            .select({ id: materiais.id, sku: materiais.sku, ativo: materiais.ativo })
-            .from(materiais)
-            .where(inArray(materiais.sku, skus))
-        : [];
-      const porSku = new Map(encontrados.map((m) => [m.sku, m]));
+      return withTenant(req.user.tid, async (tx) => {
+        // Tabelas e materiais da planilha lidos de uma vez, não uma consulta por linha.
+        const tabelas = new Map(
+          (await tx.select({ id: tabelasPreco.id, codigo: tabelasPreco.codigo }).from(tabelasPreco)).map((t) => [
+            t.codigo,
+            t.id,
+          ]),
+        );
+        const skus = [...new Set(linhas.map((l) => (l.valores.sku ?? '').toUpperCase()).filter(Boolean))];
+        const encontrados = skus.length
+          ? await tx
+              .select({ id: materiais.id, sku: materiais.sku, ativo: materiais.ativo })
+              .from(materiais)
+              .where(inArray(materiais.sku, skus))
+          : [];
+        const porSku = new Map(encontrados.map((m) => [m.sku, m]));
+        if (tabelaDaTela && ![...tabelas.values()].includes(tabelaDaTela)) throw naoEncontrado('Tabela de preço');
 
-      return importarLinhas(tx, linhas, async (savepoint, { valores }) => {
-        const valor = (coluna: string) => valores[coluna] ?? '';
-        const tabelaPrecoId = tabelas.get(valor('tabela').toUpperCase());
-        if (!tabelaPrecoId) throw new ErroHttp(400, `Tabela de preço "${valor('tabela')}" não encontrada.`);
-        const material = porSku.get(valor('sku').toUpperCase());
-        if (!material) throw new ErroHttp(400, `SKU "${valor('sku')}" não encontrado.`);
-        const precoCentavos = lerPrecoCentavos(valor('preco'));
+        return importarLinhas(tx, linhas, async (savepoint, { valores }) => {
+          const valor = (coluna: string) => valores[coluna] ?? '';
+          const tabelaPrecoId = valor('tabela') ? tabelas.get(valor('tabela').toUpperCase()) : tabelaDaTela;
+          if (!tabelaPrecoId) {
+            throw new ErroHttp(
+              400,
+              valor('tabela')
+                ? `Tabela de preço "${valor('tabela')}" não encontrada.`
+                : 'tabela: informe o código da tabela de preço.',
+            );
+          }
+          const material = porSku.get(valor('sku').toUpperCase());
+          if (!material) throw new ErroHttp(400, `SKU "${valor('sku')}" não encontrado.`);
+          const precoCentavos = lerPrecoCentavos(valor('preco'));
 
-        if (!valor('inicio')) {
-          const situacao = await definirPrecoPadrao(
-            savepoint,
-            { material, tabelaPrecoId, precoCentavos },
-            req.user.sub,
-          );
-          return situacao === 'sem_alteracao' ? 'ignorada' : 'importada';
-        }
-        const dataInicio = lerData(valor('inicio'));
-        if (!dataInicio) throw new ErroHttp(400, `Início "${valor('inicio')}" inválido: use dd/mm/aaaa.`);
-        const dataFim = valor('fim') ? lerData(valor('fim')) : null;
-        if (valor('fim') && !dataFim) throw new ErroHttp(400, `Fim "${valor('fim')}" inválido: use dd/mm/aaaa.`);
-        if (dataFim && dataFim < dataInicio) throw new ErroHttp(400, 'O fim deve ser igual ou posterior ao início.');
-        await criarVigencia(savepoint, { material, tabelaPrecoId, precoCentavos, dataInicio, dataFim }, req.user.sub);
-        return 'importada';
+          if (!valor('inicio')) {
+            const situacao = await definirPrecoPadrao(
+              savepoint,
+              { material, tabelaPrecoId, precoCentavos },
+              req.user.sub,
+            );
+            return situacao === 'sem_alteracao' ? 'ignorada' : 'importada';
+          }
+          const dataInicio = lerData(valor('inicio'));
+          if (!dataInicio) throw new ErroHttp(400, `Início "${valor('inicio')}" inválido: use dd/mm/aaaa.`);
+          const dataFim = valor('fim') ? lerData(valor('fim')) : null;
+          if (valor('fim') && !dataFim) throw new ErroHttp(400, `Fim "${valor('fim')}" inválido: use dd/mm/aaaa.`);
+          if (dataFim && dataFim < dataInicio) throw new ErroHttp(400, 'O fim deve ser igual ou posterior ao início.');
+          await criarVigencia(savepoint, { material, tabelaPrecoId, precoCentavos, dataInicio, dataFim }, req.user.sub);
+          return 'importada';
+        });
       });
-    });
-  });
+    },
+  );
 };
 
 const consultaPadrao = (tx: Tx) =>

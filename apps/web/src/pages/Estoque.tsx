@@ -99,7 +99,6 @@ export function Estoque() {
           nomeModelo="modelo-estoque.csv"
           aoConcluir={() => {
             queryClient.invalidateQueries({ queryKey: ['estoque'] });
-            queryClient.invalidateQueries({ queryKey: ['lista-precos'] });
           }}
           aoFechar={() => setPainel(null)}
         />

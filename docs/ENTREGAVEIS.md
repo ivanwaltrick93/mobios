@@ -114,7 +114,7 @@ flowchart LR
 | CAD-10 | Mecânicos: especialidade e % de comissão | 🟢 |
 | CAD-11 | Formas de pagamento e taxas (ex.: crédito 3,5%, prazo de recebimento) | 🟢 |
 | CAD-12 | Transferir veículo de um cliente para outro (venda do carro), levando o histórico | ✅ |
-| CAD-13 | Importar clientes e veículos de planilha (migração de outro sistema) | 🟡 |
+| CAD-13 | Importar **clientes** de planilha CSV (uma linha por cliente, com endereço principal e, na PJ, responsável principal; CPF/CNPJ já cadastrado atualiza). Veículos por planilha: 🟡 | ✅ |
 | CAD-14 | Listas editáveis por oficina: origem do cliente, tipo de relacionamento e função do responsável (Configurações → Cadastros) | ✅ |
 | CAD-15 | Máscaras de digitação: CPF, CNPJ (inclusive alfanumérico), telefone, CEP, e-mail, placa, chassi, Renavam, anos e km | ✅ |
 | CAD-16 | Menu **Clientes** com submenu (Clientes · Veículos). Lista de clientes em tabela, 20 por página, com filtros: status, PF/PJ, período de "cliente desde", origem, tipo de relacionamento e aniversário; página **Veículos** com a frota inteira (busca por placa, marca, modelo ou dono) | ✅ |
@@ -161,10 +161,11 @@ flowchart LR
 | EST-11 | Categorias hierárquicas e marcas | ✅ |
 | EST-12 | Cadastro de depósitos (local lógico; saldo por depósito vem com o estoque) | ✅ |
 | EST-13 | Tabelas de preço e preço por vigência, com histórico, preços programados, consulta do preço vigente e trilha de auditoria | ✅ |
-| EST-14 | Menu **Política Comercial**: aba Lista de preços (uma tabela por vez, busca rápida, preço de hoje, próximo preço e disponível total) e aba Tabelas de preço (lista em tabela; abrir uma tabela mostra os preços dela e permite **cadastrar preço digitando o SKU**, que é conferido antes de gravar). Listas com 20 por página | ✅ |
+| EST-14 | Menu **Política Comercial** com submenu: **Linhas de Preço** (uma tabela por vez; uma linha por vigência com preço, início, fim e situação, e outra para o preço padrão; filtro de situação que começa em vigentes, futuras e padrão; só preço, sem estoque; **cadastro manual de preço por SKU** e importação por planilha usando a tabela da tela) e **Tabelas de Preço** (lista em tabela; abrir uma tabela mostra as mesmas linhas de preço e o cadastro por SKU). Listas com 20 por página | ✅ |
 | EST-16 | **Preço padrão** (sem vigência) por material e tabela: vale nos dias sem vigência; alterar ou remover fica na trilha | ✅ |
 | EST-17 | **Importação de preços por planilha CSV** (colunas tabela, sku, preco, inicio, fim; 1ª linha = cabeçalho): grava as linhas válidas e lista as com erro, com o número da linha | ✅ |
 | EST-15 | **Tabela de estoque** por SKU + depósito (20 por página): disponível (livre), reservado e físico; ajuste manual com motivo e histórico, e **lançamento de saldo digitando SKU e depósito** (conferidos antes de gravar), até existir movimentação automática (EST-02, EST-04, EST-10) | ✅ |
+| EST-19 | **Importação de materiais e de categorias por planilha CSV**: tipo, categoria (código ou caminho) e marca pelos cadastros existentes; SKU, código ou nome sob o mesmo pai já cadastrados atualizam | ✅ |
 | EST-18 | **Importação de saldos por planilha CSV** (colunas sku, deposito, disponivel, reservado, motivo; 1ª linha = cabeçalho): cada linha informa o saldo final; grava as válidas e lista as com erro | ✅ |
 | EST-02 | Entrada manual (compra) com fornecedor, quantidade e custo | 🟢 |
 | EST-03 | Entrada automática pela **importação do XML da nota fiscal do fornecedor** | 🟡 |

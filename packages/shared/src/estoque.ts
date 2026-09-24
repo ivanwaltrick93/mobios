@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ORIGENS_PRECO, UNIDADES } from './materiais.js';
+import { UNIDADES } from './materiais.js';
 
 /*
  * Estoque por material + depósito (chave: SKU + depósito).
@@ -91,32 +91,3 @@ export const ajusteEstoqueSchema = z.object({
   criadoEm: z.coerce.date(),
 });
 export type AjusteEstoque = z.infer<typeof ajusteEstoqueSchema>;
-
-// ---------- Lista de preços (consulta rápida no atendimento) ----------
-
-export const listaPrecosQuerySchema = z.object({
-  tabelaPrecoId: z.uuid('Escolha a tabela de preço'),
-  q: z.string().trim().optional(),
-  /** "true" = só materiais com preço vigente hoje. */
-  comPreco: z.enum(['true', 'false']).default('false'),
-  pagina: z.coerce.number().int().min(1).default(1),
-  porPagina: z.coerce.number().int().min(1).max(100).default(50),
-});
-
-export const itemListaPrecosSchema = z.object({
-  materialId: z.uuid(),
-  sku: z.string(),
-  descricao: z.string(),
-  marcaNome: z.string().nullable(),
-  unidade: z.enum(chaves(UNIDADES)),
-  /** Preço de hoje: o da vigência ou, sem vigência, o padrão. */
-  precoCentavos: z.number().nullable(),
-  origem: z.enum(chaves(ORIGENS_PRECO)).nullable(),
-  vigenteDesde: z.string().nullable(),
-  vigenteAte: z.string().nullable(),
-  proximoPrecoCentavos: z.number().nullable(),
-  proximoInicio: z.string().nullable(),
-  /** Soma do disponível em todos os depósitos; null = usuário sem acesso ao Estoque. */
-  disponivel: z.number().nullable(),
-});
-export type ItemListaPrecos = z.infer<typeof itemListaPrecosSchema>;

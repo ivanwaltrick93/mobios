@@ -1,8 +1,9 @@
 import { and, eq, ilike, or, sql, type SQL } from 'drizzle-orm';
 import type { AnyPgColumn, PgTable } from 'drizzle-orm/pg-core';
 import type { Tx } from '../db/client.js';
-import { materiais } from '../db/schema.js';
+import { categorias, materiais } from '../db/schema.js';
 import { ErroHttp, naoEncontrado } from './erros.js';
+import { comparavel } from './importacao.js';
 
 type TabelaComId = PgTable & { id: AnyPgColumn };
 type TabelaVersionada = TabelaComId & { versao: AnyPgColumn };
@@ -128,3 +129,71 @@ export function buscaDeMaterial(q: string): SQL {
     ilike(materiais.descricao, `%${q}%`),
   )!;
 }
+
+// ---------- Categoria pela planilha (importações) ----------
+
+export type CategoriaDaPlanilha = {
+  id: string;
+  nome: string;
+  codigo: string | null;
+  paiId: string | null;
+  caminho: string;
+};
+
+/** Categorias da oficina localizáveis pelo código, pelo caminho ("peças > motor") ou pelo nome, se único. */
+export class MapaDeCategorias {
+  private porId = new Map<string, CategoriaDaPlanilha>();
+
+  static async carregar(tx: Tx) {
+    const mapa = new MapaDeCategorias();
+    const todas = await tx
+      .select({ id: categorias.id, nome: categorias.nome, codigo: categorias.codigo, paiId: categorias.categoriaPaiId })
+      .from(categorias);
+    const porId = new Map(todas.map((c) => [c.id, c]));
+    const caminho = (c: (typeof todas)[number]): string => {
+      const pai = c.paiId ? porId.get(c.paiId) : undefined;
+      return pai ? `${caminho(pai)} > ${c.nome}` : c.nome;
+    };
+    for (const c of todas) mapa.guardar({ ...c, caminho: caminho(c) });
+    return mapa;
+  }
+
+  /** Inclui ou atualiza (categoria gravada durante a importação vira referência para as linhas seguintes). */
+  guardar(categoria: CategoriaDaPlanilha) {
+    this.porId.set(categoria.id, categoria);
+  }
+
+  caminhoDe(id: string) {
+    return this.porId.get(id)?.caminho;
+  }
+
+  /** Categoria com este caminho exato (nome sob o pai), se existir. */
+  porCaminho(caminho: string) {
+    return [...this.porId.values()].find((c) => normalizarCaminho(c.caminho) === normalizarCaminho(caminho));
+  }
+
+  porCodigo(codigo: string) {
+    return [...this.porId.values()].find((c) => c.codigo === codigo.trim().toUpperCase());
+  }
+
+  /** Código, caminho completo ou nome (só se não houver outra categoria com o mesmo nome). */
+  achar(texto: string, coluna: string): CategoriaDaPlanilha {
+    const achada = this.porCodigo(texto) ?? this.porCaminho(texto);
+    if (achada) return achada;
+    const mesmoNome = [...this.porId.values()].filter((c) => comparavel(c.nome) === comparavel(texto));
+    if (mesmoNome.length === 1) return mesmoNome[0]!;
+    if (mesmoNome.length > 1) {
+      throw new ErroHttp(
+        400,
+        `${coluna}: há mais de uma categoria "${texto}" (${mesmoNome
+          .map((c) => c.caminho)
+          .sort()
+          .join('; ')}). ` + 'Informe o código ou o caminho completo.',
+      );
+    }
+    throw new ErroHttp(400, `${coluna}: categoria "${texto}" não encontrada.`);
+  }
+}
+
+/** "Peças › Motor" e "peças > motor" são o mesmo caminho. */
+const normalizarCaminho = (caminho: string) => caminho.split(/[>›]/).map(comparavel).filter(Boolean).join(' > ');

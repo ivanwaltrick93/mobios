@@ -400,6 +400,45 @@ export const eventoPrecoPadraoSchema = z.object({
 });
 export type EventoPrecoPadrao = z.infer<typeof eventoPrecoPadraoSchema>;
 
+// ---------- Linhas de Preço (Política Comercial) ----------
+
+/** Situação de uma linha de preço: a situação da vigência, ou "padrao" para o preço sem vigência. */
+export const SITUACOES_LINHA_PRECO = { ...SITUACOES_PRECO, padrao: 'Padrão' } as const;
+
+/** Filtro de situação das Linhas de Preço; o padrão mostra o que vale hoje e o que vem depois. */
+export const FILTROS_LINHAS_PRECO = {
+  atuais: 'Vigentes, futuras e padrão',
+  vigente: 'Vigentes',
+  futuro: 'Futuras',
+  encerrado: 'Encerradas',
+  cancelado: 'Canceladas',
+  padrao: 'Padrão (sem vigência)',
+  todas: 'Todas',
+} as const;
+
+export const linhasPrecoQuerySchema = z.object({
+  tabelaPrecoId: z.uuid('Escolha a tabela de preço'),
+  q: z.string().trim().optional(),
+  situacao: z.enum(chaves(FILTROS_LINHAS_PRECO)).default('atuais'),
+  pagina: z.coerce.number().int().min(1).default(1),
+  porPagina: z.coerce.number().int().min(1).max(100).default(20),
+});
+
+/** Uma linha de preço de uma tabela: cada vigência do material é uma linha; o preço padrão é outra. */
+export const linhaPrecoSchema = z.object({
+  /** Id da vigência, ou "padrao:<materialId>" na linha do preço padrão. */
+  id: z.string(),
+  materialId: z.uuid(),
+  sku: z.string(),
+  descricao: z.string(),
+  precoCentavos: z.number(),
+  /** Vazios no preço padrão. */
+  dataInicio: z.string().nullable(),
+  dataFim: z.string().nullable(),
+  situacao: z.enum(chaves(SITUACOES_LINHA_PRECO)),
+});
+export type LinhaPreco = z.infer<typeof linhaPrecoSchema>;
+
 /** De onde vem o preço de um dia: uma vigência que cobre a data ou, na falta dela, o preço padrão. */
 export const ORIGENS_PRECO = { vigencia: 'Vigência', padrao: 'Padrão' } as const;
 export type OrigemPreco = keyof typeof ORIGENS_PRECO;

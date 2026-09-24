@@ -1,8 +1,9 @@
 import type { Categoria } from '@mobios/shared';
-import { mascaraCodigo } from '@mobios/shared';
+import { COLUNAS_IMPORTACAO_CATEGORIAS, mascaraCodigo } from '@mobios/shared';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { FolderTree } from 'lucide-react';
+import { FileUp, FolderTree } from 'lucide-react';
 import { Fragment, useState, type FormEvent } from 'react';
+import { ImportarCsv } from '../components/ImportarCsv';
 import {
   Alerta,
   Botao,
@@ -35,6 +36,7 @@ export function Categorias() {
   const categorias = useCategorias();
   const [edicao, setEdicao] = useState<Edicao>(null);
   const [vendo, setVendo] = useState<string | null>(null);
+  const [importando, setImportando] = useState(false);
   const arvore = arvoreCategorias(categorias.data);
   const queryClient = useQueryClient();
   const acao = useMutation({
@@ -49,9 +51,31 @@ export function Categorias() {
 
   return (
     <div className="space-y-6">
-      <Titulo acao={editar && !edicao && <Botao onClick={() => setEdicao({ paiId: null })}>Nova categoria</Botao>}>
+      <Titulo
+        acao={
+          editar &&
+          !edicao && (
+            <div className="flex flex-wrap gap-2">
+              <Botao variante="secundario" onClick={() => setImportando(!importando)}>
+                <FileUp className="mr-1.5 size-4" aria-hidden /> Importar planilha
+              </Botao>
+              <Botao onClick={() => setEdicao({ paiId: null })}>Nova categoria</Botao>
+            </div>
+          )
+        }
+      >
         Categorias
       </Titulo>
+      {importando && (
+        <ImportarCsv
+          titulo="Importar categorias"
+          colunas={COLUNAS_IMPORTACAO_CATEGORIAS}
+          url="/categorias/importar"
+          nomeModelo="modelo-categorias.csv"
+          aoConcluir={() => queryClient.invalidateQueries({ queryKey: ['categorias'] })}
+          aoFechar={() => setImportando(false)}
+        />
+      )}
       <TextoSuave>
         Organize os materiais em níveis (ex.: Peças › Motor › Filtros). Ao filtrar por uma categoria, as subcategorias
         entram junto.

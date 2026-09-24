@@ -6,12 +6,16 @@ import {
   normalizarDocumento,
   normalizarPlaca,
   clienteFiltroSchema,
+  COLUNAS_IMPORTACAO_CLIENTES,
   DIAS_ANIVERSARIO_SEMANA,
   hojeIso,
   pendenciasCliente,
+  resultadoImportacaoSchema,
   type Cliente,
   type ClienteDados,
+  type ClienteInput,
   type ClienteResumo,
+  type TipoEndereco,
 } from '@mobios/shared';
 import { and, asc, count, eq, gte, ilike, lte, or, sql } from 'drizzle-orm';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
@@ -26,7 +30,18 @@ import {
   relacionamentosCliente,
 } from '../../db/schema.js';
 import { excluirSeNaoUsado, validarReferencia } from '../../lib/cadastro.js';
-import { naoEncontrado } from '../../lib/erros.js';
+import { ErroHttp, naoEncontrado } from '../../lib/erros.js';
+import {
+  aceitarUploadDeCsv,
+  colunaDoCampo,
+  comparavel,
+  exigirPrimeiraVez,
+  importarLinhas,
+  lerDataPlanilha,
+  lerPlanilhaEnviada,
+  lerSimNao,
+  validarLinha,
+} from '../../lib/importacao.js';
 
 // Correlação escrita à mão: dentro da subconsulta o Drizzle não qualifica as colunas.
 const temEndereco = sql<boolean>`exists (select 1 from cliente_enderecos e where e.cliente_id = "clientes"."id")`;
@@ -168,6 +183,126 @@ async function validarOpcoes(
   );
 }
 
+/** Novo cliente com endereços e responsáveis (mesmas regras na tela e na importação). */
+async function criarCliente(tx: Tx, { enderecos, responsaveis, ...dados }: ClienteDados) {
+  await validarOpcoes(tx, dados);
+  const [{ id }] = (await tx.insert(clientes).values(dados).returning({ id: clientes.id })) as [{ id: string }];
+  await gravarEnderecos(tx, id, enderecos);
+  await gravarResponsaveis(tx, id, responsaveis);
+  return id;
+}
+
+/** Alteração: regrava endereços e responsáveis junto; itens de lista que o cliente já usava continuam válidos. */
+async function atualizarCliente(tx: Tx, id: string, { enderecos, responsaveis, ...dados }: ClienteDados) {
+  const [atual] = await tx
+    .select({ origemId: clientes.origemId, relacionamentoId: clientes.relacionamentoId })
+    .from(clientes)
+    .where(eq(clientes.id, id))
+    .for('update');
+  if (!atual) throw naoEncontrado('Cliente');
+  await validarOpcoes(tx, dados, atual);
+  await tx.update(clientes).set(dados).where(eq(clientes.id, id));
+  await gravarEnderecos(tx, id, enderecos);
+  await gravarResponsaveis(tx, id, responsaveis);
+}
+
+// ---------- Importação por planilha ----------
+
+type ListaDeOpcoes = typeof origensCliente | typeof relacionamentosCliente | typeof cargosResponsavel;
+
+/** Itens de uma lista da oficina pelo nome (sem acento e sem diferenciar maiúsculas). */
+async function idsPorNome(tx: Tx, tabela: ListaDeOpcoes) {
+  const itens = await tx.select({ id: tabela.id, nome: tabela.nome }).from(tabela);
+  return new Map(itens.map((i) => [comparavel(i.nome), i.id]));
+}
+
+/**
+ * Monta a entrada do cadastro a partir da linha. Colunas ausentes do arquivo mantêm o valor do cliente
+ * existente; o endereço da linha substitui o principal e o responsável da linha (PJ) substitui o principal.
+ */
+function clienteDaLinha(
+  valores: Record<string, string>,
+  listas: Record<'origem' | 'relacionamento' | 'responsavel_funcao', Map<string, string>>,
+  atual?: Cliente,
+): ClienteInput {
+  const valor = (coluna: string) => valores[coluna] ?? '';
+  const temColuna = (coluna: string) => coluna in valores;
+  const texto = (coluna: string, atualValor: string | null | undefined) =>
+    temColuna(coluna) ? valor(coluna) : (atualValor ?? '');
+  const itemDaLista = (coluna: keyof typeof listas, atualId: string | null | undefined) => {
+    if (!temColuna(coluna)) return atualId ?? null;
+    if (!valor(coluna)) return null;
+    const id = listas[coluna].get(comparavel(valor(coluna)));
+    if (!id) throw new ErroHttp(400, `${coluna}: "${valor(coluna)}" não está na lista (Configurações → Cadastros).`);
+    return id;
+  };
+  const tipo = valor('tipo').toUpperCase() as 'PF' | 'PJ';
+
+  const principal = atual?.enderecos.find((e) => e.principal);
+  const endereco = {
+    ...(principal && semId(principal)),
+    tipo: (valor('tipo_endereco').toLowerCase() ||
+      principal?.tipo ||
+      (tipo === 'PJ' ? 'comercial' : 'residencial')) as TipoEndereco,
+    cep: valor('cep'),
+    logradouro: valor('logradouro'),
+    numero: valor('numero'),
+    complemento: texto('complemento', principal?.complemento),
+    bairro: valor('bairro'),
+    cidade: valor('cidade'),
+    uf: valor('uf'),
+    principal: true,
+  };
+  const enderecos = atual ? [endereco, ...atual.enderecos.filter((e) => !e.principal).map(semId)] : [endereco];
+
+  const temResponsavel = ['responsavel_nome', 'responsavel_funcao', 'responsavel_telefone'].some((c) => valor(c));
+  const responsavel = temResponsavel && {
+    nome: valor('responsavel_nome'),
+    cargoId: itemDaLista('responsavel_funcao', undefined) ?? '',
+    telefone: valor('responsavel_telefone'),
+    telefoneWhatsapp: lerSimNao(valor('responsavel_whatsapp'), 'responsavel_whatsapp') ?? false,
+    email: valor('responsavel_email'),
+    principal: true,
+  };
+  const outrosResponsaveis = (atual?.responsaveis ?? [])
+    .filter((r) => !responsavel || !r.principal)
+    .map(({ id: _id, cargoNome: _cargo, ...r }) => r);
+  const responsaveis = responsavel ? [responsavel, ...outrosResponsaveis] : outrosResponsaveis;
+
+  return {
+    tipo,
+    nome: valor('nome'),
+    cpfCnpj: valor('cpf_cnpj'),
+    telefone: valor('telefone'),
+    whatsapp: valor('whatsapp'),
+    email: texto('email', atual?.email),
+    rgIe: texto('rg_ie', atual?.rgIe),
+    dataNascimento: temColuna('data_nascimento')
+      ? lerDataPlanilha(valor('data_nascimento'), 'data_nascimento')
+      : (atual?.dataNascimento ?? null),
+    sexo: (temColuna('sexo') ? valor('sexo').toLowerCase() : atual?.sexo) || null,
+    clienteDesde: lerDataPlanilha(valor('cliente_desde'), 'cliente_desde') ?? atual?.clienteDesde ?? hojeIso(),
+    origemId: itemDaLista('origem', atual?.origemId),
+    relacionamentoId: itemDaLista('relacionamento', atual?.relacionamentoId),
+    ativo: lerSimNao(valor('ativo'), 'ativo') ?? atual?.ativo ?? true,
+    observacoes: texto('observacoes', atual?.observacoes),
+    enderecos,
+    responsaveis,
+  } as ClienteInput;
+}
+
+const semId = <T extends { id: string }>({ id: _id, ...resto }: T) => resto;
+
+/** Caminho do campo no cadastro → coluna da planilha, para a mensagem de erro apontar o que corrigir. */
+function colunaDoCliente([campo, , subcampo]: PropertyKey[]): string {
+  if (campo === 'enderecos') return subcampo === 'tipo' ? 'tipo_endereco' : subcampo ? String(subcampo) : 'endereço';
+  if (campo === 'responsaveis') {
+    const coluna = { cargoId: 'funcao', telefoneWhatsapp: 'whatsapp' }[String(subcampo)] ?? String(subcampo ?? 'nome');
+    return `responsavel_${coluna}`;
+  }
+  return { origemId: 'origem', relacionamentoId: 'relacionamento' }[String(campo)] ?? colunaDoCampo(campo!);
+}
+
 async function gravarEnderecos(tx: Tx, clienteId: string, enderecos: ClienteDados['enderecos']) {
   // Os endereços são regravados juntos com o cliente (mesma transação): nada referencia endereço por id.
   await tx.delete(clienteEnderecos).where(eq(clienteEnderecos.clienteId, clienteId));
@@ -198,6 +333,7 @@ export const clientesRoutes: FastifyPluginAsyncZod = async (app) => {
   app.addHook('onRequest', app.autenticar);
   app.addHook('onRequest', app.exigirAcesso('clientes'));
   const editar = { onRequest: app.exigirAcesso('clientes', 'editar') };
+  aceitarUploadDeCsv(app);
 
   app.get(
     '/',
@@ -261,14 +397,9 @@ export const clientesRoutes: FastifyPluginAsyncZod = async (app) => {
     '/',
     { ...editar, schema: { body: clienteInputSchema, response: { 201: clienteSchema } } },
     async (req, reply) => {
-      const { enderecos, responsaveis, ...dados } = req.body;
-      const cliente = await withTenant(req.user.tid, async (tx) => {
-        await validarOpcoes(tx, dados);
-        const [{ id }] = (await tx.insert(clientes).values(dados).returning({ id: clientes.id })) as [{ id: string }];
-        await gravarEnderecos(tx, id, enderecos);
-        await gravarResponsaveis(tx, id, responsaveis);
-        return carregarCliente(tx, id);
-      });
+      const cliente = await withTenant(req.user.tid, async (tx) =>
+        carregarCliente(tx, await criarCliente(tx, req.body)),
+      );
       return reply.code(201).send(cliente);
     },
   );
@@ -277,22 +408,41 @@ export const clientesRoutes: FastifyPluginAsyncZod = async (app) => {
     '/:id',
     { ...editar, schema: { params: idParamSchema, body: clienteInputSchema, response: { 200: clienteSchema } } },
     async (req) => {
-      const { enderecos, responsaveis, ...dados } = req.body;
       return withTenant(req.user.tid, async (tx) => {
-        const [atual] = await tx
-          .select({ origemId: clientes.origemId, relacionamentoId: clientes.relacionamentoId })
-          .from(clientes)
-          .where(eq(clientes.id, req.params.id))
-          .for('update');
-        if (!atual) throw naoEncontrado('Cliente');
-        await validarOpcoes(tx, dados, atual);
-        await tx.update(clientes).set(dados).where(eq(clientes.id, req.params.id));
-        await gravarEnderecos(tx, req.params.id, enderecos);
-        await gravarResponsaveis(tx, req.params.id, responsaveis);
+        await atualizarCliente(tx, req.params.id, req.body);
         return carregarCliente(tx, req.params.id);
       });
     },
   );
+
+  /**
+   * Clientes em massa por CSV (colunas em COLUNAS_IMPORTACAO_CLIENTES): uma linha por cliente, validada pelo
+   * mesmo schema do cadastro. CPF/CNPJ já cadastrado atualiza o cliente. Grava as válidas e relata as demais.
+   */
+  app.post('/importar', { ...editar, schema: { response: { 200: resultadoImportacaoSchema } } }, async (req) => {
+    const linhas = lerPlanilhaEnviada(req.body, COLUNAS_IMPORTACAO_CLIENTES);
+    return withTenant(req.user.tid, async (tx) => {
+      // Listas da oficina lidas uma vez: a planilha traz os nomes, o cadastro guarda os ids.
+      const listas = {
+        origem: await idsPorNome(tx, origensCliente),
+        relacionamento: await idsPorNome(tx, relacionamentosCliente),
+        responsavel_funcao: await idsPorNome(tx, cargosResponsavel),
+      };
+      const vistos = new Map<string, number>();
+      return importarLinhas(tx, linhas, async (savepoint, { numero, valores }) => {
+        const documento = normalizarDocumento(valores.cpf_cnpj ?? '');
+        if (documento) exigirPrimeiraVez(vistos, documento, numero, `CPF/CNPJ ${valores.cpf_cnpj}`);
+        const [existente] = documento
+          ? await savepoint.select({ id: clientes.id }).from(clientes).where(eq(clientes.cpfCnpj, documento))
+          : [];
+        const atual = existente ? await carregarCliente(savepoint, existente.id) : undefined;
+        const dados = validarLinha(clienteInputSchema, clienteDaLinha(valores, listas, atual), colunaDoCliente);
+        if (atual) await atualizarCliente(savepoint, atual.id, dados);
+        else await criarCliente(savepoint, dados);
+        return 'importada';
+      });
+    });
+  });
 
   /** Endereços e responsáveis saem junto (cascade); veículos não (FK RESTRICT): transferir ou remover antes. */
   app.delete('/:id', { ...editar, schema: { params: idParamSchema } }, async (req, reply) => {

@@ -16,8 +16,6 @@ type ItemMenu = {
   rotulo: string;
   modulo?: ModuloId;
   somenteAdmin?: boolean;
-  /** Outras rotas que acendem o item (ex.: abas de uma mesma área). */
-  tambem?: string[];
   /** Submenu que abre e fecha (collapse) no menu lateral. */
   filhos?: { para: string; rotulo: string }[];
 };
@@ -44,7 +42,15 @@ const menu: ItemMenu[] = [
       { para: '/materiais/depositos', rotulo: 'Depósitos' },
     ],
   },
-  { para: '/precos', rotulo: 'Política Comercial', modulo: 'precos', tambem: ['/tabelas-preco'] },
+  {
+    para: '/precos',
+    rotulo: 'Política Comercial',
+    modulo: 'precos',
+    filhos: [
+      { para: '/precos', rotulo: 'Linhas de Preço' },
+      { para: '/tabelas-preco', rotulo: 'Tabelas de Preço' },
+    ],
+  },
   { para: '/estoque', rotulo: 'Estoque', modulo: 'estoque' },
   { para: '/os', rotulo: 'Ordens de serviço', modulo: 'os' },
   { para: '/financeiro', rotulo: 'Financeiro', modulo: 'financeiro' },
@@ -57,7 +63,6 @@ export function Layout() {
   const sessao = useSessao();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const { pathname } = useLocation();
   const tema = sessao.data?.oficina.tema;
 
   useEffect(() => {
@@ -105,9 +110,7 @@ export function Layout() {
                   key={item.para}
                   to={item.para}
                   end={item.para === '/'}
-                  className={({ isActive }) =>
-                    classeItem(isActive || !!item.tambem?.some((r) => pathname.startsWith(r)))
-                  }
+                  className={({ isActive }) => classeItem(isActive)}
                 >
                   {item.rotulo}
                 </NavLink>

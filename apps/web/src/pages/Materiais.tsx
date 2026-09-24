@@ -1,10 +1,12 @@
-import type { MaterialResumo } from '@mobios/shared';
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { Package, Plus } from 'lucide-react';
+import { COLUNAS_IMPORTACAO_MATERIAIS, type MaterialResumo } from '@mobios/shared';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
+import { FileUp, Package, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router';
+import { ImportarCsv } from '../components/ImportarCsv';
 import {
   Alerta,
+  Botao,
   BotaoVisualizar,
   Cabecalho,
   CampoBusca,
@@ -29,6 +31,8 @@ export function Materiais() {
   const pode = usePode();
   const [filtro, setFiltro] = useState({ q: '', tipoId: '', categoriaId: '', marcaId: '', ativo: 'true' });
   const [pagina, setPagina] = useState(1);
+  const [importando, setImportando] = useState(false);
+  const queryClient = useQueryClient();
   const tipos = useOpcoes('tiposMaterial');
   const categorias = useCategorias();
   const marcas = useMarcas();
@@ -53,14 +57,30 @@ export function Materiais() {
       <Titulo
         acao={
           pode('materiais', 'editar') && (
-            <Link to="/materiais/novo" className={classesBotao('primario')}>
-              <Plus className="mr-1.5 size-4" aria-hidden /> Novo material
-            </Link>
+            <div className="flex flex-wrap gap-2">
+              <Botao variante="secundario" onClick={() => setImportando(!importando)}>
+                <FileUp className="mr-1.5 size-4" aria-hidden /> Importar planilha
+              </Botao>
+              <Link to="/materiais/novo" className={classesBotao('primario')}>
+                <Plus className="mr-1.5 size-4" aria-hidden /> Novo material
+              </Link>
+            </div>
           )
         }
       >
         Materiais
       </Titulo>
+
+      {importando && (
+        <ImportarCsv
+          titulo="Importar materiais"
+          colunas={COLUNAS_IMPORTACAO_MATERIAIS}
+          url="/materiais/importar"
+          nomeModelo="modelo-materiais.csv"
+          aoConcluir={() => queryClient.invalidateQueries({ queryKey: ['materiais'] })}
+          aoFechar={() => setImportando(false)}
+        />
+      )}
 
       <div className="space-y-3">
         <CampoBusca

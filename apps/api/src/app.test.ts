@@ -27,7 +27,7 @@ async function entrar(email: string, senha = SENHA) {
   const chamar = (
     method: 'GET' | 'POST' | 'PUT' | 'DELETE',
     url: string,
-    payload?: object,
+    payload?: object | string,
     headers?: Record<string, string>,
   ) => app.inject({ method, url, payload, headers, cookies: token ? { [COOKIE_SESSAO]: token } : {} });
   return { res, chamar };
@@ -794,6 +794,94 @@ describe('lista de clientes: filtros, aniversários e frota', () => {
     expect((await chamar('GET', '/api/veiculos/lista?q=toyota')).json().total).toBe(1);
     expect((await chamar('GET', '/api/veiculos/lista?q=dona')).json().total).toBe(2);
     expect((await chamar('GET', '/api/veiculos/lista?status=vendido')).json().total).toBe(0);
+  });
+});
+
+describe('importação de clientes por planilha', () => {
+  const planilha = (...linhas: string[]) => `\uFEFF${linhas.join('\r\n')}\r\n`;
+  const CABECALHO =
+    'tipo;nome;cpf_cnpj;telefone;whatsapp;origem;cep;logradouro;numero;bairro;cidade;uf;' +
+    'responsavel_nome;responsavel_funcao;responsavel_telefone';
+  const endereco = '88015-100;Rua Felipe Schmidt;100;Centro;Florianópolis;SC';
+
+  it('cria PF e PJ pelas regras do cadastro e relata cada linha inválida com a coluna', async () => {
+    const { chamar } = await novaOficina('Oficina Importa Clientes');
+    const importar = (texto: string) => chamar('POST', '/api/clientes/importar', texto, { 'content-type': 'text/csv' });
+    const origem: string = (await chamar('GET', '/api/opcoes/origens')).json()[0].nome;
+    const funcao: string = (await chamar('GET', '/api/opcoes/cargos')).json()[0].nome;
+    const cpf = cpfAleatorio();
+
+    const resultado = (
+      await importar(
+        planilha(
+          CABECALHO,
+          `PF;Ana Importada;${cpf};(48) 3222-1000;(48) 99999-0000;${origem.toUpperCase()};${endereco};;;`,
+          `pj;Auto Peças Ltda;11.222.333/0001-81;4832221000;48999990000;;${endereco};Carlos;${funcao};48999991111`,
+          `PF;CPF Errado;111.111.111-11;4832221000;48999990000;;${endereco};;;`,
+          `PJ;Sem Responsável;11.444.777/0001-61;4832221000;48999990000;;${endereco};;;`,
+          `PF;Ana Repetida;${cpf};4832221000;48999990000;;${endereco};;;`,
+          `PF;Origem Errada;${cpfAleatorio()};4832221000;48999990000;Rádio;${endereco};;;`,
+          `PF;Sem CEP;${cpfAleatorio()};4832221000;48999990000;;;Rua A;1;Centro;Florianópolis;SC;;;`,
+        ),
+      )
+    ).json();
+    expect(resultado).toMatchObject({ linhas: 7, importadas: 2, ignoradas: 0 });
+    expect(resultado.erros).toEqual([
+      { linha: 4, mensagem: 'cpf_cnpj: CPF inválido' },
+      { linha: 5, mensagem: 'responsavel_nome: Cadastre ao menos um responsável pela empresa' },
+      { linha: 6, mensagem: `CPF/CNPJ ${cpf} repetido na planilha (já aparece na linha 2).` },
+      { linha: 7, mensagem: 'origem: "Rádio" não está na lista (Configurações → Cadastros).' },
+      { linha: 8, mensagem: 'cep: Informe o CEP' },
+    ]);
+
+    const [ana] = (await chamar('GET', `/api/clientes?q=${cpf}`)).json().itens;
+    const detalhe = (await chamar('GET', `/api/clientes/${ana.id}`)).json();
+    expect(detalhe).toMatchObject({
+      nome: 'Ana Importada',
+      origemNome: origem,
+      enderecos: [{ cep: '88015100', principal: true, tipo: 'residencial' }],
+    });
+    const [pj] = (await chamar('GET', '/api/clientes?q=Auto Peças')).json().itens;
+    expect((await chamar('GET', `/api/clientes/${pj.id}`)).json().responsaveis).toMatchObject([
+      { nome: 'Carlos', cargoNome: funcao, principal: true },
+    ]);
+  });
+
+  it('CPF/CNPJ já cadastrado atualiza o cliente sem perder os outros endereços nem as colunas ausentes', async () => {
+    const { chamar } = await novaOficina('Oficina Atualiza Clientes');
+    const cpf = cpfAleatorio();
+    const segundo = { ...ENDERECO, logradouro: 'Rua Secundária', principal: false };
+    await chamar(
+      'POST',
+      '/api/clientes',
+      cliente({
+        nome: 'Nome Antigo',
+        cpfCnpj: cpf,
+        email: 'antigo@teste.dev',
+        enderecos: [{ ...ENDERECO, principal: true }, segundo],
+      }),
+    );
+
+    const resultado = await chamar(
+      'POST',
+      '/api/clientes/importar',
+      planilha(
+        'tipo;nome;cpf_cnpj;telefone;whatsapp;cep;logradouro;numero;bairro;cidade;uf',
+        `PF;Nome Novo;${cpf};4832221000;48999990000;01310-100;Avenida Paulista;1000;Bela Vista;São Paulo;SP`,
+      ),
+      { 'content-type': 'text/csv' },
+    );
+    expect(resultado.json()).toMatchObject({ importadas: 1, erros: [] });
+    const [c] = (await chamar('GET', `/api/clientes?q=${cpf}`)).json().itens;
+    const detalhe = (await chamar('GET', `/api/clientes/${c.id}`)).json();
+    expect(detalhe.nome).toBe('Nome Novo');
+    expect(detalhe.email).toBe('antigo@teste.dev'); // coluna ausente: mantém
+    expect(
+      detalhe.enderecos.map((e: { logradouro: string; principal: boolean }) => [e.logradouro, e.principal]),
+    ).toEqual([
+      ['Avenida Paulista', true],
+      ['Rua Secundária', false],
+    ]);
   });
 });
 

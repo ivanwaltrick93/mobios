@@ -456,7 +456,7 @@ Regras do ajuste (`PUT /api/estoque/:materialId/:depositoId`, módulo Estoque/Ed
 | `GET /api/estoque/material/:materialId` | Saldo do material em cada depósito (aba Estoque do material) |
 | `PUT /api/estoque/:materialId/:depositoId` | Ajuste manual (disponível, reservado, motivo, versao) |
 | `GET /api/estoque/:materialId/:depositoId/ajustes` | Histórico de ajustes |
-| `GET /api/precos/lista?tabelaPrecoId&q&comPreco&pagina` | Lista de preços: preço vigente, vigente até, próximo preço e disponível somado (null sem acesso ao Estoque) |
+| ~~`GET /api/precos/lista`~~ (substituída por `GET /api/precos/linhas`, §24) | Lista de preços: preço vigente, vigente até, próximo preço e disponível somado (null sem acesso ao Estoque) |
 
 ### Telas
 
@@ -500,7 +500,7 @@ Preço de um dia = vigência que cobre a data (regras do §9) **ou**, sem ela, o
 | `GET /api/precos/padrao/eventos?materialId&tabelaPrecoId` | Trilha do padrão |
 | `POST /api/precos/importar` (text/csv) | Importação de preços; devolve `{ linhas, importadas, ignoradas, erros[{ linha, mensagem }] }` |
 | `GET /api/precos/vigente` | Agora devolve também `valorCentavos` e `origem` (`vigencia` / `padrao`) |
-| `GET /api/precos/lista` | `precoCentavos` = preço de hoje (vigência ou padrão) e `origem` |
+| ~~`GET /api/precos/lista`~~ | Substituída por `GET /api/precos/linhas` (§24) |
 | `POST /api/estoque/lancamento` | Saldo final por `sku` + `deposito` (códigos); inexistentes: 400 com `campos` |
 | `POST /api/estoque/importar` (text/csv) | Importação de saldos (mesmo retorno da importação de preços) |
 
@@ -511,3 +511,30 @@ Permissões: importar e cadastrar preços exigem Preços/Editar; lançar e impor
 - **Política Comercial** (menu, módulo Preços): abas **Lista de preços** (uma tabela por vez, 20 por página, selo "Padrão" quando o preço vem do padrão) e **Tabelas de preço** (tabela analítica com "Importar preços"; clicar no nome abre `/tabelas-preco/:id`, com os preços da tabela e "Adicionar preço" por SKU, com vigência ou padrão).
 - **Material → aba Preços**: em cada tabela, o bloco "Preço padrão (sem vigência)" com Definir/Alterar/Remover e histórico.
 - **Estoque**: "Lançar saldo" (SKU + código do depósito) e "Importar planilha", além do ajuste por linha; 20 por página.
+
+## 23. Importação de materiais, categorias e linhas de preço; submenu da Política Comercial
+
+Decisões do dono do produto (23/09/2026): a importação **cria os novos e atualiza os existentes**, grava as linhas válidas e lista as demais com o número da linha; a categoria é indicada pelo **código ou pelo caminho** completo; em Linhas de Preço, a **tabela da tela** vale quando a coluna `tabela` fica vazia.
+
+- **Mesmas regras da tela:** cada linha é validada pelo mesmo schema do cadastro (`materialInputSchema`, `categoriaInputSchema`) e gravada pelas mesmas funções das rotas (`criarMaterial`/`atualizarMaterial`, `criarCategoria`/`atualizarCategoria`), dentro de um SAVEPOINT. O erro aponta a coluna da planilha (ex.: `ncm: NCM tem 8 dígitos`).
+- **Atualização:** SKU já cadastrado atualiza o material; mesmo código, ou mesmo nome sob o mesmo pai, atualiza a categoria. Colunas **ausentes do arquivo** não mudam o registro existente; coluna presente e vazia limpa o campo opcional.
+- **Referências:** tipo de material pelo nome; marca pelo nome ou código; categoria pelo código, pelo caminho (`Peças > Motor > Filtros`) ou pelo nome, se ele for único (nome repetido em níveis diferentes = erro pedindo código ou caminho). Categorias são processadas na ordem do arquivo: o pai pode vir numa linha anterior.
+- **Repetidos no arquivo:** a segunda linha com o mesmo SKU (ou a mesma categoria) vira erro apontando a primeira.
+
+| Endpoint | Uso |
+|---|---|
+| `POST /api/materiais/importar` (text/csv) | Colunas em `COLUNAS_IMPORTACAO_MATERIAIS` |
+| `POST /api/categorias/importar` (text/csv) | Colunas em `COLUNAS_IMPORTACAO_CATEGORIAS` |
+| `POST /api/precos/importar?tabelaPrecoId` (text/csv) | Linhas de Preço: `tabela` opcional (vazia = tabela da tela) |
+
+Menu **Política Comercial** com submenu: **Linhas de Preço** (antiga aba "Lista de preços", com "Importar planilha") e **Tabelas de Preço**. Permissões: importar materiais e categorias exige Materiais/Editar.
+
+## 24. Linhas de Preço: uma linha por vigência, só preço
+
+Decisões do dono do produto (23/09/2026): a tela mostra **apenas preço** (sem estoque nem outros dados do material além de SKU e descrição); **cada vigência é uma linha**, com início, fim e situação; o preço padrão é outra linha; o filtro de situação mostra também encerradas e canceladas, começando em "vigentes, futuras e padrão"; material sem preço não aparece; **cadastro manual de preço** direto na tela (mesmo formulário por SKU do detalhe da tabela, na tabela selecionada). Vale nas duas telas: Linhas de Preço e detalhe de cada tabela.
+
+| Endpoint | Uso |
+|---|---|
+| `GET /api/precos/linhas?tabelaPrecoId&q&situacao&pagina` | Linhas da tabela: `{ id, materialId, sku, descricao, precoCentavos, dataInicio, dataFim, situacao }`; `situacao` do filtro: `atuais` (padrão), `vigente`, `futuro`, `encerrado`, `cancelado`, `padrao`, `todas`. A situação da vigência segue a regra de `situacaoPreco` |
+
+A antiga `GET /api/precos/lista` (uma linha por material, com próximo preço e disponível somado do estoque) foi removida: era usada só por esta tela.

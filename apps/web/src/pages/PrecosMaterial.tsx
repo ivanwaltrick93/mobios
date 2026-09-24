@@ -291,7 +291,7 @@ function useInvalidarPrecos(materialId: string) {
   return () => {
     queryClient.invalidateQueries({ queryKey: ['precos', materialId] });
     queryClient.invalidateQueries({ queryKey: ['tabelas-preco'] });
-    queryClient.invalidateQueries({ queryKey: ['lista-precos'] });
+    queryClient.invalidateQueries({ queryKey: ['linhas-preco'] });
   };
 }
 
