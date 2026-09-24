@@ -3,16 +3,20 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Package, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router';
-import { AbasMateriais } from '../components/AbasMateriais';
 import {
   Alerta,
-  Botao,
+  BotaoVisualizar,
+  Cabecalho,
   CampoBusca,
-  Cartao,
   classesBotao,
+  Linha,
+  Paginacao,
+  POR_PAGINA,
   Select,
   Selo,
-  TextoSuave,
+  Tabela,
+  Td,
+  Th,
   Titulo,
   Vazio,
 } from '../components/ui';
@@ -21,17 +25,15 @@ import { useOpcoes } from '../lib/cadastro';
 import { arvoreCategorias, useCategorias, useMarcas } from '../lib/materiais';
 import { usePode } from '../lib/sessao';
 
-const POR_PAGINA = 30;
-
 export function Materiais() {
   const pode = usePode();
   const [filtro, setFiltro] = useState({ q: '', tipoId: '', categoriaId: '', marcaId: '', ativo: 'true' });
-  const [quantidade, setQuantidade] = useState(POR_PAGINA);
+  const [pagina, setPagina] = useState(1);
   const tipos = useOpcoes('tiposMaterial');
   const categorias = useCategorias();
   const marcas = useMarcas();
   const parametros = new URLSearchParams(
-    Object.entries({ ...filtro, porPagina: String(Math.min(quantidade, 100)) }).filter(([, v]) => v),
+    Object.entries({ ...filtro, pagina: String(pagina), porPagina: String(POR_PAGINA) }).filter(([, v]) => v),
   );
   const materiais = useQuery({
     queryKey: ['materiais', parametros.toString()],
@@ -40,7 +42,7 @@ export function Materiais() {
   });
   const mudar = (campo: keyof typeof filtro, valor: string) => {
     setFiltro((f) => ({ ...f, [campo]: valor }));
-    setQuantidade(POR_PAGINA);
+    setPagina(1);
   };
   const dados = materiais.data;
 
@@ -59,7 +61,6 @@ export function Materiais() {
       >
         Materiais
       </Titulo>
-      <AbasMateriais />
 
       <div className="space-y-3">
         <CampoBusca
@@ -118,56 +119,43 @@ export function Materiais() {
           {filtro.q ? 'Confira a grafia ou busque pelo SKU ou código do fabricante.' : undefined}
         </Vazio>
       ) : (
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {dados?.itens.map((m) => (
-            <Cartao
-              key={m.id}
-              className="relative flex flex-col gap-2 p-4 transition hover:border-borda-forte hover:shadow-md"
-            >
-              <div className="flex items-start justify-between gap-2">
-                <span className="rounded bg-superficie-alt px-2 py-0.5 font-mono text-xs font-semibold text-texto">
-                  {m.sku}
-                </span>
-                <span className="flex gap-1">
-                  {!m.ativo && <Selo>Inativo</Selo>}
-                  <Selo tom="primario">{m.tipoNome}</Selo>
-                </span>
-              </div>
-              <Link
-                to={`/materiais/${m.id}`}
-                className="font-semibold text-texto after:absolute after:inset-0 after:rounded-lg hover:text-primaria"
-              >
-                {m.descricao}
-              </Link>
-              <p className="text-sm text-texto-suave">
-                {[m.marcaNome, m.categoriaNome, m.codigoFabricante && `Fab. ${m.codigoFabricante}`, m.unidade]
-                  .filter(Boolean)
-                  .join(' · ')}
-              </p>
-            </Cartao>
-          ))}
-        </div>
+        <Tabela>
+          <Cabecalho>
+            <Th>SKU</Th>
+            <Th>Descrição</Th>
+            <Th>Cód. fabricante</Th>
+            <Th>Tipo</Th>
+            <Th>Categoria</Th>
+            <Th>Marca</Th>
+            <Th>Un.</Th>
+            <Th>Status</Th>
+            <Th />
+          </Cabecalho>
+          <tbody>
+            {dados?.itens.map((m) => (
+              <Linha key={m.id} className="hover:bg-superficie-alt">
+                <Td className="whitespace-nowrap font-mono text-xs font-semibold">{m.sku}</Td>
+                <Td>
+                  <Link to={`/materiais/${m.id}`} className="font-medium text-texto hover:text-primaria">
+                    {m.descricao}
+                  </Link>
+                </Td>
+                <Td suave>{m.codigoFabricante ?? '—'}</Td>
+                <Td suave>{m.tipoNome}</Td>
+                <Td suave>{m.categoriaNome}</Td>
+                <Td suave>{m.marcaNome ?? '—'}</Td>
+                <Td suave>{m.unidade}</Td>
+                <Td>{m.ativo ? <Selo tom="sucesso">Ativo</Selo> : <Selo>Inativo</Selo>}</Td>
+                <Td className="text-right">
+                  <BotaoVisualizar para={`/materiais/${m.id}`} />
+                </Td>
+              </Linha>
+            ))}
+          </tbody>
+        </Tabela>
       )}
 
-      {dados && dados.total > 0 && (
-        <div className="flex flex-col items-center gap-3">
-          <TextoSuave className="text-xs">
-            Mostrando {dados.itens.length} de {dados.total.toLocaleString('pt-BR')} material(is)
-          </TextoSuave>
-          {dados.total > dados.itens.length && quantidade < 100 && (
-            <Botao
-              variante="secundario"
-              disabled={materiais.isFetching}
-              onClick={() => setQuantidade((q) => q + POR_PAGINA)}
-            >
-              Mostrar mais
-            </Botao>
-          )}
-          {dados.total > dados.itens.length && quantidade >= 100 && (
-            <TextoSuave className="text-xs">Refine a busca ou os filtros para ver os demais.</TextoSuave>
-          )}
-        </div>
-      )}
+      {dados && <Paginacao pagina={pagina} total={dados.total} aoMudar={setPagina} carregando={materiais.isFetching} />}
     </div>
   );
 }

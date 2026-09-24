@@ -258,7 +258,7 @@ export const tabelaPrecoSchema = z.object({
   descricao: z.string().nullable(),
   moeda: z.enum(chaves(MOEDAS)),
   ativa: z.boolean(),
-  /** Materiais com preço vigente hoje nesta tabela. */
+  /** Materiais com preço hoje nesta tabela (vigência ou preço padrão). */
   materiaisComPreco: z.number(),
   ...auditoria,
 });
@@ -267,7 +267,7 @@ export type TabelaPreco = z.infer<typeof tabelaPrecoSchema>;
 // ---------- Preço por material (vigências) ----------
 
 /** Maior valor aceito: R$ 99.999.999,99 (em centavos). */
-const PRECO_MAXIMO = 9_999_999_999;
+export const PRECO_MAXIMO = 9_999_999_999;
 const dataIso = (msg: string) => z.iso.date(msg);
 const dataFimOpcional = z.preprocess(vazioComoNulo, dataIso('Data inválida').nullable());
 
@@ -288,14 +288,23 @@ const vigenciaValida = <T extends { dataInicio: string; dataFim: string | null }
  * - a vigência que estiver valendo na data de início é encerrada no dia anterior;
  * - fim vazio = vigência aberta; se houver preço futuro depois, a nova termina na véspera dele.
  */
+/** Material do preço: pelo id (tela do material) ou pelo SKU digitado (tela da tabela de preço). */
+const materialDoPreco = {
+  materialId: z.uuid('Informe o material').optional(),
+  sku: z.string().trim().toUpperCase().max(40, 'Máximo de 40 caracteres').optional(),
+};
+const temMaterial = (v: { materialId?: string; sku?: string }) => !!(v.materialId || v.sku);
+const erroSemMaterial = { message: 'Informe o SKU', path: ['sku'] };
+
 export const precoInputSchema = z
   .object({
-    materialId: z.uuid('Informe o material'),
+    ...materialDoPreco,
     tabelaPrecoId: z.uuid('Escolha a tabela de preço'),
     precoCentavos: centavos,
     dataInicio: dataIso('Informe o início da vigência'),
     dataFim: dataFimOpcional,
   })
+  .refine(temMaterial, erroSemMaterial)
   .superRefine(vigenciaValida);
 export type PrecoInput = z.input<typeof precoInputSchema>;
 
@@ -352,6 +361,49 @@ export const precoSchema = z.object({
 });
 export type Preco = z.infer<typeof precoSchema>;
 
+// ---------- Preço padrão (sem vigência) ----------
+
+/**
+ * Preço padrão de um material numa tabela: vale quando nenhuma vigência cobre a data.
+ * Um por material + tabela; alterar ou remover fica registrado na trilha. `versao` só na edição pela tela.
+ */
+export const precoPadraoInputSchema = z
+  .object({
+    ...materialDoPreco,
+    tabelaPrecoId: z.uuid('Escolha a tabela de preço'),
+    precoCentavos: centavos,
+    versao: z.number().int().optional(),
+  })
+  .refine(temMaterial, erroSemMaterial);
+export type PrecoPadraoInput = z.input<typeof precoPadraoInputSchema>;
+
+export const precoPadraoSchema = z.object({
+  materialId: z.uuid(),
+  tabelaPrecoId: z.uuid(),
+  tabelaCodigo: z.string(),
+  tabelaNome: z.string(),
+  precoCentavos: z.number(),
+  atualizadoEm: z.coerce.date(),
+  atualizadoPor: z.string().nullable(),
+  versao: z.number(),
+});
+export type PrecoPadrao = z.infer<typeof precoPadraoSchema>;
+
+export const EVENTOS_PRECO_PADRAO = { definido: 'Definido', alterado: 'Alterado', removido: 'Removido' } as const;
+
+export const eventoPrecoPadraoSchema = z.object({
+  evento: z.enum(chaves(EVENTOS_PRECO_PADRAO)),
+  precoAntes: z.number().nullable(),
+  precoDepois: z.number().nullable(),
+  usuario: z.string().nullable(),
+  criadoEm: z.coerce.date(),
+});
+export type EventoPrecoPadrao = z.infer<typeof eventoPrecoPadraoSchema>;
+
+/** De onde vem o preço de um dia: uma vigência que cobre a data ou, na falta dela, o preço padrão. */
+export const ORIGENS_PRECO = { vigencia: 'Vigência', padrao: 'Padrão' } as const;
+export type OrigemPreco = keyof typeof ORIGENS_PRECO;
+
 /** Pergunta: qual o preço do material X na tabela Y na data Z? (por id ou pelos códigos de negócio). */
 export const precoVigenteQuerySchema = z
   .object({
@@ -371,7 +423,10 @@ export const precoVigenteSchema = z.object({
   data: z.string(),
   material: z.object({ id: z.uuid(), sku: z.string(), descricao: z.string(), ativo: z.boolean() }),
   tabela: z.object({ id: z.uuid(), codigo: z.string(), nome: z.string(), ativa: z.boolean() }),
-  /** null = não existe preço vigente nessa data. */
+  /** Vigência que cobre a data; null = nenhuma. */
   preco: precoSchema.nullable(),
+  /** Preço que vale na data: o da vigência ou, sem vigência, o padrão; null = material sem preço nessa tabela. */
+  valorCentavos: z.number().nullable(),
+  origem: z.enum(chaves(ORIGENS_PRECO)).nullable(),
 });
 export type PrecoVigente = z.infer<typeof precoVigenteSchema>;

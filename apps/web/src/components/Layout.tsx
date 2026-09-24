@@ -1,6 +1,7 @@
 import { temAcesso, type ModuloId } from '@mobios/shared';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { ChevronDown } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { Link, Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 import { api } from '../lib/api';
 import { useSessao } from '../lib/sessao';
@@ -10,12 +11,40 @@ import { Avatar } from './Avatar';
 import { LogoMobiOS, Rodape } from './Marca';
 
 // Itens aparecem conforme o acesso do usuário ao módulo (Configurações → Funções e permissões).
-/** `tambem`: outras rotas que acendem o item (ex.: telas de veículo ficam em "Clientes e veículos"). */
-const menu: { para: string; rotulo: string; modulo?: ModuloId; somenteAdmin?: boolean; tambem?: string[] }[] = [
+type ItemMenu = {
+  para: string;
+  rotulo: string;
+  modulo?: ModuloId;
+  somenteAdmin?: boolean;
+  /** Outras rotas que acendem o item (ex.: abas de uma mesma área). */
+  tambem?: string[];
+  /** Submenu que abre e fecha (collapse) no menu lateral. */
+  filhos?: { para: string; rotulo: string }[];
+};
+
+const menu: ItemMenu[] = [
   { para: '/', rotulo: 'Início' },
-  { para: '/clientes', rotulo: 'Clientes e veículos', modulo: 'clientes', tambem: ['/veiculos'] },
-  { para: '/materiais', rotulo: 'Materiais', modulo: 'materiais' },
-  { para: '/precos', rotulo: 'Lista de preços', modulo: 'precos', tambem: ['/tabelas-preco'] },
+  {
+    para: '/clientes',
+    rotulo: 'Clientes',
+    modulo: 'clientes',
+    filhos: [
+      { para: '/clientes', rotulo: 'Clientes' },
+      { para: '/veiculos', rotulo: 'Veículos' },
+    ],
+  },
+  {
+    para: '/materiais',
+    rotulo: 'Materiais',
+    modulo: 'materiais',
+    filhos: [
+      { para: '/materiais', rotulo: 'Materiais' },
+      { para: '/materiais/categorias', rotulo: 'Categorias' },
+      { para: '/materiais/marcas', rotulo: 'Marcas' },
+      { para: '/materiais/depositos', rotulo: 'Depósitos' },
+    ],
+  },
+  { para: '/precos', rotulo: 'Política Comercial', modulo: 'precos', tambem: ['/tabelas-preco'] },
   { para: '/estoque', rotulo: 'Estoque', modulo: 'estoque' },
   { para: '/os', rotulo: 'Ordens de serviço', modulo: 'os' },
   { para: '/financeiro', rotulo: 'Financeiro', modulo: 'financeiro' },
@@ -68,27 +97,27 @@ export function Layout() {
             .filter((item) =>
               item.somenteAdmin ? usuario.admin : !item.modulo || temAcesso(sessao.data.acessos, item.modulo),
             )
-            .map((item) => (
-              <NavLink
-                key={item.para}
-                to={item.para}
-                end={item.para === '/'}
-                className={({ isActive }) =>
-                  `whitespace-nowrap rounded-md border-l-4 px-3 py-2 text-sm ${
-                    isActive || item.tambem?.some((r) => pathname.startsWith(r))
-                      ? 'border-primaria bg-menu-ativo font-semibold'
-                      : 'border-transparent opacity-85 hover:bg-menu-ativo hover:opacity-100'
-                  }`
-                }
-              >
-                {item.rotulo}
-              </NavLink>
-            ))}
+            .map((item) =>
+              item.filhos ? (
+                <GrupoMenu key={item.para} rotulo={item.rotulo} filhos={item.filhos} />
+              ) : (
+                <NavLink
+                  key={item.para}
+                  to={item.para}
+                  end={item.para === '/'}
+                  className={({ isActive }) =>
+                    classeItem(isActive || !!item.tambem?.some((r) => pathname.startsWith(r)))
+                  }
+                >
+                  {item.rotulo}
+                </NavLink>
+              ),
+            )}
         </nav>
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex items-center gap-3 border-b border-borda bg-superficie px-6 py-3 text-sm">
-          <Voltar raizes={[...menu.map((m) => m.para), '/perfil']} />
+          <Voltar raizes={[...menu.flatMap((m) => [m.para, ...(m.filhos ?? []).map((f) => f.para)]), '/perfil']} />
           <span className="flex-1" />
           <Link
             to="/perfil"
@@ -112,6 +141,53 @@ export function Layout() {
         </main>
         <Rodape />
       </div>
+    </div>
+  );
+}
+
+const classeItem = (ativo: boolean) =>
+  `whitespace-nowrap rounded-md border-l-4 px-3 py-2 text-sm ${
+    ativo
+      ? 'border-primaria bg-menu-ativo font-semibold'
+      : 'border-transparent opacity-85 hover:bg-menu-ativo hover:opacity-100'
+  }`;
+
+/** Item com submenu: abre e fecha ao clicar; fica aberto enquanto uma das páginas dele estiver na tela. */
+function GrupoMenu({ rotulo, filhos }: { rotulo: string; filhos: { para: string; rotulo: string }[] }) {
+  const { pathname } = useLocation();
+  // Página atual = o filho de caminho mais longo que a contém (/materiais/marcas não acende /materiais).
+  const atual = filhos.filter((f) => pathname.startsWith(f.para)).sort((a, b) => b.para.length - a.para.length)[0];
+  const dentro = !!atual;
+  const [aberto, setAberto] = useState(dentro);
+  useEffect(() => {
+    if (dentro) setAberto(true);
+  }, [dentro]);
+
+  return (
+    <div className="flex gap-1 md:flex-col">
+      <button
+        type="button"
+        aria-expanded={aberto}
+        onClick={() => setAberto(!aberto)}
+        className={`flex items-center justify-between gap-2 text-left ${classeItem(dentro && !aberto)}`}
+      >
+        {rotulo}
+        <ChevronDown className={`size-4 transition ${aberto ? 'rotate-180' : ''}`} aria-hidden />
+      </button>
+      {aberto && (
+        <div className="flex gap-1 md:flex-col md:pl-3">
+          {filhos.map((f) => (
+            <Link
+              key={f.para}
+              to={f.para}
+              aria-current={f === atual ? 'page' : undefined}
+              className={classeItem(f === atual)}
+            >
+              {f.rotulo}
+            </Link>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

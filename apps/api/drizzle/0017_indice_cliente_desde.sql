@@ -1,0 +1,1 @@
+CREATE INDEX "clientes_tenant_id_cliente_desde_index" ON "clientes" USING btree ("tenant_id","cliente_desde");

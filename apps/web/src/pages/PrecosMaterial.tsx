@@ -4,9 +4,12 @@ import {
   hojeIso,
   mascaraMoeda,
   moedaParaCentavos,
+  EVENTOS_PRECO_PADRAO,
   SITUACOES_PRECO,
+  type EventoPrecoPadrao,
   type Material,
   type Preco,
+  type PrecoPadrao,
   type SituacaoPreco,
   type TabelaPreco,
 } from '@mobios/shared';
@@ -48,6 +51,10 @@ export function PrecosMaterial({ material }: { material: Material }) {
     queryKey: ['precos', material.id],
     queryFn: () => api<Preco[]>(`/precos?materialId=${material.id}`),
   });
+  const padroes = useQuery({
+    queryKey: ['precos', material.id, 'padrao'],
+    queryFn: () => api<PrecoPadrao[]>(`/precos/padrao?materialId=${material.id}`),
+  });
 
   if (tabelas.isPending || precos.isPending) return <TextoSuave>Carregando…</TextoSuave>;
   if (tabelas.isError) return <Alerta>{tabelas.error.message}</Alerta>;
@@ -81,6 +88,7 @@ export function PrecosMaterial({ material }: { material: Material }) {
           material={material}
           tabela={t}
           precos={precos.data?.filter((p) => p.tabelaPrecoId === t.id) ?? []}
+          padrao={padroes.data?.find((p) => p.tabelaPrecoId === t.id)}
           editar={editar}
         />
       ))}
@@ -92,11 +100,13 @@ function PrecosDaTabela({
   material,
   tabela,
   precos,
+  padrao,
   editar,
 }: {
   material: Material;
   tabela: TabelaPreco;
   precos: Preco[];
+  padrao?: PrecoPadrao;
   editar: boolean;
 }) {
   const [nova, setNova] = useState(false);
@@ -123,7 +133,7 @@ function PrecosDaTabela({
               <span className="ml-2 text-sm text-texto-suave">vigente · {periodo(vigente)}</span>
             </div>
           ) : (
-            <p className="mt-1 text-sm text-texto-suave">Sem preço vigente hoje.</p>
+            <p className="mt-1 text-sm text-texto-suave">Sem vigência hoje{padrao ? ': vale o preço padrão.' : '.'}</p>
           )}
         </div>
         {podeNova && !nova && <Botao onClick={() => setNova(true)}>Nova vigência</Botao>}
@@ -132,6 +142,12 @@ function PrecosDaTabela({
       {nova && <NovaVigencia material={material} tabela={tabela} vigente={vigente} aoConcluir={() => setNova(false)} />}
 
       {vigente && editar && <AcoesPreco preco={vigente} />}
+      <PrecoPadraoDaTabela
+        material={material}
+        tabela={tabela}
+        padrao={padrao}
+        podeEditar={editar && material.ativo && tabela.ativa}
+      />
       {futuros.length > 0 && (
         <div className="space-y-2">
           <h4 className="text-xs font-semibold uppercase tracking-wide text-texto-suave">Programados</h4>
@@ -156,6 +172,117 @@ function PrecosDaTabela({
         </div>
       )}
     </Cartao>
+  );
+}
+
+/** Preço padrão (sem vigência) da tabela: vale nos dias sem vigência. Alterar ou remover fica na trilha. */
+function PrecoPadraoDaTabela({
+  material,
+  tabela,
+  padrao,
+  podeEditar,
+}: {
+  material: Material;
+  tabela: TabelaPreco;
+  padrao?: PrecoPadrao;
+  podeEditar: boolean;
+}) {
+  const invalidar = useInvalidarPrecos(material.id);
+  const [editando, setEditando] = useState(false);
+  const [historico, setHistorico] = useState(false);
+  const [valor, setValor] = useState('');
+  const chave = `materialId=${material.id}&tabelaPrecoId=${tabela.id}`;
+  const salvar = useMutation({
+    mutationFn: () =>
+      api('/precos/padrao', {
+        method: 'PUT',
+        body: {
+          materialId: material.id,
+          tabelaPrecoId: tabela.id,
+          precoCentavos: moedaParaCentavos(valor),
+          versao: padrao?.versao,
+        },
+      }),
+    onSuccess: () => {
+      invalidar();
+      setEditando(false);
+    },
+  });
+  const remover = useMutation({
+    mutationFn: () => api(`/precos/padrao?${chave}`, { method: 'DELETE' }),
+    onSuccess: invalidar,
+  });
+  const eventos = useQuery({
+    queryKey: ['precos', material.id, 'padrao', 'eventos', tabela.id],
+    queryFn: () => api<EventoPrecoPadrao[]>(`/precos/padrao/eventos?${chave}`),
+    enabled: historico,
+  });
+  const abrirEdicao = () => {
+    setValor(padrao ? mascaraMoeda(String(padrao.precoCentavos)) : '');
+    setEditando(true);
+  };
+  const enviar = (e: FormEvent) => {
+    e.preventDefault();
+    salvar.mutate();
+  };
+
+  return (
+    <div className="space-y-2 rounded-md border border-dashed border-borda-forte p-3 text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span>
+          <span className="font-medium">Preço padrão (sem vigência): </span>
+          {padrao ? (
+            <>
+              <span className="font-semibold">{formatarMoeda(padrao.precoCentavos)}</span>
+              <span className="text-xs text-texto-suave"> · por {padrao.atualizadoPor ?? '—'}</span>
+            </>
+          ) : (
+            <span className="text-texto-suave">não definido</span>
+          )}
+        </span>
+        <span className="flex gap-3">
+          {podeEditar && !editando && <BotaoLink onClick={abrirEdicao}>{padrao ? 'Alterar' : 'Definir'}</BotaoLink>}
+          {podeEditar && padrao && !editando && (
+            <BotaoLink perigo onClick={() => confirm('Remover o preço padrão desta tabela?') && remover.mutate()}>
+              Remover
+            </BotaoLink>
+          )}
+          <BotaoLink onClick={() => setHistorico((h) => !h)}>{historico ? 'Ocultar histórico' : 'Histórico'}</BotaoLink>
+        </span>
+      </div>
+      {editando && (
+        <form onSubmit={enviar} className="flex flex-wrap items-end gap-2">
+          <Campo rotulo="Preço padrão (R$) *">
+            <Input
+              autoFocus
+              inputMode="numeric"
+              placeholder="0,00"
+              value={valor}
+              onChange={(e) => setValor(mascaraMoeda(e.target.value))}
+            />
+          </Campo>
+          <Botao type="submit" disabled={salvar.isPending || !valor}>
+            {salvar.isPending ? 'Salvando…' : 'Salvar'}
+          </Botao>
+          <Botao type="button" variante="secundario" onClick={() => setEditando(false)}>
+            Cancelar
+          </Botao>
+        </form>
+      )}
+      <Alerta>{(salvar.isError && salvar.error.message) || (remover.isError && remover.error.message)}</Alerta>
+      {historico && (
+        <ul className="space-y-1 text-xs">
+          {eventos.data?.length === 0 && <li className="text-texto-suave">Nenhuma alteração registrada.</li>}
+          {eventos.data?.map((e, i) => (
+            <li key={i}>
+              <strong>{EVENTOS_PRECO_PADRAO[e.evento]}</strong> em {new Date(e.criadoEm).toLocaleString('pt-BR')} por{' '}
+              {e.usuario ?? '—'}: {e.precoAntes != null ? formatarMoeda(e.precoAntes) : '—'} →{' '}
+              {e.precoDepois != null ? formatarMoeda(e.precoDepois) : '—'}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 

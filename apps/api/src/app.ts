@@ -26,6 +26,7 @@ import { veiculosRoutes } from './modules/veiculos/routes.js';
 export async function criarApp() {
   const app = Fastify({
     logger: env.NODE_ENV === 'test' ? false : { level: env.NODE_ENV === 'production' ? 'info' : 'debug' },
+    trustProxy: env.TRUST_PROXY || false,
   }).withTypeProvider<ZodTypeProvider>();
 
   app.setValidatorCompiler(validatorCompiler);

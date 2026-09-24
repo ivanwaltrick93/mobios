@@ -99,6 +99,34 @@
       "when": 1790136765705,
       "tag": "0013_estoque_saldos",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1790205949021,
+      "tag": "0014_limite_login",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1790207372430,
+      "tag": "0015_preco_padrao",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1790207759010,
+      "tag": "0016_aniversario_cliente",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1790207845034,
+      "tag": "0017_indice_cliente_desde",
+      "breakpoints": true
     }
   ]
 }

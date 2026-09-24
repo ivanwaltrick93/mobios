@@ -145,6 +145,26 @@ export const usuarioAtualizarSchema = z.object({
 });
 export type UsuarioAtualizarInput = z.input<typeof usuarioAtualizarSchema>;
 
+// Troca da própria senha (Meu perfil): exige a senha atual.
+const alterarSenhaCampos = {
+  senhaAtual: z.string().min(1, 'Informe a senha atual').max(128),
+  novaSenha: senhaSchema,
+};
+const novaSenhaDiferente = {
+  regra: (d: { senhaAtual: string; novaSenha: string }) => d.novaSenha !== d.senhaAtual,
+  erro: { message: 'A nova senha deve ser diferente da atual', path: ['novaSenha'] },
+};
+
+export const alterarSenhaSchema = z
+  .object(alterarSenhaCampos)
+  .refine(novaSenhaDiferente.regra, novaSenhaDiferente.erro);
+
+/** Formulário do Meu perfil: os mesmos campos e a confirmação da nova senha (não vai para a API). */
+export const alterarSenhaFormSchema = z
+  .object({ ...alterarSenhaCampos, confirmacao: z.string() })
+  .refine(novaSenhaDiferente.regra, novaSenhaDiferente.erro)
+  .refine((d) => d.confirmacao === d.novaSenha, { message: 'As senhas não conferem', path: ['confirmacao'] });
+
 // ---------- Listas configuráveis por oficina (Configurações → Cadastros) ----------
 
 /**
@@ -481,8 +501,39 @@ export const clienteResumoSchema = z.object({
     }),
   ),
   totalVeiculos: z.number(),
+  clienteDesde: z.string().nullable(),
+  /** Cidade/UF do endereço principal. */
+  cidade: z.string().nullable(),
+  /** Dias até o próximo aniversário (0 = hoje); null sem data de nascimento (PJ ou não informada). */
+  diasAteAniversario: z.number().nullable(),
 });
 export type ClienteResumo = z.infer<typeof clienteResumoSchema>;
+
+/** Aniversário "da semana": hoje e os próximos 7 dias. */
+export const DIAS_ANIVERSARIO_SEMANA = 7;
+
+const dataFiltro = z.union([z.literal(''), z.iso.date('Data inválida')]).optional();
+
+/** Filtros da lista de clientes (todos opcionais; vazio = sem filtro). */
+export const clienteFiltroSchema = z
+  .object({
+    q: z.string().trim().optional(),
+    ativo: z.enum(['true', 'false', '']).optional(),
+    tipo: z.enum(['PF', 'PJ', '']).optional(),
+    /** Período do campo "cliente desde" (extremos inclusivos). */
+    desde: dataFiltro,
+    ate: dataFiltro,
+    origemId: z.union([z.literal(''), z.uuid()]).optional(),
+    relacionamentoId: z.union([z.literal(''), z.uuid()]).optional(),
+    aniversario: z.enum(['hoje', 'semana', '']).optional(),
+    pagina: z.coerce.number().int().min(1).default(1),
+    porPagina: z.coerce.number().int().min(1).max(100).default(20),
+  })
+  .refine((f) => !f.desde || !f.ate || f.desde <= f.ate, {
+    message: 'A data inicial deve ser anterior à final',
+    path: ['ate'],
+  });
+export type ClienteFiltro = z.input<typeof clienteFiltroSchema>;
 
 export const clienteSchema = clienteResumoSchema.extend({
   rgIe: z.string().nullable(),
@@ -604,6 +655,18 @@ export const veiculoSchema = z.object({
 });
 export type Veiculo = z.infer<typeof veiculoSchema>;
 
+/** Linha da lista geral de veículos (página Veículos): o veículo e o dono. */
+export const veiculoListaSchema = veiculoSchema.extend({ clienteNome: z.string() });
+export type VeiculoLista = z.infer<typeof veiculoListaSchema>;
+
+export const veiculoFiltroSchema = z.object({
+  /** Placa, marca, modelo ou nome do dono. */
+  q: z.string().trim().optional(),
+  status: z.union([z.literal(''), z.enum(chaves(STATUS_VEICULO))]).optional(),
+  pagina: z.coerce.number().int().min(1).default(1),
+  porPagina: z.coerce.number().int().min(1).max(100).default(20),
+});
+
 export const sugestoesVeiculoSchema = z.object({ marcas: z.array(z.string()), modelos: z.array(z.string()) });
 export type SugestoesVeiculo = z.infer<typeof sugestoesVeiculoSchema>;
 
@@ -683,9 +746,20 @@ export const alertaPainelSchema = z.object({
 });
 export type AlertaPainel = z.infer<typeof alertaPainelSchema>;
 
+export const aniversarianteSchema = z.object({
+  id: z.uuid(),
+  nome: z.string(),
+  whatsapp: z.string().nullable(),
+  /** 0 = hoje. */
+  dias: z.number(),
+});
+export type Aniversariante = z.infer<typeof aniversarianteSchema>;
+
 export const painelSchema = z.object({
   indicadores: z.array(indicadorSchema),
   alertas: z.array(alertaPainelSchema),
+  /** Clientes PF que fazem aniversário hoje e nos próximos 7 dias (vazio para quem não acessa Clientes). */
+  aniversariantes: z.array(aniversarianteSchema),
   /** Módulos ainda não implementados: exibidos como "em breve". */
   modulosPendentes: z.array(z.string()),
 });

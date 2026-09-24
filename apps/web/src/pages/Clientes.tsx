@@ -1,31 +1,71 @@
-import { formatarDocumento, type ClienteResumo } from '@mobios/shared';
+import { formatarDataIso, formatarDocumento, type ClienteFiltro, type ClienteResumo } from '@mobios/shared';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { Plus, Search, Users } from 'lucide-react';
+import { ChevronDown, Plus, Search, SlidersHorizontal, Users } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router';
-import { Iniciais } from '../components/Avatar';
-import { LinkWhatsApp, SeloPendencias } from '../components/Cliente';
-import { Placa } from '../components/Placa';
-import { Botao, CampoBusca, Cartao, classesBotao, Selo, TextoSuave, Titulo, Vazio } from '../components/ui';
+import { LinkWhatsApp, SeloAniversario, SeloPendencias } from '../components/Cliente';
+import {
+  BotaoLink,
+  BotaoVisualizar,
+  Cabecalho,
+  Campo,
+  CampoBusca,
+  classesBotao,
+  Input,
+  Linha,
+  Paginacao,
+  POR_PAGINA,
+  Select,
+  Selo,
+  Tabela,
+  Td,
+  Th,
+  Titulo,
+  Vazio,
+} from '../components/ui';
 import { api } from '../lib/api';
+import { useOpcoes } from '../lib/cadastro';
 import { usePode } from '../lib/sessao';
 
-const POR_PAGINA = 24;
+type Filtro = Required<Omit<ClienteFiltro, 'pagina' | 'porPagina'>>;
 
-/** Clientes em cartões: quem é, como falar com ele e quais carros tem. */
+const FILTRO_INICIAL: Filtro = {
+  q: '',
+  ativo: 'true',
+  tipo: '',
+  desde: '',
+  ate: '',
+  origemId: '',
+  relacionamentoId: '',
+  aniversario: '',
+};
+
+/** Clientes em tabela, com filtros (status, tipo, cliente desde, origem, relacionamento e aniversário). */
 export function Clientes() {
-  const [busca, setBusca] = useState('');
-  const [quantidade, setQuantidade] = useState(POR_PAGINA);
   const podeEditar = usePode()('clientes', 'editar');
+  const origens = useOpcoes('origens');
+  const relacionamentos = useOpcoes('relacionamentos');
+  const [filtro, setFiltro] = useState<Filtro>(FILTRO_INICIAL);
+  const [pagina, setPagina] = useState(1);
+  const parametros = new URLSearchParams(
+    Object.entries({ ...filtro, pagina: String(pagina), porPagina: String(POR_PAGINA) }).filter(([, v]) => v),
+  );
   const clientes = useQuery({
-    queryKey: ['clientes', busca, quantidade],
-    queryFn: () =>
-      api<{ itens: ClienteResumo[]; total: number }>(
-        `/clientes?${new URLSearchParams({ q: busca, porPagina: String(Math.min(quantidade, 100)) })}`,
-      ),
+    queryKey: ['clientes', parametros.toString()],
+    queryFn: () => api<{ itens: ClienteResumo[]; total: number }>(`/clientes?${parametros}`),
     placeholderData: keepPreviousData,
   });
   const dados = clientes.data;
+  const mudar = (campo: keyof Filtro, valor: string) => {
+    setFiltro((f) => ({ ...f, [campo]: valor }));
+    setPagina(1);
+  };
+  const filtrado = JSON.stringify(filtro) !== JSON.stringify(FILTRO_INICIAL);
+  // Os filtros começam recolhidos; o contador mostra quantos estão diferentes do padrão.
+  const [filtrosAbertos, setFiltrosAbertos] = useState(false);
+  const filtrosAtivos = (Object.keys(FILTRO_INICIAL) as (keyof Filtro)[]).filter(
+    (campo) => campo !== 'q' && filtro[campo] !== FILTRO_INICIAL[campo],
+  ).length;
 
   return (
     <div className="space-y-6">
@@ -41,20 +81,93 @@ export function Clientes() {
         Clientes
       </Titulo>
 
-      <CampoBusca
-        rotulo="Buscar clientes"
-        placeholder="Buscar por nome, placa, CPF/CNPJ ou telefone"
-        valor={busca}
-        aoMudar={(valor) => {
-          setBusca(valor);
-          setQuantidade(POR_PAGINA);
-        }}
-      />
+      <div className="space-y-3">
+        <CampoBusca
+          rotulo="Buscar clientes"
+          placeholder="Buscar por nome, placa, CPF/CNPJ ou telefone"
+          valor={filtro.q}
+          aoMudar={(valor) => mudar('q', valor)}
+        />
+        <button
+          type="button"
+          aria-expanded={filtrosAbertos}
+          onClick={() => setFiltrosAbertos(!filtrosAbertos)}
+          className="inline-flex items-center gap-2 text-sm font-medium text-primaria hover:underline"
+        >
+          <SlidersHorizontal className="size-4" aria-hidden />
+          {filtrosAbertos ? 'Ocultar filtros' : 'Mostrar filtros'}
+          {filtrosAtivos > 0 && <Selo tom="primario">{filtrosAtivos} alterado(s)</Selo>}
+          <ChevronDown className={`size-4 transition ${filtrosAbertos ? 'rotate-180' : ''}`} aria-hidden />
+        </button>
+        {filtrosAbertos && (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Campo rotulo="Status">
+              <Select value={filtro.ativo} onChange={(e) => mudar('ativo', e.target.value)}>
+                <option value="true">Ativos</option>
+                <option value="false">Inativos</option>
+                <option value="">Ativos e inativos</option>
+              </Select>
+            </Campo>
+            <Campo rotulo="Tipo">
+              <Select value={filtro.tipo} onChange={(e) => mudar('tipo', e.target.value)}>
+                <option value="">Pessoa física e jurídica</option>
+                <option value="PF">Pessoa física</option>
+                <option value="PJ">Pessoa jurídica</option>
+              </Select>
+            </Campo>
+            <Campo rotulo="Origem">
+              <Select value={filtro.origemId} onChange={(e) => mudar('origemId', e.target.value)}>
+                <option value="">Todas</option>
+                {origens.data?.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.nome}
+                  </option>
+                ))}
+              </Select>
+            </Campo>
+            <Campo rotulo="Tipo de relacionamento">
+              <Select value={filtro.relacionamentoId} onChange={(e) => mudar('relacionamentoId', e.target.value)}>
+                <option value="">Todos</option>
+                {relacionamentos.data?.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.nome}
+                  </option>
+                ))}
+              </Select>
+            </Campo>
+            <Campo rotulo="Cliente desde (de)">
+              <Input type="date" value={filtro.desde} onChange={(e) => mudar('desde', e.target.value)} />
+            </Campo>
+            <Campo rotulo="Cliente desde (até)">
+              <Input type="date" min={filtro.desde} value={filtro.ate} onChange={(e) => mudar('ate', e.target.value)} />
+            </Campo>
+            <Campo rotulo="Aniversário">
+              <Select value={filtro.aniversario} onChange={(e) => mudar('aniversario', e.target.value)}>
+                <option value="">Qualquer data</option>
+                <option value="hoje">Aniversariantes de hoje</option>
+                <option value="semana">Hoje e próximos 7 dias</option>
+              </Select>
+            </Campo>
+            {filtrado && (
+              <div className="flex items-end pb-2">
+                <BotaoLink
+                  onClick={() => {
+                    setFiltro(FILTRO_INICIAL);
+                    setPagina(1);
+                  }}
+                >
+                  Limpar filtros
+                </BotaoLink>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       {dados && dados.itens.length === 0 ? (
-        busca ? (
+        filtrado ? (
           <Vazio icone={<Search />} titulo="Nenhum cliente encontrado">
-            Confira a grafia ou busque pela placa do carro.
+            Confira a grafia, busque pela placa do carro ou limpe os filtros.
           </Vazio>
         ) : (
           <Vazio
@@ -70,80 +183,59 @@ export function Clientes() {
           />
         )
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {dados?.itens.map((c) => (
-            <CartaoCliente key={c.id} cliente={c} />
-          ))}
-        </div>
+        <Tabela>
+          <Cabecalho>
+            <Th>Nome / Razão social</Th>
+            <Th>Tipo</Th>
+            <Th>CPF/CNPJ</Th>
+            <Th>WhatsApp</Th>
+            <Th>Cidade</Th>
+            <Th>Cliente desde</Th>
+            <Th className="text-right">Veículos</Th>
+            <Th>Status</Th>
+            <Th />
+          </Cabecalho>
+          <tbody>
+            {dados?.itens.map((c) => (
+              <LinhaCliente key={c.id} cliente={c} />
+            ))}
+          </tbody>
+        </Tabela>
       )}
 
-      {dados && dados.total > 0 && (
-        <div className="flex flex-col items-center gap-3">
-          <TextoSuave className="text-xs">
-            Mostrando {dados.itens.length} de {dados.total} cliente(s)
-          </TextoSuave>
-          {dados.total > dados.itens.length && quantidade < 100 && (
-            <Botao
-              variante="secundario"
-              disabled={clientes.isFetching}
-              onClick={() => setQuantidade((q) => q + POR_PAGINA)}
-            >
-              Mostrar mais
-            </Botao>
-          )}
-          {dados.total > dados.itens.length && quantidade >= 100 && (
-            <TextoSuave className="text-xs">Refine a busca para ver os demais.</TextoSuave>
-          )}
-        </div>
-      )}
+      {dados && <Paginacao pagina={pagina} total={dados.total} aoMudar={setPagina} carregando={clientes.isFetching} />}
     </div>
   );
 }
 
-function CartaoCliente({ cliente: c }: { cliente: ClienteResumo }) {
-  const restantes = c.totalVeiculos - c.veiculos.length;
+function LinhaCliente({ cliente: c }: { cliente: ClienteResumo }) {
   return (
-    <Cartao className="relative flex flex-col gap-4 p-5 transition hover:border-borda-forte hover:shadow-md">
-      <div className="flex items-start gap-3">
-        <Iniciais nome={c.nome} />
-        <div className="min-w-0 flex-1">
-          {/* O link cobre o cartão inteiro; o WhatsApp fica por cima (relative z-10). */}
-          <Link
-            to={`/clientes/${c.id}`}
-            className="block truncate font-semibold text-texto after:absolute after:inset-0 after:rounded-lg hover:text-primaria"
-          >
-            {c.nome}
-          </Link>
-          <p className="truncate text-xs text-texto-suave">
-            {c.tipo === 'PF' ? 'CPF' : 'CNPJ'} {formatarDocumento(c.cpfCnpj)}
-          </p>
-        </div>
-        <div className="flex flex-col items-end gap-1">
-          {!c.ativo && <Selo>Inativo</Selo>}
+    <Linha className="hover:bg-superficie-alt">
+      <Td className="min-w-56">
+        <Link to={`/clientes/${c.id}`} className="font-medium text-texto hover:text-primaria">
+          {c.nome}
+        </Link>
+        <div className="mt-1 flex flex-wrap gap-1">
+          <SeloAniversario dias={c.diasAteAniversario} />
           <SeloPendencias pendencias={c.pendencias} />
         </div>
-      </div>
-
-      {c.whatsapp ? (
-        <LinkWhatsApp numero={c.whatsapp} className="relative z-10 self-start" />
-      ) : (
-        <span className="text-sm text-texto-suave">Sem WhatsApp</span>
-      )}
-
-      <div className="mt-auto flex flex-wrap items-center gap-2 border-t border-borda pt-4">
-        {c.veiculos.length === 0 && <span className="text-sm text-texto-suave">Nenhum veículo</span>}
-        {c.veiculos.map((v) => (
-          <span
-            key={v.id}
-            className={`flex items-center gap-2 ${v.status === 'ativo' ? '' : 'opacity-50'}`}
-            title={`${v.marca} ${v.modelo}`}
-          >
-            <Placa placa={v.placa} tamanho="sm" />
-            {c.veiculos.length === 1 && <span className="text-sm text-texto">{v.modelo}</span>}
-          </span>
-        ))}
-        {restantes > 0 && <span className="text-xs text-texto-suave">+{restantes}</span>}
-      </div>
-    </Cartao>
+      </Td>
+      <Td suave>{c.tipo}</Td>
+      <Td suave className="whitespace-nowrap">
+        {formatarDocumento(c.cpfCnpj)}
+      </Td>
+      <Td className="whitespace-nowrap">{c.whatsapp ? <LinkWhatsApp numero={c.whatsapp} /> : '—'}</Td>
+      <Td suave>{c.cidade ?? '—'}</Td>
+      <Td suave className="whitespace-nowrap">
+        {c.clienteDesde ? formatarDataIso(c.clienteDesde) : '—'}
+      </Td>
+      <Td suave className="text-right">
+        {c.totalVeiculos}
+      </Td>
+      <Td>{c.ativo ? <Selo tom="sucesso">Ativo</Selo> : <Selo>Inativo</Selo>}</Td>
+      <Td className="text-right">
+        <BotaoVisualizar para={`/clientes/${c.id}`} />
+      </Td>
+    </Linha>
   );
 }

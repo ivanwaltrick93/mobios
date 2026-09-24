@@ -2,18 +2,23 @@ import type { Categoria } from '@mobios/shared';
 import { mascaraCodigo } from '@mobios/shared';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { FolderTree } from 'lucide-react';
-import { useState, type FormEvent } from 'react';
-import { AbasMateriais } from '../components/AbasMateriais';
+import { Fragment, useState, type FormEvent } from 'react';
 import {
   Alerta,
   Botao,
   BotaoLink,
+  BotaoVisualizar,
+  Cabecalho,
   Campo,
-  Cartao,
+  Detalhes,
   Input,
+  Linha,
   Select,
   Selo,
+  Tabela,
+  Td,
   TextoSuave,
+  Th,
   Titulo,
   Vazio,
 } from '../components/ui';
@@ -29,6 +34,7 @@ export function Categorias() {
   const editar = pode('materiais', 'editar');
   const categorias = useCategorias();
   const [edicao, setEdicao] = useState<Edicao>(null);
+  const [vendo, setVendo] = useState<string | null>(null);
   const arvore = arvoreCategorias(categorias.data);
   const queryClient = useQueryClient();
   const acao = useMutation({
@@ -44,9 +50,8 @@ export function Categorias() {
   return (
     <div className="space-y-6">
       <Titulo acao={editar && !edicao && <Botao onClick={() => setEdicao({ paiId: null })}>Nova categoria</Botao>}>
-        Materiais
+        Categorias
       </Titulo>
-      <AbasMateriais />
       <TextoSuave>
         Organize os materiais em níveis (ex.: Peças › Motor › Filtros). Ao filtrar por uma categoria, as subcategorias
         entram junto.
@@ -61,45 +66,88 @@ export function Categorias() {
           Todo material precisa de uma categoria. Comece pelas principais: Peças, Pneus, Lubrificantes...
         </Vazio>
       ) : (
-        <Cartao className="divide-y divide-borda p-0">
-          {arvore.map((c) => (
-            <div key={c.id}>
-              <div
-                className="flex flex-wrap items-center justify-between gap-2 px-4 py-3"
-                style={{ paddingLeft: `${1 + c.nivel * 1.5}rem` }}
-              >
-                <span className="flex flex-wrap items-center gap-2 text-sm">
-                  <span className={`font-medium ${c.ativa ? 'text-texto' : 'text-texto-suave line-through'}`}>
-                    {c.nome}
-                  </span>
-                  {c.codigo && <span className="font-mono text-xs text-texto-suave">{c.codigo}</span>}
-                  {!c.ativa && <Selo>Inativa</Selo>}
-                  <span className="text-xs text-texto-suave">{c.materiais} material(is)</span>
-                </span>
-                {editar && !edicao && (
-                  <span className="flex flex-wrap gap-4 text-sm">
-                    <BotaoLink onClick={() => setEdicao({ paiId: c.id })}>+ Subcategoria</BotaoLink>
-                    <BotaoLink onClick={() => setEdicao({ categoria: c, paiId: c.categoriaPaiId })}>Editar</BotaoLink>
-                    <BotaoLink onClick={() => acao.mutate({ c, tipo: 'status' })}>
-                      {c.ativa ? 'Inativar' : 'Reativar'}
-                    </BotaoLink>
-                    <BotaoLink
-                      perigo
-                      onClick={() => confirm(`Excluir a categoria ${c.nome}?`) && acao.mutate({ c, tipo: 'excluir' })}
-                    >
-                      Excluir
-                    </BotaoLink>
-                  </span>
+        <Tabela>
+          <Cabecalho>
+            <Th>Nome</Th>
+            <Th>Código</Th>
+            <Th className="text-right">Materiais</Th>
+            <Th>Status</Th>
+            <Th />
+          </Cabecalho>
+          <tbody>
+            {arvore.map((c) => (
+              <Fragment key={c.id}>
+                <Linha className="hover:bg-superficie-alt">
+                  <Td style={{ paddingLeft: `${1 + c.nivel * 1.5}rem` }}>
+                    <span className={`font-medium ${c.ativa ? 'text-texto' : 'text-texto-suave line-through'}`}>
+                      {c.nome}
+                    </span>
+                  </Td>
+                  <Td suave className="font-mono text-xs">
+                    {c.codigo ?? '—'}
+                  </Td>
+                  <Td suave className="text-right">
+                    {c.materiais}
+                  </Td>
+                  <Td>{c.ativa ? <Selo tom="sucesso">Ativa</Selo> : <Selo>Inativa</Selo>}</Td>
+                  <Td className="text-right whitespace-nowrap">
+                    <span className="flex items-center justify-end gap-4 text-sm">
+                      <BotaoVisualizar
+                        aberto={vendo === c.id}
+                        aoClicar={() => setVendo(vendo === c.id ? null : c.id)}
+                      />
+                      {editar && !edicao && (
+                        <>
+                          <BotaoLink onClick={() => setEdicao({ paiId: c.id })}>+ Subcategoria</BotaoLink>
+                          <BotaoLink onClick={() => setEdicao({ categoria: c, paiId: c.categoriaPaiId })}>
+                            Editar
+                          </BotaoLink>
+                          <BotaoLink onClick={() => acao.mutate({ c, tipo: 'status' })}>
+                            {c.ativa ? 'Inativar' : 'Reativar'}
+                          </BotaoLink>
+                          <BotaoLink
+                            perigo
+                            onClick={() =>
+                              confirm(`Excluir a categoria ${c.nome}?`) && acao.mutate({ c, tipo: 'excluir' })
+                            }
+                          >
+                            Excluir
+                          </BotaoLink>
+                        </>
+                      )}
+                    </span>
+                  </Td>
+                </Linha>
+                {vendo === c.id && (
+                  <tr>
+                    <td colSpan={5} className="px-4 pb-4">
+                      <Detalhes
+                        itens={[
+                          { rotulo: 'Caminho', valor: c.caminho },
+                          { rotulo: 'Código', valor: c.codigo ?? '—' },
+                          { rotulo: 'Descrição', valor: c.descricao ?? '—' },
+                          { rotulo: 'Materiais nesta categoria', valor: c.materiais },
+                          { rotulo: 'Status', valor: c.ativa ? 'Ativa' : 'Inativa' },
+                        ]}
+                      />
+                    </td>
+                  </tr>
                 )}
-              </div>
-              {edicao && (edicao.categoria?.id === c.id || (!edicao.categoria && edicao.paiId === c.id)) && (
-                <div className="px-4 pb-4">
-                  <EditorCategoria edicao={edicao} todas={categorias.data ?? []} aoConcluir={() => setEdicao(null)} />
-                </div>
-              )}
-            </div>
-          ))}
-        </Cartao>
+                {edicao && (edicao.categoria?.id === c.id || (!edicao.categoria && edicao.paiId === c.id)) && (
+                  <tr>
+                    <td colSpan={5} className="px-4 pb-4">
+                      <EditorCategoria
+                        edicao={edicao}
+                        todas={categorias.data ?? []}
+                        aoConcluir={() => setEdicao(null)}
+                      />
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            ))}
+          </tbody>
+        </Tabela>
       )}
     </div>
   );

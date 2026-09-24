@@ -1,17 +1,21 @@
-import { formatarQuantidade, type Saldo } from '@mobios/shared';
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { Boxes } from 'lucide-react';
+import { COLUNAS_IMPORTACAO_ESTOQUE, formatarQuantidade, type Saldo } from '@mobios/shared';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Boxes, FileUp, Plus } from 'lucide-react';
 import { Fragment, useState } from 'react';
 import { Link } from 'react-router';
-import { AjusteEstoqueForm, HistoricoAjustes } from '../components/Estoque';
+import { AjusteEstoqueForm, HistoricoAjustes, LancamentoEstoqueForm } from '../components/Estoque';
+import { ImportarCsv } from '../components/ImportarCsv';
 import {
   Alerta,
+  Botao,
   BotaoLink,
   Cabecalho,
   CampoBusca,
   Linha,
   LinhaVazia,
   Marcador,
+  Paginacao,
+  POR_PAGINA,
   Select,
   Selo,
   Tabela,
@@ -33,11 +37,27 @@ export function Estoque() {
   const [busca, setBusca] = useState('');
   const [depositoId, setDepositoId] = useState('');
   const [soComSaldo, setSoComSaldo] = useState(false);
+  const [pagina, setPagina] = useState(1);
   const [aberto, setAberto] = useState<{ chave: string; modo: 'ajuste' | 'historico' } | null>(null);
+  const [painel, setPainel] = useState<'lancamento' | 'importacao' | null>(null);
+  const queryClient = useQueryClient();
   const depositos = useDepositos();
   const parametros = new URLSearchParams(
-    Object.entries({ q: busca, depositoId, comSaldo: String(soComSaldo), porPagina: '100' }).filter(([, v]) => v),
+    Object.entries({
+      q: busca,
+      depositoId,
+      comSaldo: String(soComSaldo),
+      pagina: String(pagina),
+      porPagina: String(POR_PAGINA),
+    }).filter(([, v]) => v),
   );
+  /** Filtro novo volta para a primeira página. */
+  const filtrar =
+    <T,>(definir: (valor: T) => void) =>
+    (valor: T) => {
+      definir(valor);
+      setPagina(1);
+    };
   const saldos = useQuery({
     queryKey: ['estoque', parametros.toString()],
     queryFn: () => api<{ itens: Saldo[]; total: number }>(`/estoque?${parametros}`),
@@ -48,21 +68,51 @@ export function Estoque() {
 
   return (
     <div className="space-y-6">
-      <Titulo>Estoque</Titulo>
+      <Titulo
+        acao={
+          editar && (
+            <div className="flex flex-wrap gap-2">
+              <Botao variante="secundario" onClick={() => setPainel(painel === 'importacao' ? null : 'importacao')}>
+                <FileUp className="mr-1.5 size-4" aria-hidden /> Importar planilha
+              </Botao>
+              <Botao onClick={() => setPainel(painel === 'lancamento' ? null : 'lancamento')}>
+                <Plus className="mr-1.5 size-4" aria-hidden /> Lançar saldo
+              </Botao>
+            </div>
+          )
+        }
+      >
+        Estoque
+      </Titulo>
       <TextoSuave>
         Disponível = livre para vender ou usar. Reservado = separado para O.S. ou pedido. Físico = disponível +
-        reservado. Todo material ativo aparece em cada depósito; por enquanto os saldos mudam por ajuste manual, sempre
-        com motivo.
+        reservado. Todo material ativo aparece em cada depósito; os saldos mudam por ajuste, lançamento ou planilha,
+        sempre com motivo.
       </TextoSuave>
+
+      {painel === 'lancamento' && <LancamentoEstoqueForm aoConcluir={() => setPainel(null)} />}
+      {painel === 'importacao' && (
+        <ImportarCsv
+          titulo="Importar saldos de estoque"
+          colunas={COLUNAS_IMPORTACAO_ESTOQUE}
+          url="/estoque/importar"
+          nomeModelo="modelo-estoque.csv"
+          aoConcluir={() => {
+            queryClient.invalidateQueries({ queryKey: ['estoque'] });
+            queryClient.invalidateQueries({ queryKey: ['lista-precos'] });
+          }}
+          aoFechar={() => setPainel(null)}
+        />
+      )}
 
       <div className="grid gap-3 md:grid-cols-[1fr_16rem_auto] md:items-center">
         <CampoBusca
           rotulo="Buscar no estoque"
           placeholder="SKU, descrição ou código do fabricante"
           valor={busca}
-          aoMudar={setBusca}
+          aoMudar={filtrar(setBusca)}
         />
-        <Select aria-label="Depósito" value={depositoId} onChange={(e) => setDepositoId(e.target.value)}>
+        <Select aria-label="Depósito" value={depositoId} onChange={(e) => filtrar(setDepositoId)(e.target.value)}>
           <option value="">Todos os depósitos</option>
           {depositos.data?.map((d) => (
             <option key={d.id} value={d.id}>
@@ -70,7 +120,11 @@ export function Estoque() {
             </option>
           ))}
         </Select>
-        <Marcador rotulo="Só com saldo" checked={soComSaldo} onChange={(e) => setSoComSaldo(e.target.checked)} />
+        <Marcador
+          rotulo="Só com saldo"
+          checked={soComSaldo}
+          onChange={(e) => filtrar(setSoComSaldo)(e.target.checked)}
+        />
       </div>
 
       <Tabela>
@@ -155,11 +209,8 @@ export function Estoque() {
           )}
         </tbody>
       </Tabela>
-      {saldos.data && saldos.data.total > saldos.data.itens.length && (
-        <TextoSuave className="text-center text-xs">
-          Mostrando {saldos.data.itens.length} de {saldos.data.total.toLocaleString('pt-BR')}. Refine a busca ou filtre
-          por depósito.
-        </TextoSuave>
+      {saldos.data && (
+        <Paginacao pagina={pagina} total={saldos.data.total} aoMudar={setPagina} carregando={saldos.isFetching} />
       )}
     </div>
   );

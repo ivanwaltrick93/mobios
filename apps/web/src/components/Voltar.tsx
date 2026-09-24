@@ -17,7 +17,7 @@ export function Voltar({ raizes }: { raizes: string[] }) {
     // key "default" = primeira página aberta nesta aba: não há para onde voltar no app.
     if (key !== 'default') return navigate(-1);
     const pai = pathname.replace(/\/[^/]+\/?$/, '') || '/';
-    navigate(pai === '/veiculos' ? '/clientes' : pai);
+    navigate(pai);
   }
 
   return (

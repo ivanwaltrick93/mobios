@@ -8,12 +8,24 @@ export class ErroApi extends Error {
   }
 }
 
-export async function api<T>(caminho: string, opcoes: { method?: string; body?: unknown } = {}): Promise<T> {
+type OpcoesApi = {
+  method?: string;
+  /** Corpo JSON. */
+  body?: unknown;
+  /** Arquivo enviado como o próprio corpo (imagem, planilha CSV), com o tipo informado. */
+  arquivo?: { conteudo: Blob; tipo: string };
+};
+
+export async function api<T>(caminho: string, { method = 'GET', body, arquivo }: OpcoesApi = {}): Promise<T> {
   const res = await fetch(`/api${caminho}`, {
-    method: opcoes.method ?? 'GET',
+    method,
     credentials: 'same-origin',
-    headers: opcoes.body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
-    body: opcoes.body !== undefined ? JSON.stringify(opcoes.body) : undefined,
+    headers: arquivo
+      ? { 'Content-Type': arquivo.tipo }
+      : body !== undefined
+        ? { 'Content-Type': 'application/json' }
+        : undefined,
+    body: arquivo ? arquivo.conteudo : body !== undefined ? JSON.stringify(body) : undefined,
   });
   if (res.status === 204) return undefined as T;
   const dados = await res.json().catch(() => ({}));

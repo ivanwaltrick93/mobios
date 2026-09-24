@@ -1,31 +1,53 @@
 import {
-  formatarDataIso,
+  COLUNAS_IMPORTACAO_PRECOS,
+  eventoPrecoPadraoSchema,
   hojeIso,
   idParamSchema,
   precoAtualizarSchema,
   precoCancelarSchema,
   precoEncerrarSchema,
   precoInputSchema,
+  PRECO_MAXIMO,
+  precoPadraoInputSchema,
+  precoPadraoSchema,
   precoSchema,
   precoVigenteQuerySchema,
   precoVigenteSchema,
   itemListaPrecosSchema,
   listaPrecosQuerySchema,
+  resultadoImportacaoSchema,
   situacaoPreco,
   temAcesso,
+  type EventoPrecoPadrao,
   type ItemListaPrecos,
   type Preco,
 } from '@mobios/shared';
-import { and, asc, desc, eq, gt, gte, isNull, lte, not, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { withTenant, type Tx } from '../../db/client.js';
-import { materiais, materiaisPrecos, precosEventos, tabelasPreco } from '../../db/schema.js';
+import {
+  materiais,
+  materiaisPrecos,
+  precosEventos,
+  precosPadrao,
+  precosPadraoEventos,
+  tabelasPreco,
+} from '../../db/schema.js';
 import { buscaDeMaterial, nomeUsuario } from '../../lib/cadastro.js';
+import { lerData, lerNumero } from '../../lib/csv.js';
 import { ErroHttp, naoEncontrado } from '../../lib/erros.js';
-
-/** Dia anterior de uma data AAAA-MM-DD (sem fuso: só a data). */
-const diaAnterior = (data: string) => new Date(Date.parse(`${data}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
+import { aceitarUploadDeCsv, importarLinhas, lerPlanilhaEnviada } from '../../lib/importacao.js';
+import {
+  criarVigencia,
+  definirPrecoPadrao,
+  registrar,
+  removerPrecoPadrao,
+  resolverMaterial,
+  retrato,
+  travar,
+  vigenteEm,
+} from './regras.js';
 
 const colunas = {
   id: materiaisPrecos.id,
@@ -60,41 +82,6 @@ async function carregar(tx: Tx, id: string): Promise<Preco> {
   return comSituacao(p);
 }
 
-/** Vigência (não cancelada) que vale na data. A constraint EXCLUDE garante que é no máximo uma. */
-const vigenteEm = (materialId: string, tabelaPrecoId: string, data: string): SQL =>
-  and(
-    eq(materiaisPrecos.materialId, materialId),
-    eq(materiaisPrecos.tabelaPrecoId, tabelaPrecoId),
-    not(materiaisPrecos.cancelado),
-    lte(materiaisPrecos.dataInicio, data),
-    or(isNull(materiaisPrecos.dataFim), gte(materiaisPrecos.dataFim, data)),
-  )!;
-
-/**
- * Serializa alterações de preço do mesmo material + tabela (trava liberada no fim da transação).
- * A constraint EXCLUDE já impede sobreposição; a trava evita que duas inclusões simultâneas
- * leiam o mesmo "preço atual" e uma delas falhe no meio do encerramento automático.
- */
-const travar = (tx: Tx, materialId: string, tabelaPrecoId: string) =>
-  tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`precos:${materialId}:${tabelaPrecoId}`}))`);
-
-type Evento = 'criado' | 'alterado' | 'encerrado' | 'cancelado' | 'reaberto';
-const registrar = (
-  tx: Tx,
-  precoId: string,
-  evento: Evento,
-  usuarioId: string,
-  antes: object | null,
-  depois: object | null,
-) => tx.insert(precosEventos).values({ precoId, evento, usuarioId, antes, depois });
-
-/** Campos da vigência que entram na trilha de auditoria. */
-const retrato = (p: { precoCentavos: number; dataInicio: string; dataFim: string | null }) => ({
-  precoCentavos: p.precoCentavos,
-  dataInicio: p.dataInicio,
-  dataFim: p.dataFim,
-});
-
 async function buscarPreco(tx: Tx, id: string) {
   const [p] = await tx.select().from(materiaisPrecos).where(eq(materiaisPrecos.id, id));
   if (!p) throw naoEncontrado('Preço');
@@ -105,9 +92,10 @@ export const precosRoutes: FastifyPluginAsyncZod = async (app) => {
   app.addHook('onRequest', app.autenticar);
   app.addHook('onRequest', app.exigirAcesso('precos'));
   const editar = { onRequest: app.exigirAcesso('precos', 'editar') };
+  aceitarUploadDeCsv(app);
 
   /**
-   * "Qual o preço do SKU X na tabela Y na data Z?" Devolve exatamente um preço ou `preco: null`.
+   * "Qual o preço do SKU X na tabela Y na data Z?" A vigência que cobre a data ou, sem ela, o preço padrão.
    * Material/tabela inativos ainda respondem (o histórico continua consultável), com `ativo`/`ativa` informando.
    */
   app.get(
@@ -131,17 +119,30 @@ export const precosRoutes: FastifyPluginAsyncZod = async (app) => {
           .from(tabelasPreco)
           .where(tabelaPrecoId ? eq(tabelasPreco.id, tabelaPrecoId) : eq(tabelasPreco.codigo, tabela!));
         if (!tab) throw naoEncontrado('Tabela de preço');
-        const [preco] = await consulta(tx)
+        const [linha] = await consulta(tx)
           .where(vigenteEm(material.id, tab.id, data))
           .limit(1);
-        return { data, material, tabela: tab, preco: preco ? comSituacao(preco, data) : null };
+        const [padrao] = await tx
+          .select({ precoCentavos: precosPadrao.precoCentavos })
+          .from(precosPadrao)
+          .where(and(eq(precosPadrao.materialId, material.id), eq(precosPadrao.tabelaPrecoId, tab.id)));
+        // Sem vigência cobrindo a data, vale o preço padrão (se houver).
+        const preco = linha ? comSituacao(linha, data) : null;
+        return {
+          data,
+          material,
+          tabela: tab,
+          preco,
+          valorCentavos: preco?.precoCentavos ?? padrao?.precoCentavos ?? null,
+          origem: preco ? ('vigencia' as const) : padrao ? ('padrao' as const) : null,
+        };
       });
     },
   );
 
   /**
-   * Lista de preços de uma tabela (consulta rápida no atendimento): material ativo, preço vigente hoje,
-   * próximo preço programado e o disponível somado dos depósitos (só para quem acessa o Estoque).
+   * Lista de preços de uma tabela (consulta rápida no atendimento): material ativo, preço de hoje (vigência ou,
+   * sem ela, o padrão), próximo preço programado e o disponível somado dos depósitos (só para quem acessa o Estoque).
    * Preço e próximo preço vêm de subconsultas LATERAL que usam o índice (material, tabela, início).
    */
   app.get(
@@ -157,7 +158,8 @@ export const precosRoutes: FastifyPluginAsyncZod = async (app) => {
       const hoje = hojeIso();
       const verEstoque = temAcesso(req.user.acessos, 'estoque');
       const busca = q ? sql`and ${buscaDeMaterial(q)}` : sql``;
-      const soComPreco = comPreco === 'true' ? sql`and v.preco_centavos is not null` : sql``;
+      const soComPreco =
+        comPreco === 'true' ? sql`and (v.preco_centavos is not null or pp.preco_centavos is not null)` : sql``;
       // `materiais` sem apelido: o filtro de busca (buscaDeMaterial) usa as colunas com o nome da tabela.
       const base = sql`
         from materiais
@@ -172,6 +174,7 @@ export const precosRoutes: FastifyPluginAsyncZod = async (app) => {
           where p.material_id = materiais.id and p.tabela_preco_id = ${tabelaPrecoId} and not p.cancelado
             and p.data_inicio > ${hoje}::date
           order by p.data_inicio limit 1) f on true
+        left join precos_padrao pp on pp.material_id = materiais.id and pp.tabela_preco_id = ${tabelaPrecoId}
         where materiais.ativo ${busca} ${soComPreco}`;
       const disponivel = verEstoque
         ? sql`(select coalesce(sum(e.disponivel), 0) from estoques e where e.material_id = materiais.id)::float8`
@@ -185,7 +188,9 @@ export const precosRoutes: FastifyPluginAsyncZod = async (app) => {
         const linhas = (await tx.execute(sql`
           select materiais.id as "materialId", materiais.sku, materiais.descricao,
             ma.nome as "marcaNome", materiais.unidade::text as unidade,
-            v.preco_centavos::float8 as "precoCentavos",
+            coalesce(v.preco_centavos, pp.preco_centavos)::float8 as "precoCentavos",
+            case when v.preco_centavos is not null then 'vigencia'
+              when pp.preco_centavos is not null then 'padrao' end as origem,
             v.data_inicio::text as "vigenteDesde",
             v.data_fim::text as "vigenteAte",
             f.preco_centavos::float8 as "proximoPrecoCentavos",
@@ -225,115 +230,16 @@ export const precosRoutes: FastifyPluginAsyncZod = async (app) => {
       }),
   );
 
-  /**
-   * Nova vigência. Nunca apaga nem reescreve o passado:
-   * - início hoje ou depois;
-   * - a vigência que vale na data de início é encerrada no dia anterior (e volta ao fim original se a nova for cancelada);
-   * - fim vazio = aberta; havendo preço futuro depois, a nova termina na véspera dele;
-   * - fim informado que invade um preço futuro, ou que termina antes do fim da vigência atual, = conflito (409).
-   */
+  /** Nova vigência (regras em criarVigencia). Material pelo id ou pelo SKU digitado. */
   app.post(
     '/',
     { ...editar, schema: { body: precoInputSchema, response: { 201: precoSchema } } },
     async (req, reply) => {
-      const { materialId, tabelaPrecoId, precoCentavos, dataInicio } = req.body;
-      let { dataFim } = req.body;
-      const hoje = hojeIso();
-      if (dataInicio < hoje)
-        throw new ErroHttp(400, 'A vigência não pode começar no passado: o histórico de preços não é reescrito.');
-
+      const { materialId, sku, ...vigencia } = req.body;
       const preco = await withTenant(req.user.tid, async (tx) => {
-        await travar(tx, materialId, tabelaPrecoId);
-        const [material] = await tx
-          .select({ ativo: materiais.ativo })
-          .from(materiais)
-          .where(eq(materiais.id, materialId));
-        if (!material) throw naoEncontrado('Material');
-        if (!material.ativo) throw new ErroHttp(400, 'Material inativo não recebe preço novo. Reative-o primeiro.');
-        const [tabela] = await tx
-          .select({ ativa: tabelasPreco.ativa })
-          .from(tabelasPreco)
-          .where(eq(tabelasPreco.id, tabelaPrecoId));
-        if (!tabela) throw naoEncontrado('Tabela de preço');
-        if (!tabela.ativa)
-          throw new ErroHttp(400, 'Tabela de preço inativa não recebe preço novo. Reative-a primeiro.');
-
-        const [atual] = await tx
-          .select()
-          .from(materiaisPrecos)
-          .where(vigenteEm(materialId, tabelaPrecoId, dataInicio));
-        if (atual?.dataInicio === dataInicio) {
-          throw new ErroHttp(
-            409,
-            'Já existe um preço começando nesta data. Edite-o (se ainda não começou) ou escolha outra data de início.',
-          );
-        }
-        const [proximo] = await tx
-          .select({ dataInicio: materiaisPrecos.dataInicio })
-          .from(materiaisPrecos)
-          .where(
-            and(
-              eq(materiaisPrecos.materialId, materialId),
-              eq(materiaisPrecos.tabelaPrecoId, tabelaPrecoId),
-              not(materiaisPrecos.cancelado),
-              gt(materiaisPrecos.dataInicio, dataInicio),
-            ),
-          )
-          .orderBy(asc(materiaisPrecos.dataInicio))
-          .limit(1);
-        if (proximo) {
-          if (!dataFim) dataFim = diaAnterior(proximo.dataInicio);
-          else if (dataFim >= proximo.dataInicio) {
-            throw new ErroHttp(
-              409,
-              `Já existe preço programado a partir de ${formatarDataIso(proximo.dataInicio)}. ` +
-                'Termine a nova vigência antes dessa data.',
-            );
-          }
-        }
-
-        // A nova só substitui a atual se cobrir o resto do período dela; terminar no meio partiria a vigência
-        // em duas (com um buraco sem preço) — isso é sobreposição e é recusado.
-        if (atual && dataFim && (atual.dataFim === null || dataFim < atual.dataFim)) {
-          const fimAtual = atual.dataFim ? `até ${formatarDataIso(atual.dataFim)}` : 'sem data de fim';
-          throw new ErroHttp(
-            409,
-            `O período se sobrepõe ao preço vigente (${fimAtual}). Deixe a nova vigência sem fim ou termine-a depois do fim da atual.`,
-          );
-        }
-
-        // Encerra a vigência atual na véspera (guardando o fim anterior para desfazer se a nova for cancelada).
-        if (atual) {
-          await tx
-            .update(materiaisPrecos)
-            .set({ dataFim: diaAnterior(dataInicio), dataFimAnterior: atual.dataFim, atualizadoPor: req.user.sub })
-            .where(eq(materiaisPrecos.id, atual.id));
-        }
-        const [novo] = (await tx
-          .insert(materiaisPrecos)
-          .values({
-            materialId,
-            tabelaPrecoId,
-            precoCentavos,
-            dataInicio,
-            dataFim: dataFim ?? null,
-            criadoPor: req.user.sub,
-            atualizadoPor: req.user.sub,
-          })
-          .returning()) as [typeof materiaisPrecos.$inferSelect];
-        await registrar(tx, novo.id, 'criado', req.user.sub, null, retrato(novo));
-        if (atual) {
-          await tx
-            .update(materiaisPrecos)
-            .set({ encerradoPeloPrecoId: novo.id })
-            .where(eq(materiaisPrecos.id, atual.id));
-          await registrar(tx, atual.id, 'encerrado', req.user.sub, retrato(atual), {
-            ...retrato(atual),
-            dataFim: diaAnterior(dataInicio),
-            motivo: 'Nova vigência',
-          });
-        }
-        return carregar(tx, novo.id);
+        const material = await resolverMaterial(tx, { materialId, sku });
+        const id = await criarVigencia(tx, { ...vigencia, material }, req.user.sub);
+        return carregar(tx, id);
       });
       return reply.code(201).send(preco);
     },
@@ -484,4 +390,151 @@ export const precosRoutes: FastifyPluginAsyncZod = async (app) => {
           .orderBy(asc(precosEventos.criadoEm));
       }),
   );
+
+  // ---------- Preço padrão (sem vigência) ----------
+
+  const padraoQuery = z.object({ materialId: z.uuid(), tabelaPrecoId: z.uuid() });
+
+  /** Preços padrão do material, um por tabela. */
+  app.get(
+    '/padrao',
+    {
+      schema: {
+        querystring: z.object({ materialId: z.uuid() }),
+        response: { 200: z.array(precoPadraoSchema) },
+      },
+    },
+    async (req) =>
+      withTenant(req.user.tid, (tx) =>
+        consultaPadrao(tx).where(eq(precosPadrao.materialId, req.query.materialId)).orderBy(asc(tabelasPreco.nome)),
+      ),
+  );
+
+  /** Define ou altera o preço padrão. Material pelo id ou pelo SKU digitado; `versao` protege a edição. */
+  app.put(
+    '/padrao',
+    { ...editar, schema: { body: precoPadraoInputSchema, response: { 200: precoPadraoSchema } } },
+    async (req) => {
+      const { materialId, sku, ...dados } = req.body;
+      return withTenant(req.user.tid, async (tx) => {
+        const material = await resolverMaterial(tx, { materialId, sku });
+        await definirPrecoPadrao(tx, { ...dados, material }, req.user.sub);
+        const [padrao] = await consultaPadrao(tx).where(
+          and(eq(precosPadrao.materialId, material.id), eq(precosPadrao.tabelaPrecoId, dados.tabelaPrecoId)),
+        );
+        return padrao!;
+      });
+    },
+  );
+
+  app.delete('/padrao', { ...editar, schema: { querystring: padraoQuery } }, async (req, reply) => {
+    await withTenant(req.user.tid, (tx) =>
+      removerPrecoPadrao(tx, req.query.materialId, req.query.tabelaPrecoId, req.user.sub),
+    );
+    return reply.code(204).send();
+  });
+
+  /** Trilha do preço padrão de um material numa tabela (mais recente primeiro). */
+  app.get(
+    '/padrao/eventos',
+    { schema: { querystring: padraoQuery, response: { 200: z.array(eventoPrecoPadraoSchema) } } },
+    async (req) =>
+      withTenant(req.user.tid, (tx) =>
+        tx
+          .select({
+            evento: sql<EventoPrecoPadrao['evento']>`${precosPadraoEventos.evento}`,
+            precoAntes: precosPadraoEventos.precoAntes,
+            precoDepois: precosPadraoEventos.precoDepois,
+            usuario: nomeUsuario('precos_padrao_eventos', 'usuario_id'),
+            criadoEm: precosPadraoEventos.criadoEm,
+          })
+          .from(precosPadraoEventos)
+          .where(
+            and(
+              eq(precosPadraoEventos.materialId, req.query.materialId),
+              eq(precosPadraoEventos.tabelaPrecoId, req.query.tabelaPrecoId),
+            ),
+          )
+          .orderBy(desc(precosPadraoEventos.criadoEm))
+          .limit(100),
+      ),
+  );
+
+  // ---------- Importação por planilha ----------
+
+  /**
+   * Preços em massa por CSV (colunas em COLUNAS_IMPORTACAO_PRECOS; a 1ª linha é o cabeçalho).
+   * Linha com `inicio` = nova vigência (mesmas regras da tela); sem `inicio` = preço padrão.
+   * Grava as linhas válidas e devolve o erro de cada uma das outras, com o número da linha.
+   */
+  app.post('/importar', { ...editar, schema: { response: { 200: resultadoImportacaoSchema } } }, async (req) => {
+    const linhas = lerPlanilhaEnviada(req.body, COLUNAS_IMPORTACAO_PRECOS);
+    return withTenant(req.user.tid, async (tx) => {
+      // Tabelas e materiais da planilha lidos de uma vez, não uma consulta por linha.
+      const tabelas = new Map(
+        (await tx.select({ id: tabelasPreco.id, codigo: tabelasPreco.codigo }).from(tabelasPreco)).map((t) => [
+          t.codigo,
+          t.id,
+        ]),
+      );
+      const skus = [...new Set(linhas.map((l) => (l.valores.sku ?? '').toUpperCase()).filter(Boolean))];
+      const encontrados = skus.length
+        ? await tx
+            .select({ id: materiais.id, sku: materiais.sku, ativo: materiais.ativo })
+            .from(materiais)
+            .where(inArray(materiais.sku, skus))
+        : [];
+      const porSku = new Map(encontrados.map((m) => [m.sku, m]));
+
+      return importarLinhas(tx, linhas, async (savepoint, { valores }) => {
+        const valor = (coluna: string) => valores[coluna] ?? '';
+        const tabelaPrecoId = tabelas.get(valor('tabela').toUpperCase());
+        if (!tabelaPrecoId) throw new ErroHttp(400, `Tabela de preço "${valor('tabela')}" não encontrada.`);
+        const material = porSku.get(valor('sku').toUpperCase());
+        if (!material) throw new ErroHttp(400, `SKU "${valor('sku')}" não encontrado.`);
+        const precoCentavos = lerPrecoCentavos(valor('preco'));
+
+        if (!valor('inicio')) {
+          const situacao = await definirPrecoPadrao(
+            savepoint,
+            { material, tabelaPrecoId, precoCentavos },
+            req.user.sub,
+          );
+          return situacao === 'sem_alteracao' ? 'ignorada' : 'importada';
+        }
+        const dataInicio = lerData(valor('inicio'));
+        if (!dataInicio) throw new ErroHttp(400, `Início "${valor('inicio')}" inválido: use dd/mm/aaaa.`);
+        const dataFim = valor('fim') ? lerData(valor('fim')) : null;
+        if (valor('fim') && !dataFim) throw new ErroHttp(400, `Fim "${valor('fim')}" inválido: use dd/mm/aaaa.`);
+        if (dataFim && dataFim < dataInicio) throw new ErroHttp(400, 'O fim deve ser igual ou posterior ao início.');
+        await criarVigencia(savepoint, { material, tabelaPrecoId, precoCentavos, dataInicio, dataFim }, req.user.sub);
+        return 'importada';
+      });
+    });
+  });
 };
+
+const consultaPadrao = (tx: Tx) =>
+  tx
+    .select({
+      materialId: precosPadrao.materialId,
+      tabelaPrecoId: precosPadrao.tabelaPrecoId,
+      tabelaCodigo: tabelasPreco.codigo,
+      tabelaNome: tabelasPreco.nome,
+      precoCentavos: precosPadrao.precoCentavos,
+      atualizadoEm: precosPadrao.atualizadoEm,
+      atualizadoPor: nomeUsuario('precos_padrao', 'atualizado_por'),
+      versao: precosPadrao.versao,
+    })
+    .from(precosPadrao)
+    .innerJoin(tabelasPreco, eq(tabelasPreco.id, precosPadrao.tabelaPrecoId));
+
+/** Preço de planilha em reais (vírgula decimal, até 2 casas) convertido para centavos. */
+function lerPrecoCentavos(texto: string): number {
+  const reais = lerNumero(texto);
+  const centavos = reais == null ? NaN : Math.round(reais * 100);
+  if (reais == null || reais < 0 || Math.abs(centavos - reais * 100) > 1e-6 || centavos > PRECO_MAXIMO) {
+    throw new ErroHttp(400, `Preço "${texto}" inválido: use reais com vírgula decimal (ex.: 150,00).`);
+  }
+  return centavos;
+}

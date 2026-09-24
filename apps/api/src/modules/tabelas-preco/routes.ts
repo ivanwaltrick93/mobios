@@ -21,12 +21,14 @@ const colunas = () => ({
   descricao: tabelasPreco.descricao,
   moeda: sql<'BRL'>`${tabelasPreco.moeda}`,
   ativa: tabelasPreco.ativa,
-  // Materiais com preço vigente hoje (Brasília). Correlação escrita à mão.
-  materiaisComPreco:
-    sql<number>`(select count(distinct p.material_id) from materiais_precos p where p.tabela_preco_id = "tabelas_preco"."id"
-    and not p.cancelado and p.data_inicio <= ${hojeIso()}::date and (p.data_fim is null or p.data_fim >= ${hojeIso()}::date))`.mapWith(
-      Number,
-    ),
+  // Materiais com preço hoje (Brasília): vigência que cobre o dia ou preço padrão. Correlação escrita à mão.
+  materiaisComPreco: sql<number>`(select count(*) from (
+      select p.material_id from materiais_precos p
+      where p.tabela_preco_id = "tabelas_preco"."id" and not p.cancelado
+        and p.data_inicio <= ${hojeIso()}::date and (p.data_fim is null or p.data_fim >= ${hojeIso()}::date)
+      union
+      select pp.material_id from precos_padrao pp where pp.tabela_preco_id = "tabelas_preco"."id"
+    ) com_preco)`.mapWith(Number),
   criadoEm: tabelasPreco.criadoEm,
   atualizadoEm: tabelasPreco.atualizadoEm,
   criadoPor: nomeUsuario('tabelas_preco', 'criado_por'),

@@ -2,8 +2,9 @@
  * Componentes base do style guide. Use sempre estes em vez de classes soltas:
  * cores só por tokens (bg-primaria, text-texto-suave...), definidos em src/index.css.
  */
-import { Search } from 'lucide-react';
+import { Eye, Search } from 'lucide-react';
 import type { UseFormRegisterReturn } from 'react-hook-form';
+import { Link } from 'react-router';
 import type {
   ButtonHTMLAttributes,
   InputHTMLAttributes,
@@ -184,6 +185,100 @@ export const LinhaVazia = ({ colunas, children }: { colunas: number; children: R
     </td>
   </tr>
 );
+
+/**
+ * Ação "Visualizar" das tabelas: ícone de olho com a dica "Visualizar".
+ * Com `para`, leva à página de detalhes; com `aoClicar`, abre os detalhes na própria linha (`aberto` destaca).
+ */
+export function BotaoVisualizar({
+  para,
+  aoClicar,
+  aberto = false,
+}: {
+  para?: string;
+  aoClicar?: () => void;
+  aberto?: boolean;
+}) {
+  const classes = `inline-flex rounded-md p-1.5 hover:bg-superficie-alt ${aberto ? 'text-primaria' : 'text-texto-suave hover:text-primaria'}`;
+  const icone = <Eye className="size-4" aria-hidden />;
+  return para ? (
+    <Link to={para} title="Visualizar" aria-label="Visualizar" className={classes}>
+      {icone}
+    </Link>
+  ) : (
+    <button
+      type="button"
+      title="Visualizar"
+      aria-label="Visualizar"
+      aria-expanded={aberto}
+      onClick={aoClicar}
+      className={classes}
+    >
+      {icone}
+    </button>
+  );
+}
+
+/** Dados de um registro só para leitura (detalhes abertos na linha da tabela). */
+export const Detalhes = ({ itens }: { itens: { rotulo: string; valor: ReactNode }[] }) => (
+  <dl className="grid gap-x-6 gap-y-3 rounded-md bg-superficie-alt p-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
+    {itens.map((i) => (
+      <div key={i.rotulo}>
+        <dt className="text-xs text-texto-suave">{i.rotulo}</dt>
+        <dd className="text-texto">{i.valor}</dd>
+      </div>
+    ))}
+  </dl>
+);
+
+// ---------- Paginação ----------
+
+/** Registros por página em todas as listagens. */
+export const POR_PAGINA = 20;
+
+/**
+ * Navegação entre páginas de uma listagem paginada na API (`pagina`/`porPagina`).
+ * Com tudo numa página só, mostra apenas o total.
+ */
+export function Paginacao({
+  pagina,
+  total,
+  aoMudar,
+  carregando = false,
+  porPagina = POR_PAGINA,
+}: {
+  pagina: number;
+  total: number;
+  aoMudar: (pagina: number) => void;
+  carregando?: boolean;
+  porPagina?: number;
+}) {
+  if (total === 0) return null;
+  const paginas = Math.ceil(total / porPagina);
+  const primeiro = (pagina - 1) * porPagina + 1;
+  const ultimo = Math.min(total, pagina * porPagina);
+  return (
+    <nav aria-label="Paginação" className="flex flex-wrap items-center justify-between gap-3">
+      <TextoSuave className="text-xs">
+        {paginas > 1 ? `${primeiro}–${ultimo} de ` : ''}
+        {total.toLocaleString('pt-BR')} registro(s)
+      </TextoSuave>
+      {paginas > 1 && (
+        <div className="flex items-center gap-2">
+          <Botao variante="secundario" disabled={pagina <= 1 || carregando} onClick={() => aoMudar(pagina - 1)}>
+            Anterior
+          </Botao>
+          <span className="text-sm text-texto-suave">
+            Página {pagina} de {paginas}
+          </span>
+          <Botao variante="secundario" disabled={pagina >= paginas || carregando} onClick={() => aoMudar(pagina + 1)}>
+            Próxima
+          </Botao>
+        </div>
+      )}
+    </nav>
+  );
+}
 
 // ---------- Abas ----------
 

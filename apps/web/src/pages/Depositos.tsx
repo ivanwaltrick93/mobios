@@ -1,19 +1,25 @@
 import { mascaraCodigo, type Deposito } from '@mobios/shared';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Warehouse } from 'lucide-react';
-import { useState, type FormEvent } from 'react';
-import { AbasMateriais } from '../components/AbasMateriais';
+import { Fragment, useState, type FormEvent } from 'react';
 import {
   Alerta,
   Botao,
   BotaoLink,
+  BotaoVisualizar,
+  Cabecalho,
   Campo,
   Cartao,
+  Detalhes,
   Input,
+  Linha,
   Marcador,
   Select,
   Selo,
+  Tabela,
+  Td,
   TextoSuave,
+  Th,
   Titulo,
   Vazio,
 } from '../components/ui';
@@ -22,12 +28,19 @@ import { useOpcoes } from '../lib/cadastro';
 import { useDepositos } from '../lib/materiais';
 import { usePode } from '../lib/sessao';
 
+/** Usos permitidos no depósito, para a tabela e os detalhes. */
+const usosDeposito = (d: Deposito) =>
+  [d.permiteVenda && 'Venda', d.permiteUsoOs && 'Uso em O.S.', d.permiteTransferencia && 'Transferência'].filter(
+    (uso): uso is string => !!uso,
+  );
+
 /** Depósitos: só o cadastro do local. Saldo e movimentação chegam com o módulo de estoque. */
 export function Depositos() {
   const pode = usePode();
   const editar = pode('materiais', 'editar');
   const depositos = useDepositos();
   const [edicao, setEdicao] = useState<Deposito | 'novo' | null>(null);
+  const [vendo, setVendo] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const acao = useMutation({
     mutationFn: ({ d, tipo }: { d: Deposito; tipo: 'status' | 'excluir' }) =>
@@ -42,9 +55,8 @@ export function Depositos() {
   return (
     <div className="space-y-6">
       <Titulo acao={editar && !edicao && <Botao onClick={() => setEdicao('novo')}>Novo depósito</Botao>}>
-        Materiais
+        Depósitos
       </Titulo>
-      <AbasMateriais />
       <TextoSuave>
         Locais onde os materiais ficam guardados (loja, oficina, garantia...). O saldo por depósito chega com o módulo
         de estoque.
@@ -58,49 +70,91 @@ export function Depositos() {
       {depositos.data?.length === 0 && !edicao ? (
         <Vazio icone={<Warehouse />} titulo="Nenhum depósito cadastrado" />
       ) : (
-        <div className="grid gap-4 md:grid-cols-2">
-          {depositos.data?.map((d) =>
-            edicao !== 'novo' && edicao?.id === d.id ? (
-              <Cartao key={d.id} className="p-5 md:col-span-2">
-                <EditorDeposito deposito={d} aoConcluir={() => setEdicao(null)} />
-              </Cartao>
-            ) : (
-              <Cartao key={d.id} className="flex flex-col gap-3 p-5">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <span className="font-mono text-xs font-semibold text-texto-suave">{d.codigo}</span>
-                    <h3 className="font-semibold text-texto">{d.nome}</h3>
-                  </div>
-                  <span className="flex gap-1">
-                    <Selo tom="primario">{d.tipoNome}</Selo>
-                    {!d.ativo && <Selo>Inativo</Selo>}
-                  </span>
-                </div>
-                {d.descricao && <TextoSuave>{d.descricao}</TextoSuave>}
-                <div className="flex flex-wrap gap-1">
-                  {d.permiteVenda && <Selo>Venda</Selo>}
-                  {d.permiteUsoOs && <Selo>Uso em O.S.</Selo>}
-                  {d.permiteTransferencia && <Selo>Transferência</Selo>}
-                </div>
-                {editar && !edicao && (
-                  <div className="mt-auto flex gap-4 border-t border-borda pt-3 text-sm">
-                    <BotaoLink onClick={() => setEdicao(d)}>Editar</BotaoLink>
-                    <BotaoLink onClick={() => acao.mutate({ d, tipo: 'status' })}>
-                      {d.ativo ? 'Inativar' : 'Reativar'}
-                    </BotaoLink>
-                    <BotaoLink
-                      perigo
-                      className="ml-auto"
-                      onClick={() => confirm(`Excluir o depósito ${d.nome}?`) && acao.mutate({ d, tipo: 'excluir' })}
-                    >
-                      Excluir
-                    </BotaoLink>
-                  </div>
-                )}
-              </Cartao>
-            ),
-          )}
-        </div>
+        <Tabela>
+          <Cabecalho>
+            <Th>Código</Th>
+            <Th>Nome</Th>
+            <Th>Tipo</Th>
+            <Th>Permite</Th>
+            <Th>Status</Th>
+            <Th />
+          </Cabecalho>
+          <tbody>
+            {depositos.data?.map((d) =>
+              edicao !== 'novo' && edicao?.id === d.id ? (
+                <tr key={d.id}>
+                  <td colSpan={6} className="p-4">
+                    <EditorDeposito deposito={d} aoConcluir={() => setEdicao(null)} />
+                  </td>
+                </tr>
+              ) : (
+                <Fragment key={d.id}>
+                  <Linha className="hover:bg-superficie-alt">
+                    <Td className="whitespace-nowrap font-mono text-xs font-semibold">{d.codigo}</Td>
+                    <Td className="font-medium text-texto">{d.nome}</Td>
+                    <Td suave>{d.tipoNome}</Td>
+                    <Td>
+                      <span className="flex flex-wrap gap-1">
+                        {usosDeposito(d).map((uso) => (
+                          <Selo key={uso}>{uso}</Selo>
+                        ))}
+                      </span>
+                    </Td>
+                    <Td>{d.ativo ? <Selo tom="sucesso">Ativo</Selo> : <Selo>Inativo</Selo>}</Td>
+                    <Td className="text-right whitespace-nowrap">
+                      <span className="flex items-center justify-end gap-4 text-sm">
+                        <BotaoVisualizar
+                          aberto={vendo === d.id}
+                          aoClicar={() => setVendo(vendo === d.id ? null : d.id)}
+                        />
+                        {editar && !edicao && (
+                          <>
+                            <BotaoLink onClick={() => setEdicao(d)}>Editar</BotaoLink>
+                            <BotaoLink onClick={() => acao.mutate({ d, tipo: 'status' })}>
+                              {d.ativo ? 'Inativar' : 'Reativar'}
+                            </BotaoLink>
+                            <BotaoLink
+                              perigo
+                              onClick={() =>
+                                confirm(`Excluir o depósito ${d.nome}?`) && acao.mutate({ d, tipo: 'excluir' })
+                              }
+                            >
+                              Excluir
+                            </BotaoLink>
+                          </>
+                        )}
+                      </span>
+                    </Td>
+                  </Linha>
+                  {vendo === d.id && (
+                    <tr>
+                      <td colSpan={6} className="px-4 pb-4">
+                        <Detalhes
+                          itens={[
+                            { rotulo: 'Código', valor: d.codigo },
+                            { rotulo: 'Nome', valor: d.nome },
+                            { rotulo: 'Tipo', valor: d.tipoNome },
+                            { rotulo: 'Descrição', valor: d.descricao ?? '—' },
+                            { rotulo: 'Permite', valor: usosDeposito(d).join(', ') || 'Nenhum uso marcado' },
+                            { rotulo: 'Status', valor: d.ativo ? 'Ativo' : 'Inativo' },
+                            {
+                              rotulo: 'Cadastrado',
+                              valor: `${new Date(d.criadoEm).toLocaleString('pt-BR')} por ${d.criadoPor ?? '—'}`,
+                            },
+                            {
+                              rotulo: 'Última alteração',
+                              valor: `${new Date(d.atualizadoEm).toLocaleString('pt-BR')} por ${d.atualizadoPor ?? '—'}`,
+                            },
+                          ]}
+                        />
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              ),
+            )}
+          </tbody>
+        </Tabela>
       )}
     </div>
   );

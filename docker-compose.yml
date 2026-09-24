@@ -54,6 +54,8 @@ services:
       JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET no arquivo .env}
       # false enquanto o acesso for por http://localhost; true quando houver HTTPS.
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      # A API só é acessada pelo Caddy (serviço web), pela rede interna do Docker (endereços privados).
+      TRUST_PROXY: uniquelocal
     depends_on:
       migrate:
         condition: service_completed_successfully

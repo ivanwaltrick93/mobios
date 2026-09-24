@@ -252,14 +252,7 @@ function LogoOficina({ versao, nome }: { versao: string | null; nome: string }) 
 
   const enviar = useMutation({
     mutationFn: async (logo: File) => {
-      const res = await fetch('/api/configuracoes/logo', {
-        method: 'PUT',
-        credentials: 'same-origin',
-        headers: { 'Content-Type': logo.type },
-        body: logo,
-      });
-      if (!res.ok)
-        throw new ErroApi(res.status, (await res.json().catch(() => ({}))).erro ?? 'Não foi possível enviar o logo');
+      await api('/configuracoes/logo', { method: 'PUT', arquivo: { conteudo: logo, tipo: logo.type } });
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: chaveSessao }),
     onError: (e) => setErro(e.message),

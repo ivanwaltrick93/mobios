@@ -55,7 +55,7 @@ Tenant = oficina: a unidade de isolamento dos dados.
   - Referência escolhida deve estar ativa (`validarReferencia`), exceto a que o registro já usa.
   - Vigências sem sobreposição (EXCLUDE gist); o passado nunca é apagado nem reescrito.
   - Mudança de saldo ou preço deixa trilha (usuário, antes/depois, motivo).
-- Usuário nunca é excluído (`ativo = false`). `senha_hash` só é lido no login.
+- Usuário nunca é excluído (`ativo = false`). `senha_hash` só é lido no login e na troca da própria senha.
 
 ## API
 - Recurso: `modules/<kebab>/routes.ts` exporta `<nome>Routes: FastifyPluginAsyncZod`, registrado em `src/app.ts`. No topo, `app.autenticar` + `app.exigirAcesso('<modulo>')`; escrita com `exigirAcesso('<modulo>', 'editar')` ou `app.exigirAdmin`. Nunca compare nomes de função no código. Rota pública só com motivo explícito (ver `modules/publico`).

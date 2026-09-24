@@ -16,6 +16,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
+  Cake,
   CarFront,
   History,
   MapPin,
@@ -30,7 +31,7 @@ import { type ReactNode, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { Iniciais } from '../components/Avatar';
 import { BuscaCliente } from '../components/BuscaCliente';
-import { LinkWhatsApp, SeloPendencias } from '../components/Cliente';
+import { LinkWhatsApp, SeloAniversario, SeloPendencias } from '../components/Cliente';
 import { Placa } from '../components/Placa';
 import { Abas, Alerta, BotaoLink, Cartao, classesBotao, Selo, TextoSuave, Vazio } from '../components/ui';
 import { api } from '../lib/api';
@@ -88,6 +89,7 @@ export function ClienteDetalhe() {
             <div className="flex flex-wrap items-center gap-2">
               <Selo tom="primario">{pf ? 'Pessoa física' : 'Pessoa jurídica'}</Selo>
               <Selo tom={c.ativo ? 'sucesso' : 'neutro'}>{c.ativo ? 'Ativo' : 'Inativo'}</Selo>
+              <SeloAniversario dias={c.diasAteAniversario} />
               <span className="text-sm text-texto-suave">
                 {pf ? 'CPF' : 'CNPJ'} {formatarDocumento(c.cpfCnpj)} · cliente desde {formatarDataIso(c.clienteDesde)}
               </span>
@@ -111,6 +113,17 @@ export function ClienteDetalhe() {
             )}
           </div>
         </div>
+
+        {c.diasAteAniversario === 0 && (
+          <div className="mt-5 flex flex-wrap items-center gap-3 rounded-md bg-primaria-suave px-4 py-3 text-sm text-primaria">
+            <Cake className="size-5 shrink-0" aria-hidden />
+            <span className="flex-1">
+              <strong>Hoje é aniversário de {c.nome.split(' ')[0]}!</strong> Uma mensagem de parabéns deixa o
+              atendimento mais pessoal.
+            </span>
+            {c.whatsapp && <LinkWhatsApp numero={c.whatsapp} />}
+          </div>
+        )}
 
         {c.pendencias.length > 0 && (
           <div className="mt-5 flex flex-wrap items-center gap-3 rounded-md bg-alerta-suave px-4 py-3 text-sm text-alerta">

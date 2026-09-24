@@ -11,6 +11,7 @@ import {
   SEXOS,
   STATUS_VEICULO,
   type RelatorioDescricao,
+  type ModuloId,
   type RelatorioId,
 } from '@mobios/shared';
 import { and, asc, count, eq, sql, type SQL } from 'drizzle-orm';
@@ -30,6 +31,8 @@ export type Filtro = { de?: string; ate?: string };
 type Definicao = RelatorioDescricao & {
   /** Além do acesso ao módulo Relatórios: exige a função Administrador. */
   somenteAdmin: boolean;
+  /** Além do acesso ao módulo Relatórios: exige consultar o módulo dono dos dados (null = nenhum). */
+  modulo: ModuloId | null;
   /** Linhas já formatadas como texto: a prévia e o CSV mostram exatamente o mesmo. */
   consultar: (tx: Tx, filtro: Filtro, limite: number) => Promise<{ linhas: Record<string, string>[]; total: number }>;
 };
@@ -54,6 +57,7 @@ export const relatorios: Record<RelatorioId, Definicao> = {
     titulo: 'Clientes',
     descricao: 'Cadastro completo de clientes, com endereço principal e quantidade de veículos.',
     somenteAdmin: false,
+    modulo: 'clientes',
     colunas: [
       { chave: 'nome', titulo: 'Nome / Razão social' },
       { chave: 'tipo', titulo: 'Tipo' },
@@ -145,6 +149,7 @@ export const relatorios: Record<RelatorioId, Definicao> = {
     titulo: 'Veículos',
     descricao: 'Frota atendida, com o proprietário de cada veículo.',
     somenteAdmin: false,
+    modulo: 'clientes',
     colunas: [
       { chave: 'placa', titulo: 'Placa' },
       { chave: 'marca', titulo: 'Marca' },
@@ -206,6 +211,7 @@ export const relatorios: Record<RelatorioId, Definicao> = {
     titulo: 'Usuários',
     descricao: 'Equipe com acesso ao sistema, função e status.',
     somenteAdmin: true,
+    modulo: null,
     colunas: [
       { chave: 'nome', titulo: 'Nome' },
       { chave: 'email', titulo: 'E-mail' },

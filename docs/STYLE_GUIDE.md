@@ -83,10 +83,19 @@ Em [`components/ui.tsx`](../apps/web/src/components/ui.tsx). Use-os em vez de re
 | `Abas` | Abas de uma página (ex.: perfil do cliente), com contagem opcional |
 | `Etapas` + `useAssistente` (`lib/assistente.ts`) | Cadastro em etapas: cada etapa valida só os seus campos; na edição, etapas livres e "Salvar" sempre visível |
 | `Vazio` | Estado vazio com ícone, mensagem e ação (nunca uma tabela vazia) |
+| `CampoBusca` | Busca grande com lupa no topo das listagens |
+| `Paginacao` (`POR_PAGINA` = 20) | Anterior/Próxima, "Página X de Y" e total; usada em toda listagem |
+| `BotaoVisualizar` | Ação "Visualizar" das tabelas: ícone de olho com a dica "Visualizar". Com `para`, abre a página de detalhes; com `aoClicar`, abre os detalhes na própria linha |
+| `Detalhes` | Dados do registro só para leitura, abertos na linha da tabela (cadastros sem página própria: categorias, marcas, depósitos) |
+| `ImportarCsv` (em `components/ImportarCsv.tsx`) | Importação de planilha: colunas aceitas, modelo para baixar e resultado linha a linha |
 
 ## Padrões de tela
 
-- **Listas de cadastro** em cartões (quem é, como falar, o que tem), não em tabelas. Tabelas ficam para relatórios.
+- **Listas de cadastro** em tabela (decisão do dono do produto: mais analítico, menos rolagem): filtros acima, nome do registro como link para o detalhe, status em `Selo`, **20 por página** com `Paginacao`.
+- **Toda tabela de cadastro** tem na última coluna a ação `BotaoVisualizar` (olho, dica "Visualizar"), antes das demais ações da linha.
+- **Filtros extras** de uma listagem ficam recolhidos por padrão (botão "Mostrar filtros", com a contagem dos que estão diferentes do padrão); a busca fica sempre visível.
+- **Menu lateral** com submenu que abre e fecha quando a área tem mais de uma página (Clientes → Clientes · Veículos; Materiais → Materiais · Categorias · Marcas · Depósitos). Com o submenu, as páginas não repetem abas de navegação.
+- **Importação por planilha** sempre com `ImportarCsv`: mostra as colunas aceitas, avisa que a 1ª linha é o cabeçalho, oferece o modelo e lista as linhas com erro.
 - **Voltar** fica no topo, à esquerda, em todas as páginas menos o Início (componente `Voltar`, no `Layout`). Páginas raiz do menu voltam ao Início; as demais, à página anterior. Não crie links de voltar dentro das páginas.
 - **Detalhe** como perfil: cabeçalho com ações rápidas (WhatsApp, Editar) e abas.
 - **Cadastro novo** em etapas curtas, com botões grandes para escolhas (ex.: Pessoa física / jurídica).

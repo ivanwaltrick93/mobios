@@ -53,6 +53,13 @@ export function Relatorios() {
         Escolha um relatório, filtre pelo período de cadastro e baixe em CSV (abre direto no Excel).
       </TextoSuave>
 
+      {lista.data?.length === 0 && (
+        <TextoSuave>
+          Nenhum relatório disponível para as suas funções. Os relatórios de clientes e veículos exigem também acesso a
+          Clientes e veículos.
+        </TextoSuave>
+      )}
+
       <div className="grid gap-3 md:grid-cols-3">
         {lista.data?.map((r) => (
           <button

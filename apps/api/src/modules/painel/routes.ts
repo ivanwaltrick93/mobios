@@ -1,9 +1,17 @@
-import { painelSchema, temAcesso, type AlertaPainel, type Indicador, type Painel } from '@mobios/shared';
-import { count, sql } from 'drizzle-orm';
+import {
+  DIAS_ANIVERSARIO_SEMANA,
+  painelSchema,
+  temAcesso,
+  type AlertaPainel,
+  type Indicador,
+  type Painel,
+} from '@mobios/shared';
+import { and, asc, count, eq, sql } from 'drizzle-orm';
 import type { PgColumn } from 'drizzle-orm/pg-core';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { withTenant } from '../../db/client.js';
 import { clientes, veiculos } from '../../db/schema.js';
+import { diasAteAniversario } from '../clientes/routes.js';
 
 const FUSO = 'America/Sao_Paulo';
 const hoje = (coluna: PgColumn) => sql`(${coluna} at time zone ${FUSO})::date = (now() at time zone ${FUSO})::date`;
@@ -108,9 +116,21 @@ export const painelRoutes: FastifyPluginAsyncZod = async (app) => {
         });
       }
 
+      // Aniversariantes (PF ativos) de hoje e da semana: relacionamento mais pessoal no atendimento.
+      const dias = diasAteAniversario();
+      const aniversariantes = temAcesso(req.user.acessos, 'clientes')
+        ? await tx
+            .select({ id: clientes.id, nome: clientes.nome, whatsapp: clientes.whatsapp, dias: dias.mapWith(Number) })
+            .from(clientes)
+            .where(and(eq(clientes.tipo, 'PF'), eq(clientes.ativo, true), sql`${dias} <= ${DIAS_ANIVERSARIO_SEMANA}`))
+            .orderBy(asc(dias), asc(clientes.nome))
+            .limit(30)
+        : [];
+
       return {
         indicadores,
         alertas,
+        aniversariantes,
         modulosPendentes: ['O.S. atrasadas', 'Estoque abaixo do mínimo', 'Contas a vencer'],
       };
     }),

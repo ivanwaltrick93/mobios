@@ -6,5 +6,7 @@ import postgres from 'postgres';
 export default async function setup() {
   const client = postgres(process.env.DATABASE_MIGRATION_URL!, { max: 1, onnotice: () => {} });
   await migrate(drizzle(client), { migrationsFolder: new URL('./drizzle', import.meta.url).pathname });
+  // Falhas de login de execuções anteriores não podem bloquear o IP dos testes (127.0.0.1).
+  await client`delete from login_tentativas`;
   await client.end();
 }

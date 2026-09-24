@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { UNIDADES } from './materiais.js';
+import { ORIGENS_PRECO, UNIDADES } from './materiais.js';
 
 /*
  * Estoque por material + depósito (chave: SKU + depósito).
@@ -18,18 +18,33 @@ const quantidade = (rotulo: string) =>
     .max(99_999_999_999, 'Quantidade alta demais')
     .refine((v) => Math.abs(Math.round(v * 1000) - v * 1000) < 1e-6, 'Use no máximo 3 casas decimais');
 
+const motivoAjuste = z
+  .string({ error: 'Informe o motivo' })
+  .trim()
+  .min(3, 'Informe o motivo do ajuste')
+  .max(200, 'Máximo de 200 caracteres');
+
 export const estoqueAjusteSchema = z.object({
   disponivel: quantidade('o disponível'),
   reservado: quantidade('o reservado'),
-  motivo: z
-    .string({ error: 'Informe o motivo' })
-    .trim()
-    .min(3, 'Informe o motivo do ajuste')
-    .max(200, 'Máximo de 200 caracteres'),
+  motivo: motivoAjuste,
   /** Versão lida do saldo (obrigatória quando o saldo já existe): evita sobrescrever ajuste de outra pessoa. */
   versao: z.number().int().min(1).optional(),
 });
 export type EstoqueAjusteInput = z.input<typeof estoqueAjusteSchema>;
+
+/**
+ * Lançamento de saldo final pelos códigos digitados (SKU + código do depósito). A API confere se os dois
+ * existem antes de gravar. Sem versão: o valor informado é o saldo final (como num inventário).
+ */
+export const lancamentoEstoqueSchema = z.object({
+  sku: z.string().trim().toUpperCase().min(1, 'Informe o SKU').max(40, 'Máximo de 40 caracteres'),
+  deposito: z.string().trim().toUpperCase().min(1, 'Informe o código do depósito').max(20, 'Máximo de 20 caracteres'),
+  disponivel: quantidade('o disponível'),
+  reservado: quantidade('o reservado'),
+  motivo: motivoAjuste,
+});
+export type LancamentoEstoqueInput = z.input<typeof lancamentoEstoqueSchema>;
 
 export const saldoSchema = z.object({
   materialId: z.uuid(),
@@ -94,7 +109,9 @@ export const itemListaPrecosSchema = z.object({
   descricao: z.string(),
   marcaNome: z.string().nullable(),
   unidade: z.enum(chaves(UNIDADES)),
+  /** Preço de hoje: o da vigência ou, sem vigência, o padrão. */
   precoCentavos: z.number().nullable(),
+  origem: z.enum(chaves(ORIGENS_PRECO)).nullable(),
   vigenteDesde: z.string().nullable(),
   vigenteAte: z.string().nullable(),
   proximoPrecoCentavos: z.number().nullable(),

@@ -64,6 +64,23 @@ export const tenants = pgTable('tenants', {
 });
 
 /**
+ * Falhas de login por e-mail e por IP (limite de tentativas, PLT-08). Global e sem RLS: o login acontece
+ * antes de a oficina ser conhecida. A chave é um hash SHA-256 ("email:<email>" ou "ip:<ip>"): nenhum
+ * e-mail ou IP fica gravado em claro.
+ */
+export const loginTentativas = pgTable(
+  'login_tentativas',
+  {
+    chave: text().primaryKey(),
+    falhas: integer().notNull(),
+    janelaInicio: timestamp({ withTimezone: true }).notNull(),
+    bloqueadoAte: timestamp({ withTimezone: true }),
+    atualizadoEm: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index().on(t.atualizadoEm)],
+);
+
+/**
  * Usuários também ficam sob RLS. O login (busca por e-mail antes de o tenant ser
  * conhecido) usa a função SECURITY DEFINER auth_usuario_por_email, criada na migração.
  */
@@ -159,6 +176,8 @@ export const clientes = pgTable(
       .on(t.tenantId, t.cpfCnpj)
       .where(sql`${t.cpfCnpj} is not null`),
     index().on(t.tenantId, t.nome),
+    // Filtro "cliente desde" da lista de clientes.
+    index().on(t.tenantId, t.clienteDesde),
     foreignKey({ columns: [t.tenantId, t.origemId], foreignColumns: [origensCliente.tenantId, origensCliente.id] }),
     foreignKey({
       columns: [t.tenantId, t.relacionamentoId],
@@ -633,6 +652,57 @@ export const precosEventos = pgTable(
     foreignKey({ columns: [t.tenantId, t.usuarioId], foreignColumns: [users.tenantId, users.id] }),
     index().on(t.precoId, t.criadoEm),
     isolamentoPorTenant('precos_eventos'),
+  ],
+);
+
+/**
+ * Preço padrão (sem vigência) de um material numa tabela: vale nos dias em que nenhuma vigência cobre a data.
+ * Um por material + tabela; pode mudar a qualquer momento, com a trilha em precos_padrao_eventos.
+ */
+export const precosPadrao = pgTable(
+  'precos_padrao',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: tenantId(),
+    materialId: uuid().notNull(),
+    tabelaPrecoId: uuid().notNull(),
+    precoCentavos: bigint({ mode: 'number' }).notNull(),
+    ...autoria,
+    ...timestamps,
+  },
+  (t) => [
+    foreignKey({ columns: [t.tenantId, t.materialId], foreignColumns: [materiais.tenantId, materiais.id] }),
+    foreignKey({ columns: [t.tenantId, t.tabelaPrecoId], foreignColumns: [tabelasPreco.tenantId, tabelasPreco.id] }),
+    ...fksAutoria(t),
+    uniqueIndex('precos_padrao_unico').on(t.tenantId, t.materialId, t.tabelaPrecoId),
+    check('precos_padrao_valor_positivo', sql`${t.precoCentavos} >= 0`),
+    index().on(t.tabelaPrecoId),
+    isolamentoPorTenant('precos_padrao'),
+  ],
+);
+
+/** Trilha do preço padrão: definido, alterado ou removido, com valor antes/depois, quem e quando. */
+export const precosPadraoEventos = pgTable(
+  'precos_padrao_eventos',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: tenantId(),
+    materialId: uuid().notNull(),
+    tabelaPrecoId: uuid().notNull(),
+    evento: text().notNull(),
+    precoAntes: bigint({ mode: 'number' }),
+    precoDepois: bigint({ mode: 'number' }),
+    usuarioId: uuid(),
+    criadoEm: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    foreignKey({ columns: [t.tenantId, t.materialId], foreignColumns: [materiais.tenantId, materiais.id] }),
+    foreignKey({ columns: [t.tenantId, t.tabelaPrecoId], foreignColumns: [tabelasPreco.tenantId, tabelasPreco.id] }),
+    foreignKey({ columns: [t.tenantId, t.usuarioId], foreignColumns: [users.tenantId, users.id] }),
+    check('precos_padrao_eventos_evento', sql`${t.evento} in ('definido', 'alterado', 'removido')`),
+    index().on(t.materialId, t.tabelaPrecoId, t.criadoEm),
+    index().on(t.tabelaPrecoId),
+    isolamentoPorTenant('precos_padrao_eventos'),
   ],
 );
 

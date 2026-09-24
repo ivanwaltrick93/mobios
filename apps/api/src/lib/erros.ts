@@ -1,11 +1,15 @@
 import type { FastifyError, FastifyInstance } from 'fastify';
 import { hasZodFastifySchemaValidationErrors } from 'fastify-type-provider-zod';
 
-/** Erro de regra de negócio com status HTTP e mensagem exibível ao usuário. */
+/**
+ * Erro de regra de negócio com status HTTP e mensagem exibível ao usuário.
+ * `campos` (opcional) aponta o campo do formulário com problema, como na validação do schema.
+ */
 export class ErroHttp extends Error {
   constructor(
     public status: number,
     message: string,
+    public campos?: Record<string, string>,
   ) {
     super(message);
   }
@@ -42,6 +46,7 @@ const mensagensUnicidade: Record<string, string> = {
   tabelas_preco_codigo_unico: 'Já existe uma tabela de preço com este código',
   tabelas_preco_nome_unico: 'Já existe uma tabela de preço com este nome',
   // Duas pessoas criando o primeiro saldo do mesmo material no mesmo depósito ao mesmo tempo.
+  precos_padrao_unico: 'O preço padrão foi alterado por outra pessoa. Recarregue e refaça a alteração.',
   estoques_material_id_deposito_id_pk:
     'O saldo foi alterado por outra pessoa enquanto você editava. Recarregue e refaça o ajuste.',
   veiculos_tenant_id_chassi_index: 'Já existe um veículo com este chassi',
@@ -53,9 +58,35 @@ const mensagensCheck: Record<string, string> = {
   categorias_pai_diferente: 'Uma categoria não pode ser pai dela mesma.',
   materiais_precos_vigencia_valida: 'O fim da vigência deve ser igual ou posterior ao início.',
   materiais_precos_valor_positivo: 'O preço não pode ser negativo.',
+  precos_padrao_valor_positivo: 'O preço não pode ser negativo.',
   estoques_disponivel_positivo: 'O disponível não pode ser negativo.',
   estoques_reservado_positivo: 'O reservado não pode ser negativo.',
 };
+
+/**
+ * Erros conhecidos (regra de negócio e constraints do Postgres) em status + mensagem exibível ao usuário.
+ * `undefined` = erro inesperado (deve ser logado e virar 500). Usado pelo tratador central e pela
+ * importação de planilhas, que relata o erro de cada linha sem interromper as demais.
+ */
+export function traduzirErro(
+  err: unknown,
+): { status: number; erro: string; campos?: Record<string, string> } | undefined {
+  if (err instanceof ErroHttp) return { status: err.status, erro: err.message, campos: err.campos };
+  const pg = erroPostgres(err);
+  switch (pg?.code) {
+    case '23505':
+      return { status: 409, erro: mensagensUnicidade[pg.constraint_name ?? ''] ?? 'Registro duplicado' };
+    case '23514':
+      return { status: 400, erro: mensagensCheck[pg.constraint_name ?? ''] ?? 'Dados inválidos' };
+    // Constraint EXCLUDE: duas vigências do mesmo material e tabela no mesmo período.
+    case '23P01':
+      return { status: 409, erro: 'Já existe preço deste material nesta tabela em parte do período informado.' };
+    case '23503':
+      return { status: 409, erro: 'Registro vinculado a outros dados ou referência inexistente' };
+    default:
+      return undefined;
+  }
+}
 
 export function registrarTratamentoDeErros(app: FastifyInstance) {
   app.setErrorHandler((err: FastifyError, req, reply) => {
@@ -67,24 +98,9 @@ export function registrarTratamentoDeErros(app: FastifyInstance) {
       }
       return reply.code(400).send({ erro: 'Dados inválidos', campos });
     }
-    if (err instanceof ErroHttp) return reply.code(err.status).send({ erro: err.message });
+    const conhecido = traduzirErro(err);
+    if (conhecido) return reply.code(conhecido.status).send({ erro: conhecido.erro, campos: conhecido.campos });
 
-    const pg = erroPostgres(err);
-    if (pg?.code === '23505') {
-      return reply.code(409).send({ erro: mensagensUnicidade[pg.constraint_name ?? ''] ?? 'Registro duplicado' });
-    }
-    if (pg?.code === '23514') {
-      return reply.code(400).send({ erro: mensagensCheck[pg.constraint_name ?? ''] ?? 'Dados inválidos' });
-    }
-    // Constraint EXCLUDE: duas vigências do mesmo material e tabela no mesmo período.
-    if (pg?.code === '23P01') {
-      return reply
-        .code(409)
-        .send({ erro: 'Já existe preço deste material nesta tabela em parte do período informado.' });
-    }
-    if (pg?.code === '23503') {
-      return reply.code(409).send({ erro: 'Registro vinculado a outros dados ou referência inexistente' });
-    }
     if (err.code === 'FST_ERR_CTP_BODY_TOO_LARGE') return reply.code(413).send({ erro: 'Arquivo grande demais.' });
     if (err.code === 'FST_ERR_CTP_INVALID_MEDIA_TYPE')
       return reply.code(415).send({ erro: 'Formato de arquivo não suportado.' });

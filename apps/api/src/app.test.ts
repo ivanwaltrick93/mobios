@@ -118,6 +118,65 @@ describe('auth', () => {
   });
 });
 
+describe('limite de tentativas de login', () => {
+  const tentar = (email: string, senha: string, ip: string) =>
+    app.inject({ method: 'POST', url: '/api/auth/login', payload: { email, senha }, remoteAddress: ip });
+  /** Simula a passagem do tempo: encerra bloqueios e janelas em aberto. */
+  const passarTempo = () =>
+    db.execute(
+      sql`update login_tentativas set bloqueado_ate = null, janela_inicio = now() - interval '1 hour' where bloqueado_ate is not null`,
+    );
+
+  it('por e-mail: 5 erros bloqueiam a conta por um tempo, mesmo com a senha certa e de outro IP', async () => {
+    const { email } = await novaOficina('Oficina Limite E-mail');
+    const ip = '10.20.0.1';
+    for (let i = 0; i < 4; i++) expect((await tentar(email, 'errada', ip)).statusCode).toBe(401);
+    // Acertar antes do limite zera a contagem do e-mail.
+    expect((await tentar(email, SENHA, ip)).statusCode).toBe(200);
+    for (let i = 0; i < 5; i++) expect((await tentar(email, 'errada', ip)).statusCode).toBe(401);
+
+    const bloqueado = await tentar(email, SENHA, ip);
+    expect(bloqueado.statusCode).toBe(429);
+    expect(bloqueado.json().erro).toBe('Muitas tentativas de login. Tente novamente em 15 minuto(s).');
+    expect((await tentar(email.toUpperCase(), SENHA, '10.20.0.2')).statusCode).toBe(429);
+    // O banco não guarda e-mail nem IP em claro.
+    const chaves = (await db.execute(sql`select chave from login_tentativas`)) as unknown as { chave: string }[];
+    expect(chaves.some((c) => c.chave.includes('@') || c.chave.includes('10.20'))).toBe(false);
+
+    await passarTempo();
+    expect((await tentar(email, SENHA, ip)).statusCode).toBe(200);
+  });
+
+  it('por IP: 20 erros bloqueiam o endereço, inclusive para outros e-mails (existentes ou não)', async () => {
+    const { email } = await novaOficina('Oficina Limite IP');
+    const ip = '10.20.1.1';
+    for (let i = 0; i < 20; i++) expect((await tentar(emailAleatorio(), 'errada', ip)).statusCode).toBe(401);
+    expect((await tentar(email, SENHA, ip)).statusCode).toBe(429);
+    expect((await tentar(email, SENHA, '10.20.1.2')).statusCode).toBe(200);
+    await passarTempo();
+    expect((await tentar(email, SENHA, ip)).statusCode).toBe(200);
+  });
+});
+
+describe('troca da própria senha', () => {
+  it('exige a senha atual, recusa repetir a mesma e a nova passa a valer no login', async () => {
+    const o = await novaOficina('Oficina Troca Senha');
+    const trocar = (senhaAtual: string, novaSenha: string) =>
+      o.chamar('POST', '/api/auth/senha', { senhaAtual, novaSenha });
+
+    const errada = await trocar('errada', 'nova-senha-123');
+    expect(errada.statusCode).toBe(400);
+    expect(errada.json().erro).toBe('Senha atual incorreta.');
+    expect((await trocar(SENHA, SENHA)).json().campos.novaSenha).toBe('A nova senha deve ser diferente da atual');
+    expect((await trocar(SENHA, 'curta')).statusCode).toBe(400);
+    expect((await app.inject({ method: 'POST', url: '/api/auth/senha', payload: {} })).statusCode).toBe(401);
+
+    expect((await trocar(SENHA, 'nova-senha-123')).statusCode).toBe(204);
+    expect((await entrar(o.email)).res.statusCode).toBe(401);
+    expect((await entrar(o.email, 'nova-senha-123')).res.statusCode).toBe(200);
+  });
+});
+
 describe('usuários', () => {
   it('admin cadastra usuário; senha fica só como hash Argon2id', async () => {
     const admin = await novaOficina('Oficina Usuários');
@@ -662,6 +721,82 @@ describe('clientes e veículos', () => {
   });
 });
 
+describe('lista de clientes: filtros, aniversários e frota', () => {
+  /** Data de nascimento de alguém que faz aniversário daqui a `dias` dias (30 anos atrás). */
+  const nascimento = (dias: number) => {
+    const hoje = new Date(`${new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' })}T00:00:00Z`);
+    hoje.setUTCDate(hoje.getUTCDate() + dias);
+    hoje.setUTCFullYear(hoje.getUTCFullYear() - 30);
+    return hoje.toISOString().slice(0, 10);
+  };
+
+  it('filtra por status, tipo, período de "cliente desde", origem, relacionamento e aniversário', async () => {
+    const { chamar } = await novaOficina('Oficina Filtros');
+    const origens: { id: string; nome: string }[] = (await chamar('GET', '/api/opcoes/origens')).json();
+    const relacoes: { id: string; nome: string }[] = (await chamar('GET', '/api/opcoes/relacionamentos')).json();
+    const [origem] = origens;
+    const [relacao] = relacoes;
+    const criar = async (dados: object) => (await chamar('POST', '/api/clientes', cliente(dados))).json();
+    const ana = await criar({ nome: 'Ana Hoje', dataNascimento: nascimento(0), clienteDesde: '2020-05-01' });
+    await criar({
+      nome: 'Beto Semana',
+      dataNascimento: nascimento(3),
+      clienteDesde: '2023-01-15',
+      origemId: origem!.id,
+    });
+    await criar({
+      nome: 'Caio Longe',
+      dataNascimento: nascimento(40),
+      relacionamentoId: relacao!.id,
+      clienteDesde: '2019-03-01',
+      ativo: false,
+    });
+
+    const nomes = async (filtro: Record<string, string>) =>
+      (await chamar('GET', `/api/clientes?${new URLSearchParams(filtro)}`))
+        .json()
+        .itens.map((c: { nome: string }) => c.nome);
+
+    expect(await nomes({})).toEqual(['Ana Hoje', 'Beto Semana', 'Caio Longe']);
+    expect(await nomes({ ativo: 'true' })).toEqual(['Ana Hoje', 'Beto Semana']);
+    expect(await nomes({ ativo: 'false' })).toEqual(['Caio Longe']);
+    expect(await nomes({ tipo: 'PJ' })).toEqual([]);
+    expect(await nomes({ desde: '2021-01-01', ate: '2023-12-31' })).toEqual(['Beto Semana']);
+    expect(await nomes({ desde: '2023-01-15' })).toEqual(['Beto Semana']);
+    expect(await nomes({ origemId: origem!.id })).toEqual(['Beto Semana']);
+    expect(await nomes({ relacionamentoId: relacao!.id })).toEqual(['Caio Longe']);
+    expect(await nomes({ aniversario: 'hoje' })).toEqual(['Ana Hoje']);
+    expect(await nomes({ aniversario: 'semana' })).toEqual(['Ana Hoje', 'Beto Semana']);
+    expect((await chamar('GET', '/api/clientes?desde=2024-01-01&ate=2023-01-01')).statusCode).toBe(400);
+
+    const [primeiro] = (await chamar('GET', '/api/clientes?aniversario=semana')).json().itens;
+    expect(primeiro).toMatchObject({ nome: 'Ana Hoje', diasAteAniversario: 0, cidade: 'Florianópolis/SC' });
+    expect((await chamar('GET', `/api/clientes/${ana.id}`)).json().diasAteAniversario).toBe(0);
+
+    // Página inicial: aniversariantes ativos de hoje e da semana, o de hoje primeiro.
+    const painel = (await chamar('GET', '/api/painel')).json();
+    expect(painel.aniversariantes.map((a: { nome: string; dias: number }) => [a.nome, a.dias])).toEqual([
+      ['Ana Hoje', 0],
+      ['Beto Semana', 3],
+    ]);
+  });
+
+  it('lista geral de veículos com busca pela placa, marca ou dono, paginada', async () => {
+    const { chamar } = await novaOficina('Oficina Frota');
+    const dono = (await chamar('POST', '/api/clientes', cliente({ nome: 'Dona Frota' }))).json();
+    await chamar('POST', '/api/veiculos', veiculo(dono.id, { placa: 'FRT1A23', marca: 'Toyota', modelo: 'Corolla' }));
+    await chamar('POST', '/api/veiculos', veiculo(dono.id, { placa: 'FRT2B34', marca: 'Fiat', modelo: 'Uno' }));
+
+    const lista = (await chamar('GET', '/api/veiculos/lista?porPagina=1')).json();
+    expect(lista.total).toBe(2);
+    expect(lista.itens).toEqual([expect.objectContaining({ placa: 'FRT1A23', clienteNome: 'Dona Frota' })]);
+    expect((await chamar('GET', '/api/veiculos/lista?q=frt-2b')).json().itens[0].placa).toBe('FRT2B34');
+    expect((await chamar('GET', '/api/veiculos/lista?q=toyota')).json().total).toBe(1);
+    expect((await chamar('GET', '/api/veiculos/lista?q=dona')).json().total).toBe(2);
+    expect((await chamar('GET', '/api/veiculos/lista?status=vendido')).json().total).toBe(0);
+  });
+});
+
 describe('personas e permissões', () => {
   it('cada função acessa só o que lhe cabe (docs/ENTREGAVEIS.md §1)', async () => {
     const admin = await novaOficina('Oficina Personas');
@@ -827,6 +962,33 @@ describe('funções e permissões configuráveis', () => {
     expect((await usuario.chamar('POST', '/api/clientes', cliente({ nome: 'Agora pode' }))).statusCode).toBe(201);
     expect((await usuario.chamar('GET', '/api/relatorios')).statusCode).toBe(200);
     expect((await usuario.chamar('GET', '/api/auth/sessao')).json().acessos.clientes).toBe('editar');
+  });
+
+  it('relatórios de clientes e veículos exigem também acesso a Clientes e veículos', async () => {
+    const admin = await novaOficina('Oficina Relatório Restrito');
+    const funcao = (
+      await admin.chamar('POST', '/api/funcoes', {
+        nome: 'Só relatórios',
+        ativa: true,
+        acessos: acessos({ relatorios: 'consultar' }),
+      })
+    ).json();
+    const email = emailAleatorio();
+    await admin.chamar('POST', '/api/usuarios', { nome: 'Analista', email, funcoes: [funcao.id], senha: SENHA });
+    const analista = await entrar(email);
+
+    expect((await analista.chamar('GET', '/api/relatorios')).json()).toEqual([]);
+    expect((await analista.chamar('GET', '/api/relatorios/clientes')).statusCode).toBe(403);
+    expect((await analista.chamar('GET', '/api/relatorios/veiculos/csv')).statusCode).toBe(403);
+
+    await admin.chamar('PUT', `/api/funcoes/${funcao.id}`, {
+      nome: 'Só relatórios',
+      ativa: true,
+      acessos: acessos({ relatorios: 'consultar', clientes: 'consultar' }),
+    });
+    const ids = (await analista.chamar('GET', '/api/relatorios')).json().map((r: { id: string }) => r.id);
+    expect(ids).toEqual(['clientes', 'veiculos']);
+    expect((await analista.chamar('GET', '/api/relatorios/clientes')).statusCode).toBe(200);
   });
 
   it('várias funções somam o maior nível de cada módulo', async () => {
@@ -1302,6 +1464,8 @@ describe('isolamento entre oficinas (RLS)', () => {
       'precos_eventos',
       'estoques',
       'estoque_ajustes',
+      'precos_padrao',
+      'precos_padrao_eventos',
     ]) {
       const linhas = await db.execute(sql`select count(*)::int as n from ${sql.identifier(tabela)}`);
       expect(linhas[0]!.n, tabela).toBe(0);

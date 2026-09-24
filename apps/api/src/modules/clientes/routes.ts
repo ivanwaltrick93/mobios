@@ -5,13 +5,15 @@ import {
   idParamSchema,
   normalizarDocumento,
   normalizarPlaca,
-  paginacaoSchema,
+  clienteFiltroSchema,
+  DIAS_ANIVERSARIO_SEMANA,
+  hojeIso,
   pendenciasCliente,
   type Cliente,
   type ClienteDados,
   type ClienteResumo,
 } from '@mobios/shared';
-import { asc, count, eq, ilike, or, sql } from 'drizzle-orm';
+import { and, asc, count, eq, gte, ilike, lte, or, sql } from 'drizzle-orm';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { withTenant, type Tx } from '../../db/client.js';
@@ -40,7 +42,15 @@ const totalVeiculos = sql<number>`(select count(*) from veiculos v where v.clien
   Number,
 );
 
-const colunasResumo = {
+/** Dias até o próximo aniversário (função do banco, migração 0016), contando a partir de hoje em Brasília. */
+export const diasAteAniversario = () =>
+  sql<number | null>`dias_ate_aniversario(${clientes.dataNascimento}, ${hojeIso()}::date)`;
+
+const cidadePrincipal = sql<string | null>`(select e.cidade || '/' || e.uf from cliente_enderecos e
+  where e.cliente_id = "clientes"."id" order by e.principal desc, e.criado_em limit 1)`;
+
+/** Colunas da lista (e base do detalhe). Função: o aniversário depende do dia da consulta. */
+const colunasResumo = () => ({
   id: clientes.id,
   tipo: clientes.tipo,
   nome: clientes.nome,
@@ -52,7 +62,10 @@ const colunasResumo = {
   temResponsavel,
   veiculos: veiculosResumo,
   totalVeiculos,
-};
+  clienteDesde: clientes.clienteDesde,
+  cidade: cidadePrincipal,
+  diasAteAniversario: diasAteAniversario(),
+});
 
 const colunasEndereco = {
   id: clienteEnderecos.id,
@@ -87,7 +100,7 @@ const comPendencias = <T extends BasePendencias>({ temEndereco, temResponsavel, 
 async function carregarCliente(tx: Tx, id: string): Promise<Cliente> {
   const [linha] = await tx
     .select({
-      ...colunasResumo,
+      ...colunasResumo(),
       rgIe: clientes.rgIe,
       dataNascimento: clientes.dataNascimento,
       sexo: clientes.sexo,
@@ -190,17 +203,17 @@ export const clientesRoutes: FastifyPluginAsyncZod = async (app) => {
     '/',
     {
       schema: {
-        querystring: paginacaoSchema,
+        querystring: clienteFiltroSchema,
         response: { 200: z.object({ itens: z.array(clienteResumoSchema), total: z.number() }) },
       },
     },
     async (req) => {
-      const { q, pagina, porPagina } = req.query;
+      const { q, ativo, tipo, desde, ate, origemId, relacionamentoId, aniversario, pagina, porPagina } = req.query;
       const digitos = q?.replace(/\D/g, '');
       const documento = q ? normalizarDocumento(q) : '';
       // Placa sem hífen e em maiúsculas: no balcão o cliente chega com o carro, e a placa leva ao dono.
       const placa = q ? normalizarPlaca(q) : '';
-      const filtro = q
+      const busca = q
         ? or(
             ilike(clientes.nome, `%${q}%`),
             // Documento guardado sem pontuação e em maiúsculas (o CNPJ pode ter letras).
@@ -213,12 +226,25 @@ export const clientesRoutes: FastifyPluginAsyncZod = async (app) => {
               : []),
           )
         : undefined;
+      const dias = diasAteAniversario();
+      const filtro = and(
+        busca,
+        ativo ? eq(clientes.ativo, ativo === 'true') : undefined,
+        tipo ? eq(clientes.tipo, tipo) : undefined,
+        desde ? gte(clientes.clienteDesde, desde) : undefined,
+        ate ? lte(clientes.clienteDesde, ate) : undefined,
+        origemId ? eq(clientes.origemId, origemId) : undefined,
+        relacionamentoId ? eq(clientes.relacionamentoId, relacionamentoId) : undefined,
+        aniversario === 'hoje' ? sql`${dias} = 0` : undefined,
+        aniversario === 'semana' ? sql`${dias} <= ${DIAS_ANIVERSARIO_SEMANA}` : undefined,
+      );
       return withTenant(req.user.tid, async (tx) => {
         const linhas = await tx
-          .select(colunasResumo)
+          .select(colunasResumo())
           .from(clientes)
           .where(filtro)
-          .orderBy(asc(clientes.nome))
+          // Filtrando aniversariantes, os mais próximos primeiro.
+          .orderBy(...(aniversario ? [asc(dias)] : []), asc(clientes.nome), asc(clientes.id))
           .limit(porPagina)
           .offset((pagina - 1) * porPagina);
         const [{ total }] = (await tx.select({ total: count() }).from(clientes).where(filtro)) as [{ total: number }];

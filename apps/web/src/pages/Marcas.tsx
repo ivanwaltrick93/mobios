@@ -1,9 +1,25 @@
 import { mascaraCodigo, type Marca } from '@mobios/shared';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Tags } from 'lucide-react';
-import { useState, type FormEvent } from 'react';
-import { AbasMateriais } from '../components/AbasMateriais';
-import { Alerta, Botao, BotaoLink, Campo, Cartao, Input, Selo, TextoSuave, Titulo, Vazio } from '../components/ui';
+import { Fragment, useState, type FormEvent } from 'react';
+import {
+  Alerta,
+  Botao,
+  BotaoLink,
+  BotaoVisualizar,
+  Cabecalho,
+  Campo,
+  Detalhes,
+  Input,
+  Linha,
+  Selo,
+  Tabela,
+  Td,
+  TextoSuave,
+  Th,
+  Titulo,
+  Vazio,
+} from '../components/ui';
 import { api } from '../lib/api';
 import { useMarcas } from '../lib/materiais';
 import { usePode } from '../lib/sessao';
@@ -13,6 +29,7 @@ export function Marcas() {
   const editar = pode('materiais', 'editar');
   const marcas = useMarcas();
   const [edicao, setEdicao] = useState<Marca | 'nova' | null>(null);
+  const [vendo, setVendo] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const acao = useMutation({
     mutationFn: ({ m, tipo }: { m: Marca; tipo: 'status' | 'excluir' }) =>
@@ -26,8 +43,7 @@ export function Marcas() {
 
   return (
     <div className="space-y-6">
-      <Titulo acao={editar && !edicao && <Botao onClick={() => setEdicao('nova')}>Nova marca</Botao>}>Materiais</Titulo>
-      <AbasMateriais />
+      <Titulo acao={editar && !edicao && <Botao onClick={() => setEdicao('nova')}>Nova marca</Botao>}>Marcas</Titulo>
       <TextoSuave>
         Fabricantes das peças (Bosch, Mann Filter, NGK...). Marca em uso não é excluída: é inativada.
       </TextoSuave>
@@ -38,38 +54,82 @@ export function Marcas() {
           A marca é opcional no material, mas ajuda a filtrar e comparar peças.
         </Vazio>
       ) : (
-        <Cartao className="divide-y divide-borda p-0">
-          {marcas.data?.map((m) =>
-            edicao !== 'nova' && edicao?.id === m.id ? (
-              <div key={m.id} className="p-4">
-                <EditorMarca marca={m} aoConcluir={() => setEdicao(null)} />
-              </div>
-            ) : (
-              <div key={m.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm">
-                <span className="flex flex-wrap items-center gap-2">
-                  <span className={`font-medium ${m.ativa ? '' : 'text-texto-suave line-through'}`}>{m.nome}</span>
-                  {m.codigo && <span className="font-mono text-xs text-texto-suave">{m.codigo}</span>}
-                  {!m.ativa && <Selo>Inativa</Selo>}
-                  <span className="text-xs text-texto-suave">{m.materiais} material(is)</span>
-                </span>
-                {editar && !edicao && (
-                  <span className="flex gap-4">
-                    <BotaoLink onClick={() => setEdicao(m)}>Editar</BotaoLink>
-                    <BotaoLink onClick={() => acao.mutate({ m, tipo: 'status' })}>
-                      {m.ativa ? 'Inativar' : 'Reativar'}
-                    </BotaoLink>
-                    <BotaoLink
-                      perigo
-                      onClick={() => confirm(`Excluir a marca ${m.nome}?`) && acao.mutate({ m, tipo: 'excluir' })}
-                    >
-                      Excluir
-                    </BotaoLink>
-                  </span>
-                )}
-              </div>
-            ),
-          )}
-        </Cartao>
+        <Tabela>
+          <Cabecalho>
+            <Th>Nome</Th>
+            <Th>Código</Th>
+            <Th className="text-right">Materiais</Th>
+            <Th>Status</Th>
+            <Th />
+          </Cabecalho>
+          <tbody>
+            {marcas.data?.map((m) =>
+              edicao !== 'nova' && edicao?.id === m.id ? (
+                <tr key={m.id}>
+                  <td colSpan={5} className="p-4">
+                    <EditorMarca marca={m} aoConcluir={() => setEdicao(null)} />
+                  </td>
+                </tr>
+              ) : (
+                <Fragment key={m.id}>
+                  <Linha className="hover:bg-superficie-alt">
+                    <Td>
+                      <span className={`font-medium ${m.ativa ? 'text-texto' : 'text-texto-suave line-through'}`}>
+                        {m.nome}
+                      </span>
+                    </Td>
+                    <Td suave className="font-mono text-xs">
+                      {m.codigo ?? '—'}
+                    </Td>
+                    <Td suave className="text-right">
+                      {m.materiais}
+                    </Td>
+                    <Td>{m.ativa ? <Selo tom="sucesso">Ativa</Selo> : <Selo>Inativa</Selo>}</Td>
+                    <Td className="text-right whitespace-nowrap">
+                      <span className="flex items-center justify-end gap-4 text-sm">
+                        <BotaoVisualizar
+                          aberto={vendo === m.id}
+                          aoClicar={() => setVendo(vendo === m.id ? null : m.id)}
+                        />
+                        {editar && !edicao && (
+                          <>
+                            <BotaoLink onClick={() => setEdicao(m)}>Editar</BotaoLink>
+                            <BotaoLink onClick={() => acao.mutate({ m, tipo: 'status' })}>
+                              {m.ativa ? 'Inativar' : 'Reativar'}
+                            </BotaoLink>
+                            <BotaoLink
+                              perigo
+                              onClick={() =>
+                                confirm(`Excluir a marca ${m.nome}?`) && acao.mutate({ m, tipo: 'excluir' })
+                              }
+                            >
+                              Excluir
+                            </BotaoLink>
+                          </>
+                        )}
+                      </span>
+                    </Td>
+                  </Linha>
+                  {vendo === m.id && (
+                    <tr>
+                      <td colSpan={5} className="px-4 pb-4">
+                        <Detalhes
+                          itens={[
+                            { rotulo: 'Nome', valor: m.nome },
+                            { rotulo: 'Código', valor: m.codigo ?? '—' },
+                            { rotulo: 'Descrição', valor: m.descricao ?? '—' },
+                            { rotulo: 'Materiais desta marca', valor: m.materiais },
+                            { rotulo: 'Status', valor: m.ativa ? 'Ativa' : 'Inativa' },
+                          ]}
+                        />
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              ),
+            )}
+          </tbody>
+        </Tabela>
       )}
     </div>
   );

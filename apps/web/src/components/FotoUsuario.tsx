@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
-import { ErroApi, api } from '../lib/api';
+import { api } from '../lib/api';
 import { reduzirImagem, validarImagem } from '../lib/imagem';
 import { chaveSessao } from '../lib/sessao';
 import { Avatar } from './Avatar';
@@ -27,14 +27,7 @@ export function FotoUsuario({
   const enviar = useMutation({
     mutationFn: async (foto: File) => {
       const reduzida = await reduzirImagem(foto);
-      const res = await fetch(`/api/fotos/usuario/${usuarioId}`, {
-        method: 'PUT',
-        credentials: 'same-origin',
-        headers: { 'Content-Type': reduzida.type },
-        body: reduzida,
-      });
-      if (!res.ok)
-        throw new ErroApi(res.status, (await res.json().catch(() => ({}))).erro ?? 'Não foi possível enviar a foto');
+      await api(`/fotos/usuario/${usuarioId}`, { method: 'PUT', arquivo: { conteudo: reduzida, tipo: reduzida.type } });
     },
     onSuccess: atualizar,
     onError: (e) => setErro(e.message),

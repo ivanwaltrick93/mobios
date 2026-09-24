@@ -1,13 +1,16 @@
 import {
   idParamSchema,
+  normalizarPlaca,
   pendenciasVeiculo,
   sugestoesVeiculoSchema,
   veiculoAtualizarSchema,
+  veiculoFiltroSchema,
   veiculoInputSchema,
+  veiculoListaSchema,
   veiculoSchema,
   veiculoTransferirSchema,
 } from '@mobios/shared';
-import { and, asc, desc, eq, ne, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, ilike, ne, or, sql } from 'drizzle-orm';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { withTenant, type Tx } from '../../db/client.js';
@@ -90,6 +93,48 @@ export const veiculosRoutes: FastifyPluginAsyncZod = async (app) => {
           .orderBy(desc(veiculos.principal), asc(veiculos.placa)),
       );
       return lista.map(comPendencias);
+    },
+  );
+
+  /** Frota da oficina (página Veículos): busca por placa, marca, modelo ou dono; paginada. */
+  app.get(
+    '/lista',
+    {
+      schema: {
+        querystring: veiculoFiltroSchema,
+        response: { 200: z.object({ itens: z.array(veiculoListaSchema), total: z.number() }) },
+      },
+    },
+    async (req) => {
+      const { q, status, pagina, porPagina } = req.query;
+      const placa = q ? normalizarPlaca(q) : '';
+      const filtro = and(
+        q
+          ? or(
+              ...(placa ? [ilike(veiculos.placa, `%${placa}%`)] : []),
+              ilike(veiculos.marca, `%${q}%`),
+              ilike(veiculos.modelo, `%${q}%`),
+              ilike(clientes.nome, `%${q}%`),
+            )
+          : undefined,
+        status ? eq(veiculos.status, status) : undefined,
+      );
+      return withTenant(req.user.tid, async (tx) => {
+        const linhas = await tx
+          .select({ ...colunas, clienteNome: clientes.nome })
+          .from(veiculos)
+          .innerJoin(clientes, eq(clientes.id, veiculos.clienteId))
+          .where(filtro)
+          .orderBy(asc(veiculos.placa))
+          .limit(porPagina)
+          .offset((pagina - 1) * porPagina);
+        const [{ total }] = (await tx
+          .select({ total: count() })
+          .from(veiculos)
+          .innerJoin(clientes, eq(clientes.id, veiculos.clienteId))
+          .where(filtro)) as [{ total: number }];
+        return { itens: linhas.map(comPendencias), total };
+      });
     },
   );
 

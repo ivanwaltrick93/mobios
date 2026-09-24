@@ -467,3 +467,47 @@ Regras do ajuste (`PUT /api/estoque/:materialId/:depositoId`, módulo Estoque/Ed
 ### Evolução
 
 Quando compras, vendas e O.S. existirem, elas alteram `estoques` pelas mesmas regras (trava da linha + CHECK ≥ 0) e registram movimentos numa tabela própria de movimentação; o ajuste manual continua existindo como "ajuste de inventário".
+
+## 22. Ampliação: Política Comercial, preço padrão e importação por planilha
+
+Decisões do dono do produto (23/09/2026): menu "Lista de preços" passa a se chamar **Política Comercial**; **preço padrão** = um preço sem datas por material + tabela, usado quando nenhuma vigência cobre o dia; cadastro de preço dentro da tabela **digitando o SKU**, conferido antes de gravar; **importação por CSV** de preços e de saldos, gravando as linhas válidas e relatando as demais; no estoque, o valor informado (lançamento ou planilha) é o **saldo final**; listagens com **20 por página**.
+
+### Tabelas
+
+| Tabela | Campos | Chaves e regras |
+|---|---|---|
+| `precos_padrao` | id, tenant_id, material_id, tabela_preco_id, preco_centavos, autoria (criado_por, atualizado_por, versao), timestamps | **UNIQUE (tenant, material, tabela)**; FKs compostas RESTRICT; CHECK preço ≥ 0; RLS |
+| `precos_padrao_eventos` | id, tenant_id, material_id, tabela_preco_id, evento (definido/alterado/removido), preco_antes, preco_depois, usuario_id, criado_em | Trilha imutável; índice (material, tabela, criado_em); RLS |
+
+Preço de um dia = vigência que cobre a data (regras do §9) **ou**, sem ela, o preço padrão. Definir/alterar/remover o padrão usa a mesma trava por material + tabela das vigências; na tela, a edição envia a `versao` (409 se outra pessoa alterou); a importação grava o valor informado. Material ou tabela inativos não recebem preço novo (vigência nem padrão).
+
+### Importação por planilha (CSV)
+
+- Colunas aceitas definidas uma vez em `packages/shared/src/importacao.ts` (a tela mostra a lista e o modelo; a API confere as obrigatórias). A **1ª linha é sempre o cabeçalho**; nomes sem acento/maiúsculas; colunas a mais são ignoradas; separador `;` (ou `,`), vírgula ou ponto decimal sem separador de milhar, datas dd/mm/aaaa.
+- Limites: 1 MB e 5.000 linhas por arquivo. O arquivo é lido em memória (nada vai para o disco).
+- Cada linha roda num **SAVEPOINT**: se falhar, só ela é desfeita e entra no relatório com o número da linha; as válidas são gravadas. Linhas que não mudam nada contam como "sem alteração".
+- **Preços** (`tabela`, `sku`, `preco`, `inicio`, `fim`): com `inicio` = nova vigência pelas regras do §9 (inclusive "não começa no passado"); sem `inicio` = preço padrão.
+- **Estoque** (`sku`, `deposito`, `disponivel`, `reservado`, `motivo`): saldo final pelas regras do ajuste (§21); `reservado` vazio mantém o atual; `motivo` vazio = "Importação de planilha".
+
+### APIs
+
+| Endpoint | Uso |
+|---|---|
+| `POST /api/precos` | Nova vigência; material por `materialId` **ou** `sku` (SKU inexistente: 400 com `campos.sku`) |
+| `GET /api/precos/padrao?materialId` | Preços padrão do material, por tabela |
+| `PUT /api/precos/padrao` | Define ou altera o padrão (`materialId` ou `sku`, `tabelaPrecoId`, `precoCentavos`, `versao?`) |
+| `DELETE /api/precos/padrao?materialId&tabelaPrecoId` | Remove o padrão (fica na trilha) |
+| `GET /api/precos/padrao/eventos?materialId&tabelaPrecoId` | Trilha do padrão |
+| `POST /api/precos/importar` (text/csv) | Importação de preços; devolve `{ linhas, importadas, ignoradas, erros[{ linha, mensagem }] }` |
+| `GET /api/precos/vigente` | Agora devolve também `valorCentavos` e `origem` (`vigencia` / `padrao`) |
+| `GET /api/precos/lista` | `precoCentavos` = preço de hoje (vigência ou padrão) e `origem` |
+| `POST /api/estoque/lancamento` | Saldo final por `sku` + `deposito` (códigos); inexistentes: 400 com `campos` |
+| `POST /api/estoque/importar` (text/csv) | Importação de saldos (mesmo retorno da importação de preços) |
+
+Permissões: importar e cadastrar preços exigem Preços/Editar; lançar e importar saldo exigem Estoque/Editar.
+
+### Telas
+
+- **Política Comercial** (menu, módulo Preços): abas **Lista de preços** (uma tabela por vez, 20 por página, selo "Padrão" quando o preço vem do padrão) e **Tabelas de preço** (tabela analítica com "Importar preços"; clicar no nome abre `/tabelas-preco/:id`, com os preços da tabela e "Adicionar preço" por SKU, com vigência ou padrão).
+- **Material → aba Preços**: em cada tabela, o bloco "Preço padrão (sem vigência)" com Definir/Alterar/Remover e histórico.
+- **Estoque**: "Lançar saldo" (SKU + código do depósito) e "Importar planilha", além do ajuste por linha; 20 por página.

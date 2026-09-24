@@ -1,5 +1,7 @@
+import { zodResolver } from '@hookform/resolvers/zod';
 import {
   formatarQuantidade,
+  lancamentoEstoqueSchema,
   mascaraQuantidade,
   quantidadeParaNumero,
   UNIDADES,
@@ -7,9 +9,13 @@ import {
   type Saldo,
 } from '@mobios/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState, type FormEvent } from 'react';
+import { useId, useState, type FormEvent } from 'react';
+import { useForm } from 'react-hook-form';
+import { z } from 'zod';
 import { api } from '../lib/api';
-import { Alerta, Botao, Campo, Input, TextoSuave } from './ui';
+import { aplicarErrosDaApi } from '../lib/formulario';
+import { useDepositos } from '../lib/materiais';
+import { Alerta, Botao, Campo, Input, InputMascara, TextoSuave } from './ui';
 
 const formatarNaUnidade = (n: number, unidade: Saldo['unidade']) =>
   mascaraQuantidade(String(n).replace('.', ','), UNIDADES[unidade].fracionada);
@@ -105,5 +111,97 @@ export function HistoricoAjustes({ saldo }: { saldo: Saldo }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+// Formulário: quantidades digitadas com máscara (texto) e convertidas para número; SKU, depósito e motivo
+// seguem as mesmas regras do schema da API.
+const lancamentoFormSchema = lancamentoEstoqueSchema.extend({
+  disponivel: z
+    .string()
+    .min(1, 'Informe o disponível')
+    .transform((v) => quantidadeParaNumero(v) ?? 0),
+  reservado: z.string().transform((v) => quantidadeParaNumero(v) ?? 0),
+});
+type LancamentoEntrada = z.input<typeof lancamentoFormSchema>;
+type LancamentoSaida = z.output<typeof lancamentoFormSchema>;
+
+/**
+ * Lançamento de saldo final digitando o SKU e o código do depósito. A API confere se os dois existem
+ * antes de gravar (erro no próprio campo) e registra o ajuste com o motivo.
+ */
+export function LancamentoEstoqueForm({ aoConcluir }: { aoConcluir: () => void }) {
+  const queryClient = useQueryClient();
+  const depositos = useDepositos();
+  const listaDepositos = useId();
+  const form = useForm<LancamentoEntrada, unknown, LancamentoSaida>({
+    resolver: zodResolver(lancamentoFormSchema),
+    defaultValues: { sku: '', deposito: '', disponivel: '', reservado: '0', motivo: '' },
+    mode: 'onTouched',
+  });
+  const salvar = useMutation({
+    mutationFn: (dados: LancamentoSaida) => api<Saldo>('/estoque/lancamento', { method: 'POST', body: dados }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['estoque'] });
+      queryClient.invalidateQueries({ queryKey: ['lista-precos'] });
+      aoConcluir();
+    },
+  });
+  const erros = form.formState.errors;
+  const quantidade = (campo: 'disponivel' | 'reservado') => form.register(campo);
+
+  return (
+    <form
+      noValidate
+      onSubmit={form.handleSubmit((d) => salvar.mutate(d))}
+      className="space-y-3 rounded-md border border-borda bg-superficie-alt p-4"
+    >
+      <TextoSuave className="text-xs">
+        Informe o saldo final (substitui o atual). O SKU e o depósito precisam estar cadastrados.
+      </TextoSuave>
+      <Alerta>{salvar.isError && aplicarErrosDaApi(salvar.error, form.setError)}</Alerta>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <Campo rotulo="SKU *" erro={erros.sku}>
+          <Input autoFocus autoComplete="off" {...form.register('sku')} />
+        </Campo>
+        <Campo rotulo="Depósito *" dica="Código" erro={erros.deposito}>
+          <Input list={listaDepositos} autoComplete="off" {...form.register('deposito')} />
+          <datalist id={listaDepositos}>
+            {depositos.data
+              ?.filter((d) => d.ativo)
+              .map((d) => (
+                <option key={d.id} value={d.codigo}>
+                  {d.nome}
+                </option>
+              ))}
+          </datalist>
+        </Campo>
+        <Campo rotulo="Disponível *" erro={erros.disponivel}>
+          <InputMascara
+            inputMode="decimal"
+            registro={quantidade('disponivel')}
+            mascara={(v) => mascaraQuantidade(v, true)}
+          />
+        </Campo>
+        <Campo rotulo="Reservado" erro={erros.reservado}>
+          <InputMascara
+            inputMode="decimal"
+            registro={quantidade('reservado')}
+            mascara={(v) => mascaraQuantidade(v, true)}
+          />
+        </Campo>
+        <Campo rotulo="Motivo *" erro={erros.motivo}>
+          <Input {...form.register('motivo')} />
+        </Campo>
+      </div>
+      <div className="flex gap-2">
+        <Botao type="submit" disabled={salvar.isPending}>
+          {salvar.isPending ? 'Salvando…' : 'Lançar saldo'}
+        </Botao>
+        <Botao type="button" variante="secundario" onClick={aoConcluir}>
+          Cancelar
+        </Botao>
+      </div>
+    </form>
   );
 }

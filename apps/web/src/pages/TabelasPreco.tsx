@@ -1,18 +1,27 @@
-import { mascaraCodigo, MOEDAS, type TabelaPreco } from '@mobios/shared';
+import { COLUNAS_IMPORTACAO_PRECOS, mascaraCodigo, MOEDAS, type TabelaPreco } from '@mobios/shared';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Tag } from 'lucide-react';
+import { FileUp, Plus, Tag } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
+import { Link } from 'react-router';
 import { AbasPrecos } from '../components/AbasPrecos';
+import { ImportarCsv } from '../components/ImportarCsv';
 import {
   Alerta,
   Botao,
   BotaoLink,
+  Cabecalho,
   Campo,
   Cartao,
   Input,
+  Linha,
+  Paginacao,
+  POR_PAGINA,
   Select,
   Selo,
+  Tabela,
+  Td,
   TextoSuave,
+  Th,
   Titulo,
   Vazio,
 } from '../components/ui';
@@ -20,12 +29,18 @@ import { api } from '../lib/api';
 import { useTabelasPreco } from '../lib/materiais';
 import { usePode } from '../lib/sessao';
 
-/** Tabelas de preço (Varejo, Oficina, Atacado...). Os preços por material ficam na aba Preços de cada material. */
+/**
+ * Aba "Tabelas de preço" da Política Comercial: lista analítica das tabelas (Varejo, Oficina...),
+ * importação de preços por planilha e acesso ao detalhe de cada tabela (onde se cadastram os preços).
+ * As tabelas são poucas e a lista completa também alimenta os seletores, por isso a paginação é na tela.
+ */
 export function TabelasPreco() {
   const pode = usePode();
   const editar = pode('precos', 'editar');
   const tabelas = useTabelasPreco(pode('precos'));
   const [edicao, setEdicao] = useState<TabelaPreco | 'nova' | null>(null);
+  const [importando, setImportando] = useState(false);
+  const [pagina, setPagina] = useState(1);
   const queryClient = useQueryClient();
   const acao = useMutation({
     mutationFn: ({ t, tipo }: { t: TabelaPreco; tipo: 'status' | 'excluir' }) =>
@@ -34,72 +49,119 @@ export function TabelasPreco() {
         : api(`/tabelas-preco/${t.id}/status`, { method: 'PATCH', body: { ativo: !t.ativa } }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tabelas-preco'] }),
   });
+  const todas = tabelas.data ?? [];
+  const daPagina = todas.slice((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA);
 
   if (!pode('precos')) return <Alerta>Você não tem permissão para acessar os preços.</Alerta>;
 
   return (
     <div className="space-y-6">
-      <Titulo acao={editar && !edicao && <Botao onClick={() => setEdicao('nova')}>Nova tabela</Botao>}>
-        Lista de preços
+      <Titulo
+        acao={
+          editar &&
+          !edicao && (
+            <div className="flex flex-wrap gap-2">
+              <Botao variante="secundario" onClick={() => setImportando(!importando)}>
+                <FileUp className="mr-1.5 size-4" aria-hidden /> Importar preços
+              </Botao>
+              <Botao onClick={() => setEdicao('nova')}>
+                <Plus className="mr-1.5 size-4" aria-hidden /> Nova tabela
+              </Botao>
+            </div>
+          )
+        }
+      >
+        Política Comercial
       </Titulo>
       <AbasPrecos />
       <TextoSuave>
-        Cada material pode ter um preço por tabela, com vigências. Informe os preços na aba Preços de cada material.
+        Abra uma tabela para ver e cadastrar os preços dela (com vigência ou padrão). Para muitos preços de uma vez, use
+        a importação por planilha.
       </TextoSuave>
+
+      {importando && (
+        <ImportarCsv
+          titulo="Importar preços"
+          colunas={COLUNAS_IMPORTACAO_PRECOS}
+          url="/precos/importar"
+          nomeModelo="modelo-precos.csv"
+          aoConcluir={() => {
+            queryClient.invalidateQueries({ queryKey: ['tabelas-preco'] });
+            queryClient.invalidateQueries({ queryKey: ['lista-precos'] });
+            queryClient.invalidateQueries({ queryKey: ['precos'] });
+          }}
+          aoFechar={() => setImportando(false)}
+        />
+      )}
       {edicao === 'nova' && (
-        <Cartao>
+        <Cartao className="p-5">
           <EditorTabela aoConcluir={() => setEdicao(null)} />
         </Cartao>
       )}
       <Alerta>{acao.isError && acao.error.message}</Alerta>
+
       {tabelas.data?.length === 0 && !edicao ? (
         <Vazio icone={<Tag />} titulo="Nenhuma tabela de preço cadastrada">
           Crie ao menos uma (ex.: Varejo) para começar a precificar os materiais.
         </Vazio>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {tabelas.data?.map((t) =>
-            edicao !== 'nova' && edicao?.id === t.id ? (
-              <Cartao key={t.id} className="p-5 md:col-span-2 xl:col-span-3">
-                <EditorTabela tabela={t} aoConcluir={() => setEdicao(null)} />
-              </Cartao>
-            ) : (
-              <Cartao key={t.id} className="flex flex-col gap-3 p-5">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <span className="font-mono text-xs font-semibold text-texto-suave">{t.codigo}</span>
-                    <h3 className="font-semibold text-texto">{t.nome}</h3>
-                  </div>
-                  <span className="flex gap-1">
-                    <Selo>{t.moeda}</Selo>
-                    {!t.ativa && <Selo>Inativa</Selo>}
-                  </span>
-                </div>
-                {t.descricao && <TextoSuave>{t.descricao}</TextoSuave>}
-                <p className="text-sm">
-                  <span className="text-2xl font-semibold">{t.materiaisComPreco.toLocaleString('pt-BR')}</span>{' '}
-                  <span className="text-texto-suave">material(is) com preço vigente hoje</span>
-                </p>
-                {editar && !edicao && (
-                  <div className="mt-auto flex gap-4 border-t border-borda pt-3 text-sm">
-                    <BotaoLink onClick={() => setEdicao(t)}>Editar</BotaoLink>
-                    <BotaoLink onClick={() => acao.mutate({ t, tipo: 'status' })}>
-                      {t.ativa ? 'Inativar' : 'Reativar'}
-                    </BotaoLink>
-                    <BotaoLink
-                      perigo
-                      className="ml-auto"
-                      onClick={() => confirm(`Excluir a tabela ${t.nome}?`) && acao.mutate({ t, tipo: 'excluir' })}
-                    >
-                      Excluir
-                    </BotaoLink>
-                  </div>
-                )}
-              </Cartao>
-            ),
-          )}
-        </div>
+        <Tabela>
+          <Cabecalho>
+            <Th>Código</Th>
+            <Th>Nome</Th>
+            <Th>Descrição</Th>
+            <Th>Moeda</Th>
+            <Th className="text-right">Materiais com preço hoje</Th>
+            <Th>Status</Th>
+            {editar && <Th />}
+          </Cabecalho>
+          <tbody>
+            {daPagina.map((t) =>
+              edicao !== 'nova' && edicao?.id === t.id ? (
+                <tr key={t.id}>
+                  <td colSpan={7} className="p-4">
+                    <EditorTabela tabela={t} aoConcluir={() => setEdicao(null)} />
+                  </td>
+                </tr>
+              ) : (
+                <Linha key={t.id} className="hover:bg-superficie-alt">
+                  <Td className="whitespace-nowrap font-mono text-xs font-semibold">{t.codigo}</Td>
+                  <Td>
+                    <Link to={`/tabelas-preco/${t.id}`} className="font-medium text-texto hover:text-primaria">
+                      {t.nome}
+                    </Link>
+                  </Td>
+                  <Td suave>{t.descricao ?? '—'}</Td>
+                  <Td suave>{t.moeda}</Td>
+                  <Td className="text-right font-semibold">{t.materiaisComPreco.toLocaleString('pt-BR')}</Td>
+                  <Td>{t.ativa ? <Selo tom="sucesso">Ativa</Selo> : <Selo>Inativa</Selo>}</Td>
+                  {editar && (
+                    <Td className="whitespace-nowrap text-right">
+                      {!edicao && (
+                        <span className="flex justify-end gap-3">
+                          <BotaoLink onClick={() => setEdicao(t)}>Editar</BotaoLink>
+                          <BotaoLink onClick={() => acao.mutate({ t, tipo: 'status' })}>
+                            {t.ativa ? 'Inativar' : 'Reativar'}
+                          </BotaoLink>
+                          <BotaoLink
+                            perigo
+                            onClick={() =>
+                              confirm(`Excluir a tabela ${t.nome}?`) && acao.mutate({ t, tipo: 'excluir' })
+                            }
+                          >
+                            Excluir
+                          </BotaoLink>
+                        </span>
+                      )}
+                    </Td>
+                  )}
+                </Linha>
+              ),
+            )}
+          </tbody>
+        </Tabela>
       )}
+      {tabelas.data && <Paginacao pagina={pagina} total={todas.length} aoMudar={setPagina} />}
     </div>
   );
 }

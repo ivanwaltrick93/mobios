@@ -1,8 +1,16 @@
-import { formatarMoeda, type Indicador, type ModuloId, type Nivel, type Painel } from '@mobios/shared';
+import {
+  formatarMoeda,
+  type Aniversariante,
+  type Indicador,
+  type ModuloId,
+  type Nivel,
+  type Painel,
+} from '@mobios/shared';
 import { useQuery } from '@tanstack/react-query';
 import {
   AlertTriangle,
   ArrowRight,
+  Cake,
   CarFront,
   ClipboardPlus,
   FileBarChart,
@@ -12,6 +20,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { Link } from 'react-router';
+import { LinkWhatsApp, SeloAniversario } from '../components/Cliente';
 import { Alerta, Cartao, Selo, TextoSuave } from '../components/ui';
 import { api } from '../lib/api';
 import { usePode, useSessao } from '../lib/sessao';
@@ -142,6 +151,8 @@ export function Inicio() {
         ))}
       </section>
 
+      {painel.data && painel.data.aniversariantes.length > 0 && <Aniversariantes lista={painel.data.aniversariantes} />}
+
       {painel.data && (
         <section aria-label="Alertas">
           <h2 className="mb-3 text-lg font-medium">Alertas</h2>
@@ -174,5 +185,29 @@ export function Inicio() {
         </section>
       )}
     </div>
+  );
+}
+
+/** Aniversariantes de hoje e da semana, com atalho para dar parabéns pelo WhatsApp. */
+function Aniversariantes({ lista }: { lista: Aniversariante[] }) {
+  const hoje = lista.filter((a) => a.dias === 0).length;
+  return (
+    <section aria-label="Aniversariantes">
+      <h2 className="mb-3 flex items-center gap-2 text-lg font-medium">
+        <Cake className="size-5 text-primaria" aria-hidden />
+        {hoje > 0 ? `Hoje é aniversário de ${hoje} cliente(s)` : 'Aniversários da semana'}
+      </h2>
+      <Cartao className="divide-y divide-borda">
+        {lista.map((a) => (
+          <div key={a.id} className="flex flex-wrap items-center gap-3 p-4">
+            <Link to={`/clientes/${a.id}`} className="flex-1 font-medium text-texto hover:text-primaria">
+              {a.nome}
+            </Link>
+            <SeloAniversario dias={a.dias} />
+            {a.whatsapp && <LinkWhatsApp numero={a.whatsapp} />}
+          </div>
+        ))}
+      </Cartao>
+    </section>
   );
 }

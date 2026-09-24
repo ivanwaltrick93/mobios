@@ -53,7 +53,7 @@ Os módulos *Peças na O.S.* e *Recebimentos* existem para separar ações que, 
 - **Peças:** o **Almoxarife** adiciona a peça **na O.S. aberta**; o **Atendente** também pode. O Mecânico só solicita. Entradas de compra no estoque ficam com quem tem *Editar* no Estoque (Atendente).
 - **Pagamento:** registrado pelo **Financeiro** ou pelo **Atendente**, tanto **na O.S.** (entrega) quanto **no módulo Financeiro** — sempre exigindo *Editar* em Recebimentos.
 
-Efeitos já implementados: menu e atalhos da página inicial seguem os níveis; o indicador "Faturado hoje" exige Financeiro ≥ Consultar; o relatório de Usuários é só do Administrador.
+Efeitos já implementados: menu e atalhos da página inicial seguem os níveis; o indicador "Faturado hoje" exige Financeiro ≥ Consultar; o relatório de Usuários é só do Administrador; os de Clientes e Veículos exigem também Clientes/veículos ≥ Consultar.
 
 ## 2. Jornada do veículo na oficina
 
@@ -88,9 +88,9 @@ flowchart LR
 | PLT-04 | Style guide configurável (cores, botões), logo e login com a marca da oficina | ✅ |
 | PLT-05 | Página inicial com atalhos, indicadores e alertas | ✅ (indicadores de O.S./financeiro chegam com esses módulos) |
 | PLT-06 | Tudo em Docker (db, migrate, api, web) | ✅ |
-| PLT-07 | **Alterar a própria senha** (na tela "Meu perfil", que já existe) | 🟢 |
+| PLT-07 | **Alterar a própria senha** no "Meu perfil": exige a senha atual; errar a atual conta no limite de tentativas (PLT-08) | ✅ |
 | PLT-15 | **Foto opcional do usuário** (admin na Equipe ou o próprio usuário em "Meu perfil"), exibida no topo e na Equipe; menu "Usuários" renomeado para "Equipe" | ✅ |
-| PLT-08 | **Limite de tentativas de login** (proteção contra força bruta) | 🟢 |
+| PLT-08 | **Limite de tentativas de login**: 5 erros em 15 min por e-mail ou 20 por IP bloqueiam por 15 min (vale para o Administrador; bloqueio sempre temporário; mensagem não revela se o e-mail existe) | ✅ |
 | PLT-09 | Recuperar senha por e-mail (exige servidor de e-mail/SMTP) | 🟡 |
 | PLT-10 | Trilha de auditoria geral (quem alterou o quê e quando) | 🟡 |
 | PLT-11 | Dados da oficina: razão social, CNPJ, endereço, telefone, IE/IM (usados na impressão da O.S. e na nota fiscal) | 🟢 |
@@ -117,6 +117,8 @@ flowchart LR
 | CAD-13 | Importar clientes e veículos de planilha (migração de outro sistema) | 🟡 |
 | CAD-14 | Listas editáveis por oficina: origem do cliente, tipo de relacionamento e função do responsável (Configurações → Cadastros) | ✅ |
 | CAD-15 | Máscaras de digitação: CPF, CNPJ (inclusive alfanumérico), telefone, CEP, e-mail, placa, chassi, Renavam, anos e km | ✅ |
+| CAD-16 | Menu **Clientes** com submenu (Clientes · Veículos). Lista de clientes em tabela, 20 por página, com filtros: status, PF/PJ, período de "cliente desde", origem, tipo de relacionamento e aniversário; página **Veículos** com a frota inteira (busca por placa, marca, modelo ou dono) | ✅ |
+| CAD-17 | **Aniversário do cliente (PF)**: selo na lista (hoje e próximos 7 dias), faixa no perfil no dia, e bloco no Início com atalho de WhatsApp para dar parabéns. Nascidos em 29/02 são lembrados em 28/02 nos anos não bissextos | ✅ |
 
 **Regras do cadastro, decididas pelo dono do produto em 22/09/2026:**
 - Placa (obrigatória) e chassi (opcional) são únicos na oficina. Na venda para outro cliente, o veículo é **transferido** (CAD-12) e não recadastrado. As O.S. guardam o cliente da época, então o histórico do ex-dono continua com ele.
@@ -159,8 +161,11 @@ flowchart LR
 | EST-11 | Categorias hierárquicas e marcas | ✅ |
 | EST-12 | Cadastro de depósitos (local lógico; saldo por depósito vem com o estoque) | ✅ |
 | EST-13 | Tabelas de preço e preço por vigência, com histórico, preços programados, consulta do preço vigente e trilha de auditoria | ✅ |
-| EST-14 | **Lista de preços** no menu: uma tabela por vez, busca rápida, preço vigente, próximo preço e disponível total | ✅ |
-| EST-15 | **Tabela de estoque** por SKU + depósito: disponível (livre), reservado e físico; ajuste manual com motivo e histórico, até existir movimentação automática (EST-02, EST-04, EST-10) | ✅ |
+| EST-14 | Menu **Política Comercial**: aba Lista de preços (uma tabela por vez, busca rápida, preço de hoje, próximo preço e disponível total) e aba Tabelas de preço (lista em tabela; abrir uma tabela mostra os preços dela e permite **cadastrar preço digitando o SKU**, que é conferido antes de gravar). Listas com 20 por página | ✅ |
+| EST-16 | **Preço padrão** (sem vigência) por material e tabela: vale nos dias sem vigência; alterar ou remover fica na trilha | ✅ |
+| EST-17 | **Importação de preços por planilha CSV** (colunas tabela, sku, preco, inicio, fim; 1ª linha = cabeçalho): grava as linhas válidas e lista as com erro, com o número da linha | ✅ |
+| EST-15 | **Tabela de estoque** por SKU + depósito (20 por página): disponível (livre), reservado e físico; ajuste manual com motivo e histórico, e **lançamento de saldo digitando SKU e depósito** (conferidos antes de gravar), até existir movimentação automática (EST-02, EST-04, EST-10) | ✅ |
+| EST-18 | **Importação de saldos por planilha CSV** (colunas sku, deposito, disponivel, reservado, motivo; 1ª linha = cabeçalho): cada linha informa o saldo final; grava as válidas e lista as com erro | ✅ |
 | EST-02 | Entrada manual (compra) com fornecedor, quantidade e custo | 🟢 |
 | EST-03 | Entrada automática pela **importação do XML da nota fiscal do fornecedor** | 🟡 |
 | EST-04 | Saída pela O.S.: **reserva** na aprovação e **baixa** na execução; estorno no cancelamento | 🟢 |

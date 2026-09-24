@@ -23,8 +23,8 @@ type Metodo = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 async function entrar(email: string) {
   const res = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email, senha: SENHA } });
   const token = res.cookies.find((c) => c.name === COOKIE_SESSAO)!.value;
-  return (method: Metodo, url: string, payload?: object) =>
-    app.inject({ method, url, payload, cookies: { [COOKIE_SESSAO]: token } });
+  return (method: Metodo, url: string, payload?: object | string, headers?: Record<string, string>) =>
+    app.inject({ method, url, payload, headers, cookies: { [COOKIE_SESSAO]: token } });
 }
 
 async function novaOficina(nome: string) {
@@ -593,6 +593,7 @@ describe('lista de preços', () => {
           marcaNome: null,
           unidade: 'UN',
           precoCentavos: null,
+          origem: null,
           vigenteDesde: null,
           vigenteAte: null,
           proximoPrecoCentavos: null,
@@ -606,6 +607,7 @@ describe('lista de preços', () => {
           marcaNome: 'Mann Filter',
           unidade: 'UN',
           precoCentavos: 4990,
+          origem: 'vigencia',
           vigenteDesde: dia(0),
           vigenteAte: dia(29),
           proximoPrecoCentavos: 5290,
@@ -635,5 +637,212 @@ describe('lista de preços', () => {
     expect((await (await o.pessoa('Mecânico'))('GET', `/api/precos/lista?tabelaPrecoId=${tabela.id}`)).statusCode).toBe(
       403,
     );
+  });
+});
+
+/** Planilha CSV como o Excel pt-BR salva (";" e CRLF), com o cabeçalho na 1ª linha. */
+const planilha = (...linhas: string[]) => `\uFEFF${linhas.join('\r\n')}\r\n`;
+const brasil = (iso: string) => iso.split('-').reverse().join('/');
+
+async function doisDepositos(o: Awaited<ReturnType<typeof novaOficina>>) {
+  const criar = async (codigo: string, nome: string, tipo: string) =>
+    (await o.chamar('POST', '/api/depositos', { codigo, nome, tipoId: await o.tipo('tiposDeposito', tipo) })).json();
+  return { loja: await criar('LOJA', 'Loja', 'Loja'), oficina: await criar('OFI', 'Oficina', 'Oficina') };
+}
+
+describe('preço padrão (sem vigência)', () => {
+  it('vale quando nenhuma vigência cobre o dia; alteração com versão e trilha; cadastro pelo SKU', async () => {
+    const o = await novaOficina('Oficina Preço Padrão');
+    const { material, tabela } = await catalogoBasico(o);
+    const vigente = async (data = dia(0)) =>
+      (
+        await o.chamar('GET', `/api/precos/vigente?materialId=${material.id}&tabelaPrecoId=${tabela.id}&data=${data}`)
+      ).json();
+
+    // SKU digitado precisa existir (erro no campo, nada gravado).
+    const inexistente = await o.chamar('PUT', '/api/precos/padrao', {
+      sku: 'nao-existe',
+      tabelaPrecoId: tabela.id,
+      precoCentavos: 100,
+    });
+    expect(inexistente.statusCode).toBe(400);
+    expect(inexistente.json()).toMatchObject({
+      erro: 'SKU NAO-EXISTE não encontrado.',
+      campos: { sku: 'SKU não encontrado' },
+    });
+
+    const definido = await o.chamar('PUT', '/api/precos/padrao', {
+      sku: 'fil-001',
+      tabelaPrecoId: tabela.id,
+      precoCentavos: 4500,
+    });
+    expect(definido.json()).toMatchObject({ precoCentavos: 4500, versao: 1, tabelaCodigo: 'VAREJO' });
+    expect(await vigente()).toMatchObject({ preco: null, valorCentavos: 4500, origem: 'padrao' });
+
+    // Vigência cobre o dia: ela vale; nos dias sem vigência volta o padrão.
+    await o.chamar('POST', '/api/precos', {
+      sku: 'FIL-001',
+      tabelaPrecoId: tabela.id,
+      precoCentavos: 4990,
+      dataInicio: dia(10),
+      dataFim: dia(20),
+    });
+    expect(await vigente(dia(15))).toMatchObject({ valorCentavos: 4990, origem: 'vigencia' });
+    expect(await vigente(dia(25))).toMatchObject({ valorCentavos: 4500, origem: 'padrao' });
+
+    // Edição pela tela: versão antiga não sobrescreve.
+    const alterar = (precoCentavos: number, versao: number) =>
+      o.chamar('PUT', '/api/precos/padrao', {
+        materialId: material.id,
+        tabelaPrecoId: tabela.id,
+        precoCentavos,
+        versao,
+      });
+    expect((await alterar(4700, 1)).json()).toMatchObject({ precoCentavos: 4700, versao: 2 });
+    expect((await alterar(4800, 1)).statusCode).toBe(409);
+
+    expect((await o.chamar('GET', `/api/precos/padrao?materialId=${material.id}`)).json()).toHaveLength(1);
+    expect(
+      (await o.chamar('DELETE', `/api/precos/padrao?materialId=${material.id}&tabelaPrecoId=${tabela.id}`)).statusCode,
+    ).toBe(204);
+    expect(await vigente()).toMatchObject({ valorCentavos: null, origem: null });
+    const eventos = (
+      await o.chamar('GET', `/api/precos/padrao/eventos?materialId=${material.id}&tabelaPrecoId=${tabela.id}`)
+    ).json();
+    expect(
+      eventos.map((e: { evento: string; precoAntes: number | null; precoDepois: number | null }) => [
+        e.evento,
+        e.precoAntes,
+        e.precoDepois,
+      ]),
+    ).toEqual([
+      ['removido', 4700, null],
+      ['alterado', 4500, 4700],
+      ['definido', null, 4500],
+    ]);
+    // Material com preço padrão no histórico não pode ser excluído.
+    expect((await o.chamar('DELETE', `/api/materiais/${material.id}`)).statusCode).toBe(409);
+  });
+});
+
+describe('importação de preços por planilha', () => {
+  it('grava as linhas válidas (vigência ou padrão) e relata as demais com o número da linha', async () => {
+    const o = await novaOficina('Oficina Importa Preços');
+    const { material, tabela } = await catalogoBasico(o);
+    const importar = (texto: string) => o.chamar('POST', '/api/precos/importar', texto, { 'content-type': 'text/csv' });
+
+    const resultado = await importar(
+      planilha(
+        'Tabela;SKU;Preço;Início;Fim',
+        'varejo;fil-001;45,00;;',
+        `VAREJO;FIL-001;49,90;${brasil(dia(5))};`,
+        'VAREJO;NAO-EXISTE;10,00;;',
+        'ATACADO;FIL-001;10,00;;',
+        'VAREJO;FIL-001;1.234,56;;',
+        `VAREJO;FIL-001;50,00;${brasil(dia(-1))};`,
+        'VAREJO;FIL-001;50,00;31/02/2027;',
+        'VAREJO;FIL-001;45,00;;',
+      ),
+    );
+    expect(resultado.statusCode).toBe(200);
+    expect(resultado.json()).toEqual({
+      linhas: 8,
+      importadas: 2,
+      ignoradas: 1,
+      erros: [
+        { linha: 4, mensagem: 'SKU "NAO-EXISTE" não encontrado.' },
+        { linha: 5, mensagem: 'Tabela de preço "ATACADO" não encontrada.' },
+        { linha: 6, mensagem: 'Preço "1.234,56" inválido: use reais com vírgula decimal (ex.: 150,00).' },
+        { linha: 7, mensagem: 'A vigência não pode começar no passado: o histórico de preços não é reescrito.' },
+        { linha: 8, mensagem: 'Início "31/02/2027" inválido: use dd/mm/aaaa.' },
+      ],
+    });
+    const vigente = async (data: string) =>
+      (
+        await o.chamar('GET', `/api/precos/vigente?materialId=${material.id}&tabelaPrecoId=${tabela.id}&data=${data}`)
+      ).json();
+    expect(await vigente(dia(0))).toMatchObject({ valorCentavos: 4500, origem: 'padrao' });
+    expect(await vigente(dia(6))).toMatchObject({ valorCentavos: 4990, origem: 'vigencia' });
+
+    // Arquivo sem as colunas obrigatórias, formato errado e permissão.
+    expect((await importar(planilha('codigo;valor', 'A;1'))).json().erro).toBe(
+      'Colunas obrigatórias ausentes no cabeçalho (1ª linha): tabela, sku, preco.',
+    );
+    expect((await o.chamar('POST', '/api/precos/importar', { a: 1 })).statusCode).toBe(415);
+    const atendente = await o.pessoa('Atendente');
+    expect(
+      (
+        await atendente('POST', '/api/precos/importar', planilha('tabela;sku;preco', 'VAREJO;FIL-001;1'), {
+          'content-type': 'text/csv',
+        })
+      ).statusCode,
+    ).toBe(403);
+  });
+});
+
+describe('lançamento e importação de estoque', () => {
+  it('lançamento confere SKU e depósito digitados; importação grava o saldo final das linhas válidas', async () => {
+    const o = await novaOficina('Oficina Importa Estoque');
+    const { material } = await catalogoBasico(o);
+    const { loja } = await doisDepositos(o);
+
+    const lancar = (corpo: object) => o.chamar('POST', '/api/estoque/lancamento', corpo);
+    const errado = await lancar({ sku: 'X-1', deposito: 'nada', disponivel: 1, reservado: 0, motivo: 'Teste' });
+    expect(errado.statusCode).toBe(400);
+    expect(errado.json().campos).toEqual({ sku: 'SKU X-1 não encontrado', deposito: 'Depósito NADA não encontrado' });
+    expect(
+      (await lancar({ sku: 'fil-001', deposito: 'loja', disponivel: 5, reservado: 1, motivo: 'Inventário' })).json(),
+    ).toMatchObject({ sku: 'FIL-001', depositoCodigo: 'LOJA', disponivel: 5, reservado: 1, versao: 1 });
+
+    const importar = (texto: string) =>
+      o.chamar('POST', '/api/estoque/importar', texto, { 'content-type': 'text/csv' });
+    const resultado = (
+      await importar(
+        planilha(
+          'SKU;Depósito;Disponível;Reservado;Motivo',
+          'FIL-001;LOJA;8;;Contagem', // reservado vazio: mantém o 1
+          'FIL-001;OFI;2,5;0;', // UN não aceita fração
+          'FIL-001;LOJA;8;1;', // igual ao que acabou de ser gravado: ignorada
+          'NAO-EXISTE;LOJA;1;0;',
+          'FIL-001;LOJA;-1;0;',
+          'FIL-001;OFI;3;0;',
+        ),
+      )
+    ).json();
+    expect(resultado).toEqual({
+      linhas: 6,
+      importadas: 2,
+      ignoradas: 1,
+      erros: [
+        { linha: 3, mensagem: 'A unidade UN não aceita quantidade fracionada.' },
+        { linha: 5, mensagem: 'SKU "NAO-EXISTE" não encontrado.' },
+        {
+          linha: 6,
+          mensagem: 'Disponível "-1" inválido: use um número não negativo com até 3 casas decimais.',
+        },
+      ],
+    });
+    const saldos = (await o.chamar('GET', `/api/estoque/material/${material.id}`)).json();
+    expect(
+      saldos.map((s: { depositoCodigo: string; disponivel: number; reservado: number }) => [
+        s.depositoCodigo,
+        s.disponivel,
+        s.reservado,
+      ]),
+    ).toEqual([
+      ['LOJA', 8, 1],
+      ['OFI', 3, 0],
+    ]);
+    const historico = (await o.chamar('GET', `/api/estoque/${material.id}/${loja.id}/ajustes`)).json();
+    expect(historico[0]).toMatchObject({ motivo: 'Contagem', disponivelAntes: 5, disponivelDepois: 8 });
+
+    const mecanico = await o.pessoa('Mecânico');
+    expect(
+      (
+        await mecanico('POST', '/api/estoque/importar', planilha('sku;deposito;disponivel', 'FIL-001;LOJA;1'), {
+          'content-type': 'text/csv',
+        })
+      ).statusCode,
+    ).toBe(403);
   });
 });

@@ -12,6 +12,7 @@ import { Marcas } from './pages/Marcas';
 import { MaterialDetalhe } from './pages/MaterialDetalhe';
 import { Materiais } from './pages/Materiais';
 import { NovoMaterial } from './pages/NovoMaterial';
+import { TabelaPrecoDetalhe } from './pages/TabelaPrecoDetalhe';
 import { TabelasPreco } from './pages/TabelasPreco';
 import { ListaPrecos } from './pages/ListaPrecos';
 import { Estoque } from './pages/Estoque';
@@ -30,6 +31,7 @@ import { EditarVeiculo } from './pages/EditarVeiculo';
 import { ListasCadastro } from './pages/ListasCadastro';
 import { Relatorios } from './pages/Relatorios';
 import { Usuarios } from './pages/Usuarios';
+import { Veiculos } from './pages/Veiculos';
 
 /**
  * Sessão expirada ou acesso desativado no meio do uso (401 fora da tela de login): descarta os dados
@@ -61,6 +63,7 @@ const router = createBrowserRouter([
     children: [
       { index: true, element: <Inicio /> },
       { path: '/clientes/novo', element: <NovoCliente /> },
+      { path: '/veiculos', element: <Veiculos /> },
       { path: '/veiculos/novo', element: <NovoVeiculo /> },
       { path: '/clientes', element: <Clientes /> },
       { path: '/clientes/:id', element: <ClienteDetalhe /> },
@@ -74,6 +77,7 @@ const router = createBrowserRouter([
       { path: '/materiais/:id', element: <MaterialDetalhe /> },
       { path: '/materiais/:id/editar', element: <EditarMaterial /> },
       { path: '/tabelas-preco', element: <TabelasPreco /> },
+      { path: '/tabelas-preco/:id', element: <TabelaPrecoDetalhe /> },
       { path: '/precos', element: <ListaPrecos /> },
       { path: '/os', element: <EmBreve titulo="Ordens de serviço" /> },
       { path: '/estoque', element: <Estoque /> },

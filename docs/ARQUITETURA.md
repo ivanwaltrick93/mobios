@@ -94,7 +94,7 @@ MobiOS/
 - **FKs entre tabelas de negócio são compostas** `(tenant_id, x_id)`: a checagem de FK do Postgres ignora o RLS, então uma FK simples permitiria vincular um registro ao de outra oficina.
 - Um teste automatizado falha se alguma tabela com `tenant_id` estiver sem RLS.
 - `users` também está sob RLS. A única leitura sem tenant definido é o login (busca por e-mail), feita pela função `auth_usuario_por_email` (`SECURITY DEFINER`, executável só por `mobios_app`), que devolve apenas o necessário para autenticar.
-- Só `tenants` fica fora do RLS.
+- Ficam fora do RLS só `tenants` e `login_tentativas` (limite de tentativas de login: é consultada antes de a oficina ser conhecida e guarda apenas hashes de e-mail/IP).
 - **Rotas públicas** (`/api/publico/*`, sem login) expõem apenas a marca da oficina (nome, cores, logo) para a tela de entrada. A oficina vem de `?oficina=<id>` ou, sem parâmetro, é a única da instalação; com várias oficinas e sem parâmetro, devolvem o tema padrão (não listam oficinas).
 
 **Por que não um banco por cliente?** Custo e operação (migrações × N bancos) não se justificam para oficinas pequenas. Se um cliente grande exigir isolamento físico, o mesmo código roda em um banco dedicado — basta outra `DATABASE_URL`.
@@ -162,7 +162,8 @@ contadores (tenant_id, chave, valor)  -- numeração sequencial de O.S. sem bura
 - JWT de 12 h em cookie `httpOnly`, `SameSite=Lax`, `Secure` com HTTPS. O token só identifica o usuário: **papel e status são lidos do banco a cada requisição** (consulta pela PK), então desativar ou trocar a função vale na hora.
 - RLS como segunda barreira de isolamento entre oficinas (ver §4).
 - Autorização por papel (`dono`, `atendente`, `mecanico`, `financeiro`) checada na rota.
-- Rate limit no login (`@fastify/rate-limit`) — fase 1.
+- **Limite de tentativas de login** (PLT-08), no Postgres (§9, regra 2): 5 erros em 15 min por e-mail ou 20 por IP bloqueiam por 15 min, também para o Administrador. O IP real vem do `X-Forwarded-For` só quando a conexão chega de um proxy confiável (`TRUST_PROXY`; no Docker, o Caddy pela rede interna).
+- **Senha esquecida:** o Administrador define uma nova em Equipe; cada usuário troca a própria em Meu perfil (PLT-07). Recomenda-se ter dois administradores. Recuperação por e-mail depende de SMTP (PLT-09).
 - LGPD: CPF/telefone são dados pessoais → exportação e exclusão por titular, trilha de auditoria, backups criptografados, termo de uso/DPA para o SaaS.
 - Segredos só em variáveis de ambiente; nunca no repositório.
 - Serviço externo no cadastro: o navegador consulta o **ViaCEP** (público, gratuito) só com o CEP digitado, para preencher o endereço. Nenhum dado pessoal sai do sistema; se o serviço falhar, o preenchimento é manual.
@@ -233,10 +234,10 @@ Kubernetes **não** faz parte do MVP: a carga de uma oficina é baixa e uma VPS 
 | **0.1d** ✅ | Página inicial: atalhos do balcão (novo cliente, novo veículo, O.S., estoque, relatórios), indicadores e alertas vindos do banco (`GET /api/painel`); indicadores de módulos futuros aparecem como "em breve", nunca com número inventado |
 | **0.1e** ✅ | Style guide configurável: botões principal/secundário (fundo e texto), aviso de contraste; tela de login com a marca da oficina (`/api/publico/*`) |
 | **0.1f** ✅ | Funções e permissões configuráveis pelo admin (nível por módulo, várias funções por usuário) |
-| **0.2** | Rate limit no login (no Postgres, pela regra §9.2) e "alterar minha senha" antes de qualquer deploy público |
+| **0.2** ✅ | Limite de tentativas de login (no Postgres, pela regra §9.2) e "alterar minha senha" |
 | **1 — O.S.** | Abertura, itens (serviço/peça), orçamento, aprovação, status, checklist de entrada, PDF da O.S. |
 | **2 — Estoque** | Peças, fornecedores, entradas, baixa automática pela O.S., alerta de estoque mínimo |
 | **3 — Financeiro** | Contas a receber/pagar, registro de pagamentos, caixa diário, comissão de mecânico |
-| **4 — Produção** | Rate limit, papéis/permissões, backup, deploy na VPS, observabilidade (OpenTelemetry) |
+| **4 — Produção** | Rate limit das demais rotas, papéis/permissões, backup, deploy na VPS, observabilidade (OpenTelemetry) |
 | **5 — SaaS** | Cobrança de assinatura, planos, onboarding, painel de administração |
 | **ee/** | Emissão de NF-e/NFS-e, Pix/cartão integrados via gateway (Asaas/Mercado Pago/Efí), WhatsApp, multi-filial, BI |
