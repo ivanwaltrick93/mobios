@@ -86,7 +86,8 @@ Em [`components/ui.tsx`](../apps/web/src/components/ui.tsx). Use-os em vez de re
 | `CampoBusca` | Busca grande com lupa no topo das listagens |
 | `Paginacao` (`POR_PAGINA` = 20) | Anterior/Próxima, "Página X de Y" e total; usada em toda listagem |
 | `BotaoVisualizar` | Ação "Visualizar" das tabelas: ícone de olho com a dica "Visualizar". Com `para`, abre a página de detalhes; com `aoClicar`, abre os detalhes na própria linha |
-| `Detalhes` | Dados do registro só para leitura, abertos na linha da tabela (cadastros sem página própria: categorias, marcas, depósitos) |
+| `Detalhes` | Dados do registro só para leitura, abertos na linha da tabela (cadastros sem página própria: categorias, marcas, depósitos, vendedores) |
+| `Janela` | Janela sobre a página (`<dialog>` nativo) para consulta rápida sem sair da tela; fecha no X, com Esc ou clicando fora. Ex.: dados do usuário vinculado ao vendedor |
 | `ImportarCsv` (em `components/ImportarCsv.tsx`) | Importação de planilha: colunas aceitas, modelo para baixar e resultado linha a linha |
 
 ## Padrões de tela
@@ -94,7 +95,7 @@ Em [`components/ui.tsx`](../apps/web/src/components/ui.tsx). Use-os em vez de re
 - **Listas de cadastro** em tabela (decisão do dono do produto: mais analítico, menos rolagem): filtros acima, nome do registro como link para o detalhe, status em `Selo`, **20 por página** com `Paginacao`.
 - **Toda tabela de cadastro** tem na última coluna a ação `BotaoVisualizar` (olho, dica "Visualizar"), antes das demais ações da linha.
 - **Filtros extras** de uma listagem ficam recolhidos por padrão (botão "Mostrar filtros", com a contagem dos que estão diferentes do padrão); a busca fica sempre visível.
-- **Menu lateral** com submenu que abre e fecha quando a área tem mais de uma página (Clientes → Clientes · Veículos; Materiais → Materiais · Categorias · Marcas · Depósitos; Política Comercial → Linhas de Preço · Tabelas de Preço). Com o submenu, as páginas não repetem abas de navegação.
+- **Menu lateral** com submenu que abre e fecha quando a área tem mais de uma página (Clientes → Clientes · Veículos; Materiais → Materiais · Categorias · Marcas · Depósitos; Política Comercial → Linhas de Preço · Tabelas de Preço; Equipe → Usuários · Vendedores; Configurações → Aparência e logo · Funções e permissões · uma página por lista parametrizável). Com o submenu, as páginas não repetem abas de navegação.
 - **Importação por planilha** sempre com `ImportarCsv`: mostra as colunas aceitas, avisa que a 1ª linha é o cabeçalho, oferece o modelo e lista as linhas com erro.
 - **Voltar** fica no topo, à esquerda, em todas as páginas menos o Início (componente `Voltar`, no `Layout`). Páginas raiz do menu voltam ao Início; as demais, à página anterior. Não crie links de voltar dentro das páginas.
 - **Detalhe** como perfil: cabeçalho com ações rápidas (WhatsApp, Editar) e abas.

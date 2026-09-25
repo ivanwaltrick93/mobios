@@ -6,8 +6,10 @@ import { gravarAcessos, gravarFuncoesDoUsuario } from '../lib/acessos.js';
 import type { Tx } from './client.js';
 import {
   cargosResponsavel,
+  funcaoParametros,
   funcoes,
   origensCliente,
+  parametrosFuncao,
   relacionamentosCliente,
   tenants,
   tiposDeposito,
@@ -32,9 +34,15 @@ export async function criarOficinaComAdmin(
 
     // Funções da oficina: Administrador (fixo) + padrões editáveis.
     const [funcaoAdmin] = await tx.insert(funcoes).values({ nome: NOME_FUNCAO_ADMIN, admin: true }).returning();
+    const parametros = await tx
+      .select({ id: parametrosFuncao.id, codigo: parametrosFuncao.codigo })
+      .from(parametrosFuncao);
     for (const padrao of FUNCOES_PADRAO) {
       const [funcao] = await tx.insert(funcoes).values({ nome: padrao.nome }).returning();
       await gravarAcessos(tx as unknown as Tx, funcao!.id, padrao.acessos);
+      const marcados = parametros.filter((p) => padrao.parametros?.includes(p.codigo));
+      if (marcados.length)
+        await tx.insert(funcaoParametros).values(marcados.map((p) => ({ funcaoId: funcao!.id, parametroId: p.id })));
     }
 
     // Listas editáveis do cadastro de clientes.

@@ -830,7 +830,7 @@ describe('importação de clientes por planilha', () => {
       { linha: 4, mensagem: 'cpf_cnpj: CPF inválido' },
       { linha: 5, mensagem: 'responsavel_nome: Cadastre ao menos um responsável pela empresa' },
       { linha: 6, mensagem: `CPF/CNPJ ${cpf} repetido na planilha (já aparece na linha 2).` },
-      { linha: 7, mensagem: 'origem: "Rádio" não está na lista (Configurações → Cadastros).' },
+      { linha: 7, mensagem: 'origem: "Rádio" não está na lista (Configurações → Origem do cliente).' },
       { linha: 8, mensagem: 'cep: Informe o CEP' },
     ]);
 

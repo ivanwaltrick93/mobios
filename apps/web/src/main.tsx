@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { createBrowserRouter, RouterProvider } from 'react-router';
 import { Layout } from './components/Layout';
 import { ErroApi } from './lib/api';
+import { PAGINAS_LISTAS } from './lib/cadastro';
 import './index.css';
 import { Categorias } from './pages/Categorias';
 import { Depositos } from './pages/Depositos';
@@ -28,10 +29,11 @@ import { Entrar } from './pages/Entrar';
 import { Configuracoes } from './pages/Configuracoes';
 import { EditarCliente } from './pages/EditarCliente';
 import { EditarVeiculo } from './pages/EditarVeiculo';
-import { ListasCadastro } from './pages/ListasCadastro';
+import { ListaConfiguracao } from './pages/ListaConfiguracao';
 import { Relatorios } from './pages/Relatorios';
 import { Usuarios } from './pages/Usuarios';
 import { Veiculos } from './pages/Veiculos';
+import { Vendedores } from './pages/Vendedores';
 
 /**
  * Sessão expirada ou acesso desativado no meio do uso (401 fora da tela de login): descarta os dados
@@ -84,10 +86,14 @@ const router = createBrowserRouter([
       { path: '/financeiro', element: <EmBreve titulo="Financeiro" /> },
       { path: '/relatorios', element: <Relatorios /> },
       { path: '/usuarios', element: <Usuarios /> },
+      { path: '/vendedores', element: <Vendedores /> },
       { path: '/perfil', element: <Perfil /> },
       { path: '/configuracoes', element: <Configuracoes /> },
       { path: '/configuracoes/funcoes', element: <Funcoes /> },
-      { path: '/configuracoes/cadastros', element: <ListasCadastro /> },
+      ...PAGINAS_LISTAS.map(({ lista, para }) => ({
+        path: para,
+        element: <ListaConfiguracao key={lista} lista={lista} />,
+      })),
     ],
   },
 ]);

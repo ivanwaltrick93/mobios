@@ -18,6 +18,7 @@ import {
   tiposDeposito,
   tiposMaterial,
 } from '../../db/schema.js';
+import { excluirSeNaoUsado } from '../../lib/cadastro.js';
 import { ErroHttp, naoEncontrado } from '../../lib/erros.js';
 
 /** Tabela de cada lista e a coluna de clientes que aponta para ela. */
@@ -52,12 +53,25 @@ const usoDoItem = (lista: ListaOpcoes) => {
     where u.${sql.identifier(coluna)} = ${sql.identifier(nomeTabela)}."id")`.mapWith(Number);
 };
 
+const colunas = (lista: ListaOpcoes) => {
+  const { tabela } = listas[lista];
+  return {
+    id: tabela.id,
+    codigo: tabela.codigo,
+    nome: tabela.nome,
+    descricao: tabela.descricao,
+    ativa: tabela.ativa,
+    usos: usoDoItem(lista),
+  };
+};
+
 const listaParam = z.object({ lista: listaOpcoesSchema });
+const itemParam = listaParam.extend(idParamSchema.shape);
 
 /**
  * Listas editáveis por oficina (origem, relacionamento, função do responsável, tipos de material e de depósito).
  * Quem acessa o módulo da lista consulta (para preencher formulários); só o admin altera (Configurações).
- * Não há exclusão: desativar tira da escolha sem mexer nos clientes que já usam o item.
+ * Desativar tira da escolha sem mexer nos registros que já usam o item; excluir, só o que nunca foi usado.
  */
 export const opcoesRoutes: FastifyPluginAsyncZod = async (app) => {
   app.addHook('onRequest', app.autenticar);
@@ -68,15 +82,7 @@ export const opcoesRoutes: FastifyPluginAsyncZod = async (app) => {
       throw new ErroHttp(403, 'Você não tem permissão para esta ação.');
     const { tabela } = listas[req.params.lista];
     return withTenant(req.user.tid, (tx) =>
-      tx
-        .select({
-          id: tabela.id,
-          nome: tabela.nome,
-          ativa: tabela.ativa,
-          usos: usoDoItem(req.params.lista),
-        })
-        .from(tabela)
-        .orderBy(asc(tabela.nome)),
+      tx.select(colunas(req.params.lista)).from(tabela).orderBy(asc(tabela.nome)),
     );
   });
 
@@ -85,30 +91,41 @@ export const opcoesRoutes: FastifyPluginAsyncZod = async (app) => {
   app.post('/:lista', { onRequest: app.exigirAdmin, schema: salvarSchema }, async (req, reply) => {
     const { tabela } = listas[req.params.lista];
     const [opcao] = await withTenant(req.user.tid, (tx) =>
-      tx.insert(tabela).values(req.body).returning({ id: tabela.id, nome: tabela.nome, ativa: tabela.ativa }),
+      tx.insert(tabela).values(req.body).returning({
+        id: tabela.id,
+        codigo: tabela.codigo,
+        nome: tabela.nome,
+        descricao: tabela.descricao,
+        ativa: tabela.ativa,
+      }),
     );
     return reply.code(201).send({ ...opcao!, usos: 0 });
   });
 
   app.put(
     '/:lista/:id',
-    { onRequest: app.exigirAdmin, schema: { ...salvarSchema, params: listaParam.extend(idParamSchema.shape) } },
+    { onRequest: app.exigirAdmin, schema: { ...salvarSchema, params: itemParam } },
     async (req) => {
       const { tabela } = listas[req.params.lista];
       const [opcao] = await withTenant(req.user.tid, (tx) =>
-        tx
-          .update(tabela)
-          .set(req.body)
-          .where(eq(tabela.id, req.params.id))
-          .returning({
-            id: tabela.id,
-            nome: tabela.nome,
-            ativa: tabela.ativa,
-            usos: usoDoItem(req.params.lista),
-          }),
+        tx.update(tabela).set(req.body).where(eq(tabela.id, req.params.id)).returning(colunas(req.params.lista)),
       );
       if (!opcao) throw naoEncontrado('Item');
       return opcao;
     },
   );
+
+  /** Exclui só o item que nenhum registro usa (as FKs são RESTRICT); em uso, a saída é inativar. */
+  app.delete('/:lista/:id', { onRequest: app.exigirAdmin, schema: { params: itemParam } }, async (req, reply) => {
+    await withTenant(req.user.tid, (tx) =>
+      excluirSeNaoUsado(
+        tx,
+        listas[req.params.lista].tabela,
+        req.params.id,
+        'Item',
+        `Este item está em uso (${LISTAS_OPCOES[req.params.lista].uso}). Ele pode apenas ser inativado.`,
+      ),
+    );
+    return reply.code(204).send();
+  });
 };

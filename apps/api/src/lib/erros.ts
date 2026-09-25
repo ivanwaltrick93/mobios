@@ -50,6 +50,8 @@ const mensagensUnicidade: Record<string, string> = {
   estoques_material_id_deposito_id_pk:
     'O saldo foi alterado por outra pessoa enquanto você editava. Recarregue e refaça o ajuste.',
   veiculos_tenant_id_chassi_index: 'Já existe um veículo com este chassi',
+  vendedores_usuario_unico: 'Este usuário já está vinculado a outro vendedor',
+  vendedores_matricula_unico: 'Já existe um vendedor com esta matrícula',
 };
 
 /** Violações de CHECK/trigger com mensagem própria (as demais caem em "Dados inválidos"). */
@@ -61,6 +63,12 @@ const mensagensCheck: Record<string, string> = {
   precos_padrao_valor_positivo: 'O preço não pode ser negativo.',
   estoques_disponivel_positivo: 'O disponível não pode ser negativo.',
   estoques_reservado_positivo: 'O reservado não pode ser negativo.',
+  materiais_multiplo_positivo: 'O múltiplo deve ser um inteiro maior que zero.',
+  materiais_leadtime_positivo: 'O leadtime não pode ser negativo.',
+  estoques_reservado_ate_disponivel: 'O reservado não pode ser maior que o disponível.',
+  users_codigo_imutavel: 'O código do usuário não pode ser alterado.',
+  funcoes_codigo_imutavel: 'O código da função não pode ser alterado.',
+  vendedores_codigo_imutavel: 'O código do vendedor não pode ser alterado.',
 };
 
 /**

@@ -112,6 +112,7 @@ export function Usuarios() {
 
       <Tabela>
         <Cabecalho>
+          <Th>Código</Th>
           <Th>Nome</Th>
           <Th>E-mail</Th>
           <Th>Funções</Th>
@@ -122,7 +123,7 @@ export function Usuarios() {
           {usuarios.data?.map((u) =>
             editando === u.id ? (
               <Linha key={u.id} className="bg-superficie-alt">
-                <Td colSpan={5} className="p-4">
+                <Td colSpan={6} className="p-4">
                   <EditarUsuario
                     usuario={u}
                     proprio={u.id === sessao.data?.usuario.id}
@@ -132,6 +133,7 @@ export function Usuarios() {
               </Linha>
             ) : (
               <Linha key={u.id}>
+                <Td className="font-mono text-xs font-semibold">{u.codigo}</Td>
                 <Td>
                   <span className="flex items-center gap-3 font-medium">
                     <Avatar nome={u.nome} usuarioId={u.id} fotoVersao={u.fotoVersao} tamanho="sm" />
@@ -171,6 +173,7 @@ function useAoSalvar(aoConcluir: () => void) {
     queryClient.invalidateQueries({ queryKey: chave });
     queryClient.invalidateQueries({ queryKey: chaveFuncoes }); // contagem de usuários por função
     queryClient.invalidateQueries({ queryKey: chaveSessao }); // se editou a própria conta
+    queryClient.invalidateQueries({ queryKey: ['vendedores'] }); // desativar pode inativar o vendedor
     aoConcluir();
   };
 }

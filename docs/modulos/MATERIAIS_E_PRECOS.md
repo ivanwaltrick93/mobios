@@ -24,7 +24,7 @@ Fora do escopo (outros módulos, que vão **usar** estes cadastros): estoque/sal
 
 - **Multi-tenant com RLS**, como todo o MobiOS: toda tabela tem `tenant_id` + política de isolamento; toda FK entre tabelas de negócio é **composta** `(tenant_id, x_id)` (checagem de FK ignora RLS).
 - **Chave técnica × chave de negócio:** PK UUID (`id`); SKU, códigos de depósito e de tabela são **únicos por oficina** e nunca usados como PK (podem mudar, podem colidir entre oficinas, e não amarram as FKs futuras de estoque/vendas).
-- **Classificações que variam por oficina** (tipo de material, tipo de depósito) são **tabelas parametrizáveis** editadas em Configurações → Cadastros. **Domínios definidos por norma** (unidade de medida, origem fiscal, moeda) são fixos no código (ENUM/CHECK).
+- **Classificações que variam por oficina** (tipo de material, tipo de depósito) são **tabelas parametrizáveis** editadas em Configurações (uma página por lista: código automático, nome, descrição e status; exclusão só sem uso). **Domínios definidos por norma** (unidade de medida, origem fiscal, moeda) são fixos no código (ENUM/CHECK).
 - **Preço = histórico imutável por vigência.** A tabela `materiais_precos` é o próprio histórico; nada é apagado. A **não sobreposição** é garantida no banco por uma constraint `EXCLUDE USING gist` sobre `daterange` — vale mesmo com gravações simultâneas ou fora da API.
 - **Concorrência:** unicidade por índices únicos; vigências por EXCLUDE + trava consultiva (`pg_advisory_xact_lock`) por material+tabela; ciclo de categorias por trigger com trava por oficina; **edição otimista** com coluna `versao` (quem salva com versão velha recebe 409).
 - **Auditoria:** `criado_por/atualizado_por/criado_em/atualizado_em` nos cadastros; trilha **`precos_eventos`** (antes/depois em JSON) para toda mudança de preço.
@@ -89,6 +89,8 @@ Colunas de **autoria** (materiais, categorias, marcas, depositos, tabelas_preco)
 | controla_estoque | boolean | Sim | true | Lido pelo estoque |
 | permite_venda / permite_compra / permite_uso_os | boolean | Sim | true | Lidos por vendas, compras, O.S. |
 | controla_lote / controla_serie | boolean | Sim | false | Lidos pelo estoque (lote: óleos; série: baterias) |
+| multiplo | integer | Sim | 1 | Múltiplo de venda (caixa master): vendido só em múltiplos desta quantidade; inteiro > 0 (CHECK). Vazio no formulário ou na planilha = 1. Regras de uso: a definir |
+| leadtime_dias | integer | Sim | 30 | Tempo de ressuprimento em dias corridos; inteiro ≥ 0 (CHECK). Vazio = 30. Regras de uso: a definir |
 | ativo | boolean | Sim | true | Desativação lógica |
 
 **Campos avaliados e decisões**
@@ -318,7 +320,7 @@ Códigos: 400 validação/regra, 403 sem permissão, 404 não existe (ou de outr
 | Marcas | `/materiais/marcas` | Lista com edição em linha |
 | Depósitos | `/materiais/depositos` | Cartões com tipo e permissões; criar/editar/inativar |
 | Tabelas de preço | `/tabelas-preco` | Cartões com materiais com preço vigente hoje |
-| Tipos | Configurações → Cadastros | Tipos de material e de depósito |
+| Tipos | `/configuracoes/tipos-material`, `/configuracoes/tipos-deposito` | Tabela com código, nome, descrição, uso e status; excluir só sem uso |
 
 ## 15. Fluxos de cadastro
 
@@ -420,7 +422,7 @@ materiais        (id, tenant_id, sku, codigo_barras?, descricao, descricao_curta
                   tipo_id→tipos_material, categoria_id→categorias, marca_id?→marcas,
                   unidade, codigo_fabricante?, ncm?, cest?, origem?,
                   controla_estoque, permite_venda, permite_compra, permite_uso_os,
-                  controla_lote, controla_serie, ativo, autoria, versao)           UNIQUE(tenant, sku); UNIQUE(tenant, codigo_barras) parcial
+                  controla_lote, controla_serie, multiplo, leadtime_dias, ativo, autoria, versao)           UNIQUE(tenant, sku); UNIQUE(tenant, codigo_barras) parcial
 depositos        (id, tenant_id, codigo, nome, descricao?, tipo_id→tipos_deposito,
                   permite_venda, permite_uso_os, permite_transferencia, ativo, autoria, versao)
                                                                                    UNIQUE(tenant, codigo); UNIQUE(tenant, lower(nome))
@@ -437,7 +439,7 @@ precos_eventos   (id, tenant_id, preco_id→materiais_precos, evento, antes, dep
 
 ## 21. Ampliação: lista de preços e tabela de estoque
 
-Decisões do dono do produto (23/09/2026): lista de preços **uma tabela por vez**; saldo alterado por **ajuste manual com motivo** até existir movimentação; **disponível = livre para uso**, reservado = separado para O.S./pedido, físico = disponível + reservado; a lista de preços mostra o **disponível total** para quem acessa o Estoque.
+Decisões do dono do produto (23/09/2026): lista de preços **uma tabela por vez**; saldo alterado por **ajuste manual com motivo** até existir movimentação; **disponível = tudo o que há no depósito**, reservado = parte dele separada para O.S./pedido (nunca maior), **saldo = disponível − reservado** (livre; decisão de 24/09/2026, que substituiu o físico); a lista de preços mostra o **disponível total** para quem acessa o Estoque.
 
 ### Tabelas
 
@@ -461,8 +463,8 @@ Regras do ajuste (`PUT /api/estoque/:materialId/:depositoId`, módulo Estoque/Ed
 ### Telas
 
 - **Lista de preços** (menu, `/precos`, módulo Preços): escolha da tabela (lembrada no navegador), busca por SKU/descrição/fabricante/código de barras, "Só com preço"; aba **Tabelas de preço** ao lado.
-- **Estoque** (menu, `/estoque`, módulo Estoque): tabela SKU | Material | Depósito | Disponível | Reservado | Físico, filtro por depósito, "Só com saldo", Ajustar e Histórico em cada linha.
-- **Material → aba Estoque**: totais (disponível, reservado, físico) e o saldo em cada depósito, com ajuste e histórico.
+- **Estoque** (menu, `/estoque`, módulo Estoque): tabela SKU | Material | Depósito | Disponível | Reservado | Saldo, filtro por depósito, "Só com saldo" (saldo > 0), Ajustar e Histórico em cada linha.
+- **Material → aba Estoque**: totais (disponível, reservado, saldo) e o saldo em cada depósito, com ajuste e histórico.
 
 ### Evolução
 

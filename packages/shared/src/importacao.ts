@@ -83,13 +83,13 @@ export const COLUNAS_IMPORTACAO_CLIENTES: ColunaImportacao[] = [
   {
     nome: 'origem',
     obrigatoria: false,
-    descricao: 'Nome da origem, como em Configurações → Cadastros',
+    descricao: 'Nome da origem, como em Configurações → Origem do cliente',
     exemplo: 'Indicação',
   },
   {
     nome: 'relacionamento',
     obrigatoria: false,
-    descricao: 'Nome do tipo de relacionamento, como em Configurações → Cadastros',
+    descricao: 'Nome do tipo de relacionamento, como em Configurações → Tipo de relacionamento',
     exemplo: '',
   },
   { nome: 'ativo', obrigatoria: false, descricao: `${SIM_NAO}. Vazio = sim`, exemplo: 'sim' },
@@ -111,7 +111,7 @@ export const COLUNAS_IMPORTACAO_CLIENTES: ColunaImportacao[] = [
   {
     nome: 'responsavel_funcao',
     obrigatoria: false,
-    descricao: 'Obrigatório na PJ: nome da função, como em Configurações → Cadastros',
+    descricao: 'Obrigatório na PJ: nome da função, como em Configurações → Função do responsável',
     exemplo: '',
   },
   { nome: 'responsavel_telefone', obrigatoria: false, descricao: 'Obrigatório na PJ, com DDD', exemplo: '' },
@@ -131,7 +131,7 @@ export const COLUNAS_IMPORTACAO_MATERIAIS: ColunaImportacao[] = [
   {
     nome: 'tipo',
     obrigatoria: true,
-    descricao: 'Nome do tipo de material (Configurações → Cadastros)',
+    descricao: 'Nome do tipo de material (Configurações → Tipo de material)',
     exemplo: 'Peça',
   },
   {
@@ -159,6 +159,18 @@ export const COLUNAS_IMPORTACAO_MATERIAIS: ColunaImportacao[] = [
   { nome: 'permite_uso_os', obrigatoria: false, descricao: `${SIM_NAO}. Vazio = sim`, exemplo: '' },
   { nome: 'controla_lote', obrigatoria: false, descricao: `${SIM_NAO}. Vazio = não`, exemplo: '' },
   { nome: 'controla_serie', obrigatoria: false, descricao: `${SIM_NAO}. Vazio = não`, exemplo: '' },
+  {
+    nome: 'multiplo',
+    obrigatoria: false,
+    descricao: 'Vendido só em múltiplos desta quantidade (caixa master), inteiro. Vazio = 1',
+    exemplo: '1',
+  },
+  {
+    nome: 'leadtime_dias',
+    obrigatoria: false,
+    descricao: 'Tempo de ressuprimento em dias corridos, inteiro. Vazio = 30',
+    exemplo: '30',
+  },
 ];
 
 /**
@@ -183,13 +195,13 @@ export const COLUNAS_IMPORTACAO_ESTOQUE: ColunaImportacao[] = [
   {
     nome: 'disponivel',
     obrigatoria: true,
-    descricao: 'Saldo final disponível (substitui o atual), com vírgula decimal',
+    descricao: 'Quantidade total no depósito (substitui a atual), com vírgula decimal',
     exemplo: '12',
   },
   {
     nome: 'reservado',
     obrigatoria: false,
-    descricao: 'Saldo final reservado. Vazio = mantém o reservado atual',
+    descricao: 'Parte do disponível reservada (não pode passar do disponível). Vazio = mantém o reservado atual',
     exemplo: '0',
   },
   {
@@ -197,6 +209,39 @@ export const COLUNAS_IMPORTACAO_ESTOQUE: ColunaImportacao[] = [
     obrigatoria: false,
     descricao: 'Motivo registrado no histórico. Vazio = "Importação de planilha"',
     exemplo: 'Inventário de dezembro',
+  },
+];
+
+/**
+ * Vendedores: sem código = cadastra (o código é gerado); código já cadastrado = atualiza. Nome e e-mail vêm
+ * do usuário vinculado. Colunas opcionais ausentes não mudam o vendedor existente.
+ */
+export const COLUNAS_IMPORTACAO_VENDEDORES: ColunaImportacao[] = [
+  {
+    nome: 'codigo',
+    obrigatoria: false,
+    descricao: 'Código do vendedor. Vazio = novo vendedor; já cadastrado = atualiza',
+    exemplo: '',
+  },
+  {
+    nome: 'usuario_email',
+    obrigatoria: true,
+    descricao: 'E-mail de login do usuário (ativo, com função de parâmetro Vendedor)',
+    exemplo: 'ana@oficina.com.br',
+  },
+  { nome: 'whatsapp', obrigatoria: true, descricao: 'Com DDD', exemplo: '(48) 99999-0000' },
+  {
+    nome: 'matricula',
+    obrigatoria: false,
+    descricao: 'Matrícula do colaborador (única na oficina)',
+    exemplo: 'M-0042',
+  },
+  { nome: 'funcionario_desde', obrigatoria: false, descricao: 'dd/mm/aaaa', exemplo: '01/03/2024' },
+  {
+    nome: 'ativo',
+    obrigatoria: false,
+    descricao: `${SIM_NAO}. Vazio = sim no cadastro; mantém na atualização`,
+    exemplo: '',
   },
 ];
 

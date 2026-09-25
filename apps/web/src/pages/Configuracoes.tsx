@@ -9,7 +9,6 @@ import {
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { AbasConfiguracoes } from '../components/AbasConfiguracoes';
 import { LogoMobiOS } from '../components/Marca';
 import { Alerta, Botao, BotaoLink, Campo, Cartao, Input, Selo, TextoSuave, Titulo } from '../components/ui';
 import { api, ErroApi } from '../lib/api';
@@ -149,8 +148,7 @@ export function Configuracoes() {
 
   return (
     <div className="space-y-6">
-      <Titulo>Configurações</Titulo>
-      <AbasConfiguracoes />
+      <Titulo>Aparência e logo</Titulo>
 
       <LogoOficina versao={oficina.logoVersao} nome={oficina.nome} />
 

@@ -75,6 +75,8 @@ async function carregar(tx: Tx, id: string): Promise<Material> {
       permiteUsoOs: materiais.permiteUsoOs,
       controlaLote: materiais.controlaLote,
       controlaSerie: materiais.controlaSerie,
+      multiplo: materiais.multiplo,
+      leadtimeDias: materiais.leadtimeDias,
       criadoEm: materiais.criadoEm,
       atualizadoEm: materiais.atualizadoEm,
       criadoPor: nomeUsuario('materiais', 'criado_por'),
@@ -270,6 +272,9 @@ export const materiaisRoutes: FastifyPluginAsyncZod = async (app) => {
             permiteUsoOs: simNao('permite_uso_os', atual?.permiteUsoOs),
             controlaLote: simNao('controla_lote', atual?.controlaLote),
             controlaSerie: simNao('controla_serie', atual?.controlaSerie),
+            // Presente e vazio = padrão (1 e 30); ausente = mantém o do material existente.
+            multiplo: temColuna('multiplo') ? valor('multiplo') : atual?.multiplo,
+            leadtimeDias: temColuna('leadtime_dias') ? valor('leadtime_dias') : atual?.leadtimeDias,
           },
           ([campo]) => colunaDoCampo(campo === 'tipoId' ? 'tipo' : campo === 'categoriaId' ? 'categoria' : campo!),
         );

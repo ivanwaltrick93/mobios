@@ -8,12 +8,14 @@ import { funcoes, usuarioFotos, usuarioFuncoes, users } from '../../db/schema.js
 import { funcoesAtivasValidas } from '../../lib/acessos.js';
 import { ErroHttp, naoEncontrado } from '../../lib/erros.js';
 import { versaoFoto } from '../fotos/routes.js';
+import { inativarVendedoresSemCondicao } from '../vendedores/regras.js';
 
 // Nunca selecionar senha_hash aqui: ele não sai da API.
 async function listar(tx: Tx, id?: string): Promise<Usuario[]> {
   const lista = await tx
     .select({
       id: users.id,
+      codigo: users.codigo,
       nome: users.nome,
       email: users.email,
       ativo: users.ativo,
@@ -107,6 +109,8 @@ export const usuariosRoutes: FastifyPluginAsyncZod = async (app) => {
           .returning({ id: users.id });
         if (!atualizado) throw naoEncontrado('Usuário');
         await trocarFuncoes(tx, atualizado.id, funcaoIds);
+        // Desativado ou sem função de vendedor: o vendedor dele é inativado junto (decisão do produto).
+        await inativarVendedoresSemCondicao(tx, req.user.sub);
         return (await listar(tx, atualizado.id))[0]!;
       });
     },

@@ -53,6 +53,15 @@ const isolamentoPorTenant = (tabela: string) =>
     withCheck: sql`tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid`,
   });
 
+/**
+ * Código sequencial por oficina, gerado pelo banco no INSERT (função `proximo_codigo`, migração 0018) a partir
+ * da tabela `contadores`, na mesma transação: nunca se repete nem é reaproveitado. Um trigger impede alterá-lo.
+ */
+const codigoAutomatico = (chave: string) =>
+  integer()
+    .notNull()
+    .default(sql.raw(`proximo_codigo('${chave}')`));
+
 // ---------- Global (sem RLS) ----------
 
 export const tenants = pgTable('tenants', {
@@ -89,6 +98,7 @@ export const users = pgTable(
   {
     id: uuid().primaryKey().defaultRandom(),
     tenantId: tenantId(),
+    codigo: codigoAutomatico('usuarios'),
     nome: text().notNull(),
     email: text().notNull(),
     senhaHash: text().notNull(),
@@ -99,6 +109,7 @@ export const users = pgTable(
     uniqueIndex().on(t.email),
     // Alvo das FKs compostas (usuario_funcoes).
     unique().on(t.tenantId, t.id),
+    uniqueIndex('users_codigo_unico').on(t.tenantId, t.codigo),
     index().on(t.tenantId, t.nome),
     isolamentoPorTenant('users'),
   ],
@@ -120,19 +131,25 @@ export const combustivel = pgEnum('combustivel', [
 ]);
 export const statusVeiculo = pgEnum('status_veiculo', ['ativo', 'vendido', 'inativo']);
 
-/** Lista editável por oficina (Configurações → Cadastros). Desativar tira da escolha, sem mexer nos clientes que já usam. */
+/**
+ * Lista editável por oficina (Configurações, uma página por lista): código automático, nome, descrição e status.
+ * Desativar tira da escolha sem mexer nos registros que já usam; excluir só o que nunca foi usado (FK RESTRICT).
+ */
 const listaDeOpcoes = (tabela: string) =>
   pgTable(
     tabela,
     {
       id: uuid().primaryKey().defaultRandom(),
       tenantId: tenantId(),
+      codigo: codigoAutomatico(tabela),
       nome: text().notNull(),
+      descricao: text(),
       ativa: boolean().notNull().default(true),
       ...timestamps,
     },
     (t) => [
       unique().on(t.tenantId, t.id),
+      uniqueIndex(`${tabela}_codigo_unico`).on(t.tenantId, t.codigo),
       uniqueIndex(`${tabela}_nome_unico`).on(t.tenantId, sql`lower(${t.nome})`),
       isolamentoPorTenant(tabela),
     ],
@@ -338,13 +355,16 @@ export const funcoes = pgTable(
   {
     id: uuid().primaryKey().defaultRandom(),
     tenantId: tenantId(),
+    codigo: codigoAutomatico('funcoes'),
     nome: text().notNull(),
+    descricao: text(),
     admin: boolean().notNull().default(false),
     ativa: boolean().notNull().default(true),
     ...timestamps,
   },
   (t) => [
     unique().on(t.tenantId, t.id),
+    uniqueIndex('funcoes_codigo_unico').on(t.tenantId, t.codigo),
     uniqueIndex('funcoes_nome_unico').on(t.tenantId, sql`lower(${t.nome})`),
     uniqueIndex('funcoes_admin_unico')
       .on(t.tenantId)
@@ -388,6 +408,56 @@ export const usuarioFuncoes = pgTable(
   ],
 );
 
+/**
+ * Catálogo global de parâmetros de função (ex.: VENDEDOR), mantido pelas migrações: o app só lê
+ * (a migração 0018 retira do mobios_app o direito de gravar). Não tem tenant_id: vale para todas as oficinas.
+ */
+export const parametrosFuncao = pgTable(
+  'parametros_funcao',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    codigo: text().notNull(),
+    nome: text().notNull(),
+    descricao: text().notNull(),
+  },
+  (t) => [uniqueIndex('parametros_funcao_codigo_unico').on(t.codigo)],
+);
+
+/** Parâmetros marcados em cada função da oficina. */
+export const funcaoParametros = pgTable(
+  'funcao_parametros',
+  {
+    tenantId: tenantId(),
+    funcaoId: uuid().notNull(),
+    parametroId: uuid()
+      .notNull()
+      .references(() => parametrosFuncao.id),
+  },
+  (t) => [
+    primaryKey({ columns: [t.funcaoId, t.parametroId] }),
+    foreignKey({ columns: [t.tenantId, t.funcaoId], foreignColumns: [funcoes.tenantId, funcoes.id] }).onDelete(
+      'cascade',
+    ),
+    index().on(t.parametroId),
+    isolamentoPorTenant('funcao_parametros'),
+  ],
+);
+
+/** Sequências de negócio por oficina (código de usuário, função e vendedor; depois, o número da O.S.). */
+export const contadores = pgTable(
+  'contadores',
+  {
+    tenantId: tenantId(),
+    chave: text().notNull(),
+    valor: integer().notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.chave] }),
+    check('contadores_valor_positivo', sql`${t.valor} > 0`),
+    isolamentoPorTenant('contadores'),
+  ],
+);
+
 /** Foto opcional do usuário, no próprio banco (uma por usuário; PK = usuario_id). */
 export const usuarioFotos = pgTable(
   'usuario_fotos',
@@ -424,7 +494,7 @@ const fksAutoria = (t: { tenantId: ColunaFk; criadoPor: ColunaFk; atualizadoPor:
 export const unidadeMedida = pgEnum('unidade_medida', Object.keys(UNIDADES) as [Unidade, ...Unidade[]]);
 export const eventoPreco = pgEnum('evento_preco', ['criado', 'alterado', 'encerrado', 'cancelado', 'reaberto']);
 
-/** Tipos editáveis por oficina (Configurações → Cadastros), como as listas de clientes. */
+/** Tipos editáveis por oficina (Configurações → Tipos de material / de depósito), como as listas de clientes. */
 export const tiposMaterial = listaDeOpcoes('tipos_material');
 export const tiposDeposito = listaDeOpcoes('tipos_deposito');
 
@@ -513,6 +583,10 @@ export const materiais = pgTable(
     permiteUsoOs: boolean().notNull().default(true),
     controlaLote: boolean().notNull().default(false),
     controlaSerie: boolean().notNull().default(false),
+    /** Vende-se só em múltiplos desta quantidade (caixa master); 1 = unitário. */
+    multiplo: integer().notNull().default(1),
+    /** Tempo de ressuprimento, em dias corridos. */
+    leadtimeDias: integer().notNull().default(30),
     ativo: boolean().notNull().default(true),
     ...autoria,
     ...timestamps,
@@ -528,6 +602,8 @@ export const materiais = pgTable(
     foreignKey({ columns: [t.tenantId, t.marcaId], foreignColumns: [marcas.tenantId, marcas.id] }),
     check('materiais_origem_valida', sql`${t.origem} between 0 and 8`),
     check('materiais_sku_maiusculo', sql`${t.sku} = upper(${t.sku})`),
+    check('materiais_multiplo_positivo', sql`${t.multiplo} > 0`),
+    check('materiais_leadtime_positivo', sql`${t.leadtimeDias} >= 0`),
     index().on(t.tenantId, t.categoriaId),
     index().on(t.tenantId, t.marcaId),
     index().on(t.tenantId, t.tipoId),
@@ -715,7 +791,8 @@ const quantidade = () => numeric({ precision: 14, scale: 3, mode: 'number' });
 
 /**
  * Saldo de um material num depósito. Chave de negócio = chave primária: (material, depósito).
- * Disponível = livre para uso; reservado = separado para O.S./pedido; físico = disponível + reservado.
+ * Disponível = tudo o que há no depósito; reservado = parte dele separada para O.S./pedido (CHECK: nunca maior);
+ * saldo = disponível − reservado (livre), calculado na consulta.
  */
 export const estoques = pgTable(
   'estoques',
@@ -736,6 +813,8 @@ export const estoques = pgTable(
     foreignKey({ columns: [t.tenantId, t.atualizadoPor], foreignColumns: [users.tenantId, users.id] }),
     check('estoques_disponivel_positivo', sql`${t.disponivel} >= 0`),
     check('estoques_reservado_positivo', sql`${t.reservado} >= 0`),
+    // Disponível = tudo o que há no depósito; reservado é parte dele. Saldo livre = disponível − reservado.
+    check('estoques_reservado_ate_disponivel', sql`${t.reservado} <= ${t.disponivel}`),
     index().on(t.depositoId),
     isolamentoPorTenant('estoques'),
   ],
@@ -764,5 +843,66 @@ export const estoqueAjustes = pgTable(
     index().on(t.materialId, t.depositoId, t.criadoEm.desc()),
     index().on(t.depositoId),
     isolamentoPorTenant('estoque_ajustes'),
+  ],
+);
+
+// ---------- Vendedores (CAD-18) ----------
+// Vão ser referenciados por clientes, oportunidades, orçamentos e O.S. pela chave (tenant_id, id).
+
+/**
+ * Vendedor = um usuário da oficina (1:1) com função ativa de parâmetro VENDEDOR. Nome e e-mail ficam só no
+ * usuário. Não é excluído: inativa por botão ou automaticamente quando o usuário perde a condição.
+ */
+export const vendedores = pgTable(
+  'vendedores',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: tenantId(),
+    codigo: codigoAutomatico('vendedores'),
+    usuarioId: uuid().notNull(),
+    matricula: text(),
+    whatsapp: text().notNull(),
+    funcionarioDesde: date(),
+    ativo: boolean().notNull().default(true),
+    criadoPor: uuid(),
+    atualizadoPor: uuid(),
+    ...timestamps,
+  },
+  (t) => [
+    unique().on(t.tenantId, t.id),
+    uniqueIndex('vendedores_codigo_unico').on(t.tenantId, t.codigo),
+    uniqueIndex('vendedores_usuario_unico').on(t.tenantId, t.usuarioId),
+    // Matrícula sem diferenciar maiúsculas: "m-01" e "M-01" são a mesma.
+    uniqueIndex('vendedores_matricula_unico')
+      .on(t.tenantId, sql`upper(${t.matricula})`)
+      .where(sql`${t.matricula} is not null`),
+    foreignKey({ columns: [t.tenantId, t.usuarioId], foreignColumns: [users.tenantId, users.id] }),
+    ...fksAutoria(t),
+    isolamentoPorTenant('vendedores'),
+  ],
+);
+
+export const eventoVendedor = pgEnum('evento_vendedor', ['criado', 'alterado', 'inativado', 'reativado']);
+export const origemEventoVendedor = pgEnum('origem_evento_vendedor', ['cadastro', 'importacao', 'automatica']);
+
+/** Log de alterações do vendedor (só inclusão): campo, antes e depois, quem e quando. */
+export const vendedoresEventos = pgTable(
+  'vendedores_eventos',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: tenantId(),
+    vendedorId: uuid().notNull(),
+    evento: eventoVendedor().notNull(),
+    origem: origemEventoVendedor().notNull(),
+    motivo: text(),
+    alteracoes: jsonb().$type<{ campo: string; antes: string | null; depois: string | null }[]>().notNull(),
+    usuarioId: uuid(),
+    criadoEm: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    foreignKey({ columns: [t.tenantId, t.vendedorId], foreignColumns: [vendedores.tenantId, vendedores.id] }),
+    foreignKey({ columns: [t.tenantId, t.usuarioId], foreignColumns: [users.tenantId, users.id] }),
+    index().on(t.vendedorId, t.criadoEm.desc()),
+    isolamentoPorTenant('vendedores_eventos'),
   ],
 );

@@ -4,6 +4,7 @@ import { ChevronDown } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 import { api } from '../lib/api';
+import { PAGINAS_LISTAS } from '../lib/cadastro';
 import { useSessao } from '../lib/sessao';
 import { aplicarTema, urlLogo } from '../lib/tema';
 import { Voltar } from './Voltar';
@@ -55,8 +56,25 @@ const menu: ItemMenu[] = [
   { para: '/os', rotulo: 'Ordens de serviço', modulo: 'os' },
   { para: '/financeiro', rotulo: 'Financeiro', modulo: 'financeiro' },
   { para: '/relatorios', rotulo: 'Relatórios', modulo: 'relatorios' },
-  { para: '/usuarios', rotulo: 'Equipe', somenteAdmin: true },
-  { para: '/configuracoes', rotulo: 'Configurações', somenteAdmin: true },
+  {
+    para: '/usuarios',
+    rotulo: 'Equipe',
+    somenteAdmin: true,
+    filhos: [
+      { para: '/usuarios', rotulo: 'Usuários' },
+      { para: '/vendedores', rotulo: 'Vendedores' },
+    ],
+  },
+  {
+    para: '/configuracoes',
+    rotulo: 'Configurações',
+    somenteAdmin: true,
+    filhos: [
+      { para: '/configuracoes', rotulo: 'Aparência e logo' },
+      { para: '/configuracoes/funcoes', rotulo: 'Funções e permissões' },
+      ...PAGINAS_LISTAS.map(({ para, rotulo }) => ({ para, rotulo })),
+    ],
+  },
 ];
 
 export function Layout() {

@@ -1,9 +1,10 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
   formatarQuantidade,
-  lancamentoEstoqueSchema,
+  lancamentoEstoqueCampos,
   mascaraQuantidade,
   quantidadeParaNumero,
+  reservadoAteDisponivel,
   UNIDADES,
   type AjusteEstoque,
   type Saldo,
@@ -58,7 +59,7 @@ export function AjusteEstoqueForm({ saldo, aoConcluir }: { saldo: Saldo; aoConcl
         {fracionada ? ', até 3 casas' : ', só inteiros'}). O ajuste fica registrado com o motivo.
       </TextoSuave>
       <div className="grid gap-3 sm:grid-cols-3">
-        <Campo rotulo="Disponível *" dica="Livre para vender ou usar">
+        <Campo rotulo="Disponível *" dica="Tudo o que existe no depósito">
           <Input
             autoFocus
             inputMode="decimal"
@@ -66,7 +67,7 @@ export function AjusteEstoqueForm({ saldo, aoConcluir }: { saldo: Saldo; aoConcl
             onChange={(e) => setDisponivel(mascaraQuantidade(e.target.value, fracionada))}
           />
         </Campo>
-        <Campo rotulo="Reservado *" dica="Separado para O.S. ou pedido">
+        <Campo rotulo="Reservado *" dica="Parte do disponível separada para O.S. ou pedido">
           <Input
             inputMode="decimal"
             value={reservado}
@@ -115,13 +116,15 @@ export function HistoricoAjustes({ saldo }: { saldo: Saldo }) {
 
 // Formulário: quantidades digitadas com máscara (texto) e convertidas para número; SKU, depósito e motivo
 // seguem as mesmas regras do schema da API.
-const lancamentoFormSchema = lancamentoEstoqueSchema.extend({
-  disponivel: z
-    .string()
-    .min(1, 'Informe o disponível')
-    .transform((v) => quantidadeParaNumero(v) ?? 0),
-  reservado: z.string().transform((v) => quantidadeParaNumero(v) ?? 0),
-});
+const lancamentoFormSchema = lancamentoEstoqueCampos
+  .extend({
+    disponivel: z
+      .string()
+      .min(1, 'Informe o disponível')
+      .transform((v) => quantidadeParaNumero(v) ?? 0),
+    reservado: z.string().transform((v) => quantidadeParaNumero(v) ?? 0),
+  })
+  .refine(reservadoAteDisponivel.regra, reservadoAteDisponivel.erro);
 type LancamentoEntrada = z.input<typeof lancamentoFormSchema>;
 type LancamentoSaida = z.output<typeof lancamentoFormSchema>;
 
@@ -155,7 +158,8 @@ export function LancamentoEstoqueForm({ aoConcluir }: { aoConcluir: () => void }
       className="space-y-3 rounded-md border border-borda bg-superficie-alt p-4"
     >
       <TextoSuave className="text-xs">
-        Informe o saldo final (substitui o atual). O SKU e o depósito precisam estar cadastrados.
+        Informe o disponível (tudo o que existe no depósito, substitui o atual) e quanto dele está reservado. O SKU e o
+        depósito precisam estar cadastrados.
       </TextoSuave>
       <Alerta>{salvar.isError && aplicarErrosDaApi(salvar.error, form.setError)}</Alerta>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">

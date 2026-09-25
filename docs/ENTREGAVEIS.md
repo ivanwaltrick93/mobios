@@ -28,12 +28,14 @@ Definição do dono do produto:
 
 Definido pelo dono do produto: o admin configura em **Configurações → Funções e permissões**.
 
-- O admin **cria, renomeia, desativa e reativa funções** (ex.: Almoxarife, Gerente). Funções não são excluídas.
+- O admin **cria, renomeia, desativa e reativa funções** (ex.: Almoxarife, Gerente). Excluir só a função **sem nenhum usuário** (ativo ou não); com usuário, apenas desativar. O Administrador nunca é excluído.
 - Cada função tem um **nível por módulo**: *Sem acesso*, *Consultar* ou *Editar* (Relatórios: só *Sem acesso* ou *Consultar*). Módulos ainda não construídos já aparecem ("em breve") e controlam o menu.
 - Um usuário pode ter **várias funções** e recebe o **maior nível** de cada módulo entre elas.
 - **Administrador** é fixo, com acesso total, e é o único que gerencia **usuários, funções e configurações** (não entram na matriz).
 - **Desativar uma função** retira na hora o acesso que vinha dela; reativar devolve. Mudanças valem na hora, inclusive para quem está logado.
 - Limite conhecido do nível por módulo: quem pode *Editar* a O.S. faz todas as ações da O.S. (abrir, diagnosticar, confirmar execução, entregar).
+
+**Parâmetros da função** (além dos níveis): marcam o que a função habilita. Hoje há um, **Vendedor** (quem pode ser cadastrado como vendedor, CAD-18).
 
 **Módulos da matriz:** Clientes e veículos · Ordem de Serviço · **Peças na O.S.** · **Materiais** · **Preços** · Estoque · **Recebimentos** · Financeiro · Relatórios.
 *Materiais* (materiais, categorias, marcas, depósitos) e *Preços* (tabelas e vigências) são separados para o almoxarife cadastrar peças sem mexer em preço (decisão de 23/09/2026).
@@ -104,7 +106,7 @@ flowchart LR
 |---|---|---|
 | CAD-01 | Clientes PF/PJ: CPF/CNPJ validado (inclusive o **CNPJ alfanumérico** da Receita, jul/2026), RG/IE, nascimento e sexo (só PF), telefone e WhatsApp obrigatórios, e-mail, observações, cliente desde, origem, tipo de relacionamento, status Ativo/Inativo | ✅ |
 | CAD-02 | Endereços do cliente (ao menos um, um principal), com preenchimento pelo CEP (ViaCEP); na PJ, cada endereço pode ser também de faturamento, entrega e/ou cobrança | ✅ |
-| CAD-03 | Responsáveis da PJ (obrigatório ao menos um, um principal): nome, função (lista editável em Configurações → Cadastros), telefone (marcando se é WhatsApp) e e-mail | ✅ |
+| CAD-03 | Responsáveis da PJ (obrigatório ao menos um, um principal): nome, função (lista editável em Configurações → Função do responsável), telefone (marcando se é WhatsApp) e e-mail | ✅ |
 | CAD-04 | Veículos: placa antiga/Mercosul, chassi/VIN (opcional, 17 caracteres) e Renavam validados quando informados, marca/modelo com sugestões da própria oficina, versão, ano fabricação/modelo, cor, combustível, km, veículo principal, status Ativo/Vendido/Inativo, data da última visita (preenchida pela O.S.) | ✅ |
 | CAD-05 | Marca e modelo por lista padronizada (tabela FIPE) em vez de texto livre | 🟡 |
 | CAD-06 | Histórico do veículo: todas as O.S., km a cada visita, peças trocadas | 🟢 (chega com OS) |
@@ -115,10 +117,18 @@ flowchart LR
 | CAD-11 | Formas de pagamento e taxas (ex.: crédito 3,5%, prazo de recebimento) | 🟢 |
 | CAD-12 | Transferir veículo de um cliente para outro (venda do carro), levando o histórico | ✅ |
 | CAD-13 | Importar **clientes** de planilha CSV (uma linha por cliente, com endereço principal e, na PJ, responsável principal; CPF/CNPJ já cadastrado atualiza). Veículos por planilha: 🟡 | ✅ |
-| CAD-14 | Listas editáveis por oficina: origem do cliente, tipo de relacionamento e função do responsável (Configurações → Cadastros) | ✅ |
+| CAD-14 | Listas editáveis por oficina: origem do cliente, tipo de relacionamento e função do responsável | ✅ |
+| CAD-20 | **Configurações em submenu** (Aparência e logo · Funções e permissões · Origem do cliente · Tipo de relacionamento · Função do responsável · Tipos de material · Tipos de depósito), uma página por item. Toda lista é **tabela parametrizável**: código automático e imutável, nome, descrição opcional e status; **excluir só o item sem nenhum registro associado**, senão apenas inativar | ✅ |
 | CAD-15 | Máscaras de digitação: CPF, CNPJ (inclusive alfanumérico), telefone, CEP, e-mail, placa, chassi, Renavam, anos e km | ✅ |
 | CAD-16 | Menu **Clientes** com submenu (Clientes · Veículos). Lista de clientes em tabela, 20 por página, com filtros: status, PF/PJ, período de "cliente desde", origem, tipo de relacionamento e aniversário; página **Veículos** com a frota inteira (busca por placa, marca, modelo ou dono) | ✅ |
 | CAD-17 | **Aniversário do cliente (PF)**: selo na lista (hoje e próximos 7 dias), faixa no perfil no dia, e bloco no Início com atalho de WhatsApp para dar parabéns. Nascidos em 29/02 são lembrados em 28/02 nos anos não bissextos | ✅ |
+| CAD-18 | **Vendedores** (Equipe → Vendedores, só o Administrador): código sequencial automático e imutável, usuário vinculado obrigatório (um vendedor por usuário, trocável), nome e e-mail do usuário, WhatsApp, matrícula opcional e única, funcionário desde (opcional). Lista em tabela (código, nome, matrícula, situação), busca por código, nome ou matrícula, filtro de situação, 20 por página; detalhes na linha com aba **Log de alterações** (campo, antes, depois, quem e quando) e janela só de leitura com os dados do usuário. Sem exclusão: inativar/reativar por botão. Importação por planilha CSV (sem código cadastra, com código atualiza). Serão ligados a clientes, oportunidades, orçamentos e O.S. | ✅ |
+| CAD-19 | **Código sequencial** (por oficina, automático e imutável) em usuários e funções; **descrição** e **parâmetros** na função (catálogo `VENDEDOR`, já marcado no Atendente) | ✅ |
+
+**Regras dos vendedores, decididas pelo dono do produto em 24/09/2026 (CAD-18):**
+- Só pode ser vendedor o usuário **ativo** que tenha uma função **ativa** com o parâmetro **Vendedor** (Configurações → Funções e permissões; vem marcado no Atendente e o admin pode marcar em outras funções). O sistema nunca decide pelo nome da função.
+- **Desativar o usuário**, tirar dele a função ou desmarcar o parâmetro/desativar a função **inativa o vendedor na hora**, com registro no log. Reativar o usuário não reativa o vendedor: o admin reativa depois (bloqueado enquanto o usuário não estiver apto).
+- O vínculo com usuário é obrigatório e nunca fica vazio; pode ser trocado por outro usuário apto.
 
 **Regras do cadastro, decididas pelo dono do produto em 22/09/2026:**
 - Placa (obrigatória) e chassi (opcional) são únicos na oficina. Na venda para outro cliente, o veículo é **transferido** (CAD-12) e não recadastrado. As O.S. guardam o cliente da época, então o histórico do ex-dono continua com ele.
@@ -164,9 +174,10 @@ flowchart LR
 | EST-14 | Menu **Política Comercial** com submenu: **Linhas de Preço** (uma tabela por vez; uma linha por vigência com preço, início, fim e situação, e outra para o preço padrão; filtro de situação que começa em vigentes, futuras e padrão; só preço, sem estoque; **cadastro manual de preço por SKU** e importação por planilha usando a tabela da tela) e **Tabelas de Preço** (lista em tabela; abrir uma tabela mostra as mesmas linhas de preço e o cadastro por SKU). Listas com 20 por página | ✅ |
 | EST-16 | **Preço padrão** (sem vigência) por material e tabela: vale nos dias sem vigência; alterar ou remover fica na trilha | ✅ |
 | EST-17 | **Importação de preços por planilha CSV** (colunas tabela, sku, preco, inicio, fim; 1ª linha = cabeçalho): grava as linhas válidas e lista as com erro, com o número da linha | ✅ |
-| EST-15 | **Tabela de estoque** por SKU + depósito (20 por página): disponível (livre), reservado e físico; ajuste manual com motivo e histórico, e **lançamento de saldo digitando SKU e depósito** (conferidos antes de gravar), até existir movimentação automática (EST-02, EST-04, EST-10) | ✅ |
+| EST-15 | **Tabela de estoque** por SKU + depósito (20 por página): **disponível** (tudo o que há no depósito), **reservado** (parte dele, nunca maior) e **saldo = disponível − reservado** (livre; decisão de 24/09/2026, substitui o físico); ajuste manual com motivo e histórico, e **lançamento de saldo digitando SKU e depósito** (conferidos antes de gravar), até existir movimentação automática (EST-02, EST-04, EST-10) | ✅ |
 | EST-19 | **Importação de materiais e de categorias por planilha CSV**: tipo, categoria (código ou caminho) e marca pelos cadastros existentes; SKU, código ou nome sob o mesmo pai já cadastrados atualizam | ✅ |
 | EST-18 | **Importação de saldos por planilha CSV** (colunas sku, deposito, disponivel, reservado, motivo; 1ª linha = cabeçalho): cada linha informa o saldo final; grava as válidas e lista as com erro | ✅ |
+| EST-20 | **Suprimento no material** (só cadastro, por enquanto): **múltiplo de venda** (caixa master; inteiro > 0, padrão 1) e **leadtime** (dias corridos; inteiro ≥ 0, padrão 30), no formulário, no detalhe e na importação. As regras de uso (venda em múltiplos, reposição) serão definidas depois | ✅ cadastro · ⚪ regras |
 | EST-02 | Entrada manual (compra) com fornecedor, quantidade e custo | 🟢 |
 | EST-03 | Entrada automática pela **importação do XML da nota fiscal do fornecedor** | 🟡 |
 | EST-04 | Saída pela O.S.: **reserva** na aprovação e **baixa** na execução; estorno no cancelamento | 🟢 |
@@ -227,6 +238,17 @@ flowchart LR
 | COM-06 | WhatsApp automático via API oficial (Meta), com envio sem clique | 🔵 |
 | COM-07 | Portal do cliente: histórico de O.S. e notas | ⚪ |
 
+### VEN — Vendas e metas (roadmap)
+
+Planejado, **sem desenvolvimento iniciado**, sobre o cadastro de vendedores (CAD-18). Escopo e prioridade ainda a definir (ver §7, item 10).
+
+| Código | Entregável | Proposta |
+|---|---|---|
+| VEN-01 | Cadastro de oportunidades: cliente, veículo (opcional), origem, vendedor responsável, valor estimado e etapa | ⚪ |
+| VEN-02 | Cadastro de orçamentos fora da O.S., ligados à oportunidade, com conversão em O.S. quando aprovados | ⚪ |
+| VEN-03 | Gestão de metas de vendedores: meta por vendedor e período | ⚪ |
+| VEN-04 | Acompanhamento das metas: realizado × meta por vendedor | ⚪ |
+
 ### REL — Relatórios e indicadores
 
 | Código | Entregável | Proposta |
@@ -275,6 +297,9 @@ flowchart TD
   FIN --> FIS[FIS Fiscal 🔵]
   OS --> FIS
   AG[AG Agenda] --> OS
+  CAD --> VEN[VEN Vendas e metas ⚪]
+  VEN --> OS
+  VEN --> REL
   PLT --> SAAS[SAAS Comercialização]
   FIN --> SAAS
 ```
@@ -314,3 +339,4 @@ O estoque pode começar junto com a O.S.: as peças da O.S. já nascem ligadas a
 7. ~~Mecânico usa o sistema diretamente?~~ **Decidido: sim** (personas, §1). Falta saber: haverá um tablet por mecânico/box ou um compartilhado? Isso define o login (individual ou troca rápida de usuário).
 8. **Agenda** é necessária no MVP?
 9. **Oficina-piloto:** existe uma oficina real para validar o MVP? Ela usa algum sistema hoje (para importar os dados)?
+10. **Vendas e metas (VEN):** quais são as etapas da oportunidade? O orçamento avulso (VEN-02) substitui o orçamento dentro da O.S. (OS-07) ou convive com ele? A meta é medida em valor faturado, em quantidade ou nos dois? É mensal? Quem é "vendedor" (nova função ou o consultor técnico)? Em que fase entra?

@@ -113,11 +113,17 @@ tenants (id, nome, cnpj, plano, criado_em)
 tenant_aparencia (tenant_id [PK/FK], cor_primaria?, cor_menu?, cor_botao_primario?, cor_botao_primario_texto?,
                   cor_botao_secundario?, cor_botao_secundario_texto?)   -- style guide da oficina
 tenant_logos (tenant_id [PK/FK], conteudo bytea, tipo, tamanho, atualizado_em)   -- logo, até 1 MB, no próprio banco
-users (id, tenant_id, nome, email [único global], senha_hash, ativo)
-funcoes (id, tenant_id, nome [único por oficina, sem diferenciar maiúsculas], admin [uma por oficina], ativa)
+users (id, tenant_id, codigo [seq. por oficina, imutável], nome, email [único global], senha_hash, ativo)
+funcoes (id, tenant_id, codigo [seq. por oficina, imutável], nome [único por oficina, sem diferenciar maiúsculas],
+         descricao, admin [uma por oficina], ativa)
+parametros_funcao (id, codigo [único], nome, descricao)   -- catálogo global (sem tenant), só as migrações gravam
+funcao_parametros (funcao_id + parametro_id [PK], tenant_id)                     -- ex.: VENDEDOR no Atendente
 funcao_permissoes (funcao_id + modulo [PK], tenant_id, nivel consultar|editar)   -- ausente = sem acesso
 usuario_funcoes (usuario_id + funcao_id [PK], tenant_id)                          -- várias funções por usuário
 usuario_fotos (usuario_id [PK/FK], tenant_id, conteudo bytea, tipo, tamanho)     -- foto opcional, reduzida no navegador
+vendedores (id, tenant_id, codigo [seq. por oficina, imutável], usuario_id [único por oficina], matricula
+            [única, sem diferenciar maiúsculas], whatsapp, funcionario_desde, ativo)   -- nome e e-mail vêm do usuário
+vendedores_eventos (id, tenant_id, vendedor_id, evento, origem, motivo, alteracoes jsonb, usuario_id, criado_em)
 
 clientes (id, tenant_id, tipo PF|PJ, nome, cpf_cnpj, telefone, email, endereco jsonb, observacoes)
 veiculos (id, tenant_id, cliente_id, placa, marca, modelo, ano, cor, chassi, km_atual)
@@ -137,7 +143,7 @@ lancamentos (id, tenant_id, tipo receber|pagar, descricao, categoria, valor, ven
 pagamentos (id, tenant_id, os_id?, lancamento_id?, forma pix|credito|debito|dinheiro|boleto|transferencia,
             valor, parcelas, referencia /* NSU, id Pix */, recebido_em, user_id)
 
-contadores (tenant_id, chave, valor)  -- numeração sequencial de O.S. sem buracos por tenant
+contadores (tenant_id + chave [PK], valor)  -- sequências por oficina: usuarios, funcoes, vendedores (e O.S.)
 ```
 
 ### Ciclo de vida da O.S.
@@ -210,7 +216,7 @@ Kubernetes **não** faz parte do MVP: a carga de uma oficina é baixa e uma VPS 
 
 1. **Nenhum arquivo no disco do container.** Por decisão do produto, **todos os dados ficam no PostgreSQL**, inclusive arquivos pequenos como o logo da oficina (`bytea`, até 1 MB), que assim entram no mesmo backup. Arquivos grandes e numerosos (fotos do checklist, PDFs) devem ser reavaliados quando chegarem: no banco enquanto o volume for pequeno; se o banco crescer demais, migrar para storage compatível com S3 (MinIO, R2, B2) guardando só a chave no banco.
 2. **Nenhum estado compartilhado em memória.** Cache, contadores, rate limit, travas e filas ficam no Postgres ou, quando houver, no Redis. Cache em memória só para dados imutáveis ou que tolerem ficar diferentes entre réplicas.
-3. **Sequências de negócio geradas no banco.** Número da O.S. etc. via tabela `contadores` com `UPDATE ... RETURNING` dentro da transação, nunca em memória.
+3. **Sequências de negócio geradas no banco.** Códigos de usuário, função e vendedor (e, depois, o número da O.S.) vêm da tabela `contadores` pela função `proximo_codigo('<chave>')`, usada como DEFAULT da coluna (migração 0018): UPSERT com trava da linha dentro da transação, sem buraco quando o INSERT é desfeito. O trigger `impedir_troca_de_codigo` bloqueia alterar o código depois. Nunca em memória.
 4. **Nada agendado dentro da API.** Tarefas periódicas (alerta de estoque mínimo, lembretes) rodam num processo `worker` separado ou garantem execução única com `pg_try_advisory_lock`. Com N réplicas, um `setInterval` na API roda N vezes.
 5. **Conexões com o banco são finitas.** Cada réplica abre até `max` conexões (hoje 10). Ao escalar horizontalmente, colocar PgBouncer (modo transaction) na frente do Postgres. O `set_config(..., true)` do `withTenant` é local à transação, então é compatível com esse modo.
 

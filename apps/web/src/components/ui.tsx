@@ -2,7 +2,8 @@
  * Componentes base do style guide. Use sempre estes em vez de classes soltas:
  * cores só por tokens (bg-primaria, text-texto-suave...), definidos em src/index.css.
  */
-import { Eye, Search } from 'lucide-react';
+import { Eye, Search, X } from 'lucide-react';
+import { useEffect, useRef } from 'react';
 import type { UseFormRegisterReturn } from 'react-hook-form';
 import { Link } from 'react-router';
 import type {
@@ -371,3 +372,38 @@ export const Vazio = ({
     {acao && <div className="mt-2">{acao}</div>}
   </div>
 );
+
+/**
+ * Janela sobre a página (modal nativo <dialog>): fecha no X, com Esc ou clicando fora.
+ * Renderize só enquanto estiver aberta: `{aberta && <Janela ... />}`.
+ */
+export function Janela({ titulo, aoFechar, children }: { titulo: string; aoFechar: () => void; children: ReactNode }) {
+  const janela = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    janela.current?.showModal();
+  }, []);
+  return (
+    <dialog
+      ref={janela}
+      aria-label={titulo}
+      onClose={aoFechar}
+      // O clique no fundo escurecido chega ao próprio <dialog>; dentro do conteúdo, não.
+      onClick={(e) => e.target === e.currentTarget && aoFechar()}
+      className="m-auto w-[calc(100%-2rem)] max-w-lg rounded-lg border border-borda bg-superficie p-0 text-texto shadow-xl backdrop:bg-texto/40"
+    >
+      <div className="flex items-center justify-between gap-3 border-b border-borda px-5 py-3">
+        <h2 className="font-semibold">{titulo}</h2>
+        <button
+          type="button"
+          title="Fechar"
+          aria-label="Fechar"
+          onClick={aoFechar}
+          className="rounded-md p-1.5 text-texto-suave hover:bg-superficie-alt hover:text-texto"
+        >
+          <X className="size-4" aria-hidden />
+        </button>
+      </div>
+      <div className="p-5">{children}</div>
+    </dialog>
+  );
+}

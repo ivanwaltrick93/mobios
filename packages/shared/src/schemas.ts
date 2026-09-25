@@ -109,6 +109,8 @@ export type Sessao = z.infer<typeof sessaoSchema>;
 
 export const usuarioSchema = z.object({
   id: z.uuid(),
+  /** Sequencial por oficina, gerado pelo banco e imutável. */
+  codigo: z.number().int(),
   nome: z.string(),
   email: z.string(),
   /** null = sem foto; senão, muda a cada troca (renova o cache). */
@@ -165,7 +167,7 @@ export const alterarSenhaFormSchema = z
   .refine(novaSenhaDiferente.regra, novaSenhaDiferente.erro)
   .refine((d) => d.confirmacao === d.novaSenha, { message: 'As senhas não conferem', path: ['confirmacao'] });
 
-// ---------- Listas configuráveis por oficina (Configurações → Cadastros) ----------
+// ---------- Listas configuráveis por oficina (Configurações, uma página por lista) ----------
 
 /**
  * Listas editáveis por oficina. `modulo`: quem acessa esse módulo consulta a lista (para preencher formulários);
@@ -215,12 +217,23 @@ export const OPCOES_PADRAO: Record<ListaOpcoes, string[]> = {
   tiposDeposito: ['Loja', 'Oficina', 'Central', 'Garantia', 'Trânsito', 'Outro'],
 };
 
-/** `usos`: quantos registros usam o item (clientes, materiais ou depósitos; ver LISTAS_OPCOES.uso). */
-export const opcaoSchema = z.object({ id: z.uuid(), nome: z.string(), ativa: z.boolean(), usos: z.number() });
+/**
+ * `codigo`: sequencial por oficina e lista, gerado pelo banco e imutável.
+ * `usos`: quantos registros usam o item (clientes, materiais ou depósitos; ver LISTAS_OPCOES.uso). Com uso, só inativa.
+ */
+export const opcaoSchema = z.object({
+  id: z.uuid(),
+  codigo: z.number().int(),
+  nome: z.string(),
+  descricao: z.string().nullable(),
+  ativa: z.boolean(),
+  usos: z.number(),
+});
 export type Opcao = z.infer<typeof opcaoSchema>;
 
 export const opcaoInputSchema = z.object({
   nome: z.string().trim().min(2, 'Informe o nome').max(60, 'Nome longo demais'),
+  descricao: textoOpcional.pipe(z.string().max(200, 'Descrição longa demais').nullish()),
   ativa: z.boolean(),
 });
 export type OpcaoInput = z.input<typeof opcaoInputSchema>;
@@ -282,7 +295,7 @@ export const PAIS_PADRAO = 'Brasil';
 /** Select vazio do formulário vira null. */
 const vazioComoNulo = (v: unknown) => (v === '' || v === undefined ? null : v);
 
-const telefoneSchema = (rotulo: string) =>
+export const telefoneSchema = (rotulo: string) =>
   z
     .string({ error: `Informe o ${rotulo}` })
     .trim()
@@ -290,7 +303,7 @@ const telefoneSchema = (rotulo: string) =>
     .refine(telefoneValido, `${rotulo[0]!.toUpperCase()}${rotulo.slice(1)} inválido: use DDD + número`)
     .transform(somenteDigitos);
 
-const dataPassadaOpcional = z
+export const dataPassadaOpcional = z
   .union([z.literal(''), z.iso.date('Data inválida')])
   .nullish()
   .transform((v) => v || null)

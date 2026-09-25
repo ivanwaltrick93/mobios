@@ -127,6 +127,41 @@
       "when": 1790207845034,
       "tag": "0017_indice_cliente_desde",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1790295588083,
+      "tag": "0018_vendedores",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1790295625560,
+      "tag": "0019_indices_busca",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1790296680852,
+      "tag": "0020_listas_configuracao",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1790297369895,
+      "tag": "0021_saldo_estoque",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1790297734468,
+      "tag": "0022_suprimento_material",
+      "breakpoints": true
     }
   ]
 }

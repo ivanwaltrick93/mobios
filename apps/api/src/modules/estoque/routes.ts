@@ -35,7 +35,7 @@ const colunas = {
   // Sem linha de saldo = zero.
   disponivel: sql<number>`coalesce(${estoques.disponivel}, 0)`.mapWith(Number),
   reservado: sql<number>`coalesce(${estoques.reservado}, 0)`.mapWith(Number),
-  total: sql<number>`coalesce(${estoques.disponivel}, 0) + coalesce(${estoques.reservado}, 0)`.mapWith(Number),
+  saldo: sql<number>`coalesce(${estoques.disponivel}, 0) - coalesce(${estoques.reservado}, 0)`.mapWith(Number),
   atualizadoEm: estoques.atualizadoEm,
   atualizadoPor: nomeUsuario('estoques', 'atualizado_por'),
   versao: estoques.versao,
@@ -174,7 +174,7 @@ export const estoqueRoutes: FastifyPluginAsyncZod = async (app) => {
         q ? buscaDeMaterial(q) : undefined,
         depositoId ? eq(depositos.id, depositoId) : undefined,
         materialId ? eq(materiais.id, materialId) : undefined,
-        comSaldo === 'true' ? or(gt(estoques.disponivel, 0), gt(estoques.reservado, 0)) : undefined,
+        comSaldo === 'true' ? gt(estoques.disponivel, estoques.reservado) : undefined,
       ];
       const where = and(...filtros);
       return withTenant(req.user.tid, async (tx) => {

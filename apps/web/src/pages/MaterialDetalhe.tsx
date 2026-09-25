@@ -113,6 +113,8 @@ export function MaterialDetalhe() {
             <Dado rotulo="Permite uso em O.S.">{simNao(m.permiteUsoOs)}</Dado>
             <Dado rotulo="Controla lote">{simNao(m.controlaLote)}</Dado>
             <Dado rotulo="Controla número de série">{simNao(m.controlaSerie)}</Dado>
+            <Dado rotulo="Múltiplo de venda">{m.multiplo === 1 ? '1 (unitário)' : m.multiplo}</Dado>
+            <Dado rotulo="Leadtime">{m.leadtimeDias} dia(s) corrido(s)</Dado>
           </Bloco>
           <Bloco titulo="Auditoria">
             <Dado rotulo="Cadastrado">

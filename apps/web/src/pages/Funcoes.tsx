@@ -1,16 +1,17 @@
 import {
   MODULOS,
   nomesNivel,
+  PARAMETRO_VENDEDOR,
   SEM_ACESSO,
   type Acessos,
   type Funcao,
   type FuncaoInput,
   type Nivel,
+  type ParametroFuncao,
 } from '@mobios/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle } from 'lucide-react';
 import { useState } from 'react';
-import { AbasConfiguracoes } from '../components/AbasConfiguracoes';
 import {
   Alerta,
   Botao,
@@ -34,17 +35,28 @@ import { chaveFuncoes } from './Usuarios';
 
 const tomNivel = (n: Nivel | null) => (n === 'editar' ? 'sucesso' : n === 'consultar' ? 'primario' : 'neutro');
 
+const useParametros = () =>
+  useQuery({ queryKey: [...chaveFuncoes, 'parametros'], queryFn: () => api<ParametroFuncao[]>('/funcoes/parametros') });
+
 function CelulaNivel({ nivel }: { nivel: Nivel | null }) {
   return <Selo tom={tomNivel(nivel)}>{nomesNivel[nivel ?? 'nenhum']}</Selo>;
 }
 
-/** Linha de edição (ou criação) de uma função: nome, status e nível por módulo. */
+/** Linha de edição (ou criação) de uma função: nome, descrição, status, parâmetros e nível por módulo. */
 function EditorFuncao({ funcao, aoConcluir }: { funcao?: Funcao; aoConcluir: () => void }) {
   const queryClient = useQueryClient();
+  const catalogo = useParametros();
   const [nome, setNome] = useState(funcao?.nome ?? '');
+  const [descricao, setDescricao] = useState(funcao?.descricao ?? '');
   const [ativa, setAtiva] = useState(funcao?.ativa ?? true);
   const [acessos, setAcessos] = useState<Acessos>(funcao?.acessos ?? SEM_ACESSO);
+  const [parametros, setParametros] = useState<string[]>(funcao?.parametros ?? []);
   const perdendoAcesso = !!funcao && funcao.ativa && !ativa && funcao.usuarios > 0;
+  const perdendoVendedor =
+    !!funcao &&
+    funcao.parametros.includes(PARAMETRO_VENDEDOR) &&
+    (!ativa || !parametros.includes(PARAMETRO_VENDEDOR)) &&
+    funcao.usuarios > 0;
 
   const salvar = useMutation({
     mutationFn: (dados: FuncaoInput) =>
@@ -53,6 +65,7 @@ function EditorFuncao({ funcao, aoConcluir }: { funcao?: Funcao; aoConcluir: () 
       queryClient.invalidateQueries({ queryKey: chaveFuncoes });
       queryClient.invalidateQueries({ queryKey: ['usuarios'] });
       queryClient.invalidateQueries({ queryKey: chaveSessao });
+      queryClient.invalidateQueries({ queryKey: ['vendedores'] }); // podem ter sido inativados
       aoConcluir();
     },
   });
@@ -65,7 +78,14 @@ function EditorFuncao({ funcao, aoConcluir }: { funcao?: Funcao; aoConcluir: () 
       )
     )
       return;
-    salvar.mutate({ nome, ativa, acessos });
+    if (
+      perdendoVendedor &&
+      !confirm(
+        'Os vendedores ligados a usuários que dependem desta função para ser vendedor serão inativados. Continuar?',
+      )
+    )
+      return;
+    salvar.mutate({ nome, descricao, ativa, acessos, parametros });
   }
 
   return (
@@ -83,11 +103,39 @@ function EditorFuncao({ funcao, aoConcluir }: { funcao?: Funcao; aoConcluir: () 
             <Input value={nome} autoFocus onChange={(e) => setNome(e.target.value)} placeholder="Ex.: Almoxarife" />
           </Campo>
         </div>
+        <div className="min-w-64 flex-1">
+          <Campo rotulo="Descrição">
+            <Input value={descricao} onChange={(e) => setDescricao(e.target.value)} maxLength={200} />
+          </Campo>
+        </div>
         <label className="flex items-center gap-2 pb-2 text-sm">
           <input type="checkbox" checked={ativa} onChange={(e) => setAtiva(e.target.checked)} />
           Função ativa
         </label>
       </div>
+
+      {catalogo.data && catalogo.data.length > 0 && (
+        <fieldset className="space-y-2">
+          <legend className="text-sm font-medium text-texto">Parâmetros</legend>
+          {catalogo.data.map((p) => (
+            <label key={p.codigo} className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={parametros.includes(p.codigo)}
+                onChange={(e) =>
+                  setParametros((atuais) =>
+                    e.target.checked ? [...atuais, p.codigo] : atuais.filter((c) => c !== p.codigo),
+                  )
+                }
+              />
+              <span>
+                {p.nome} <span className="text-texto-suave">— {p.descricao}</span>
+              </span>
+            </label>
+          ))}
+        </fieldset>
+      )}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {MODULOS.map((m) => (
@@ -129,20 +177,26 @@ function EditorFuncao({ funcao, aoConcluir }: { funcao?: Funcao; aoConcluir: () 
 export function Funcoes() {
   const admin = useAdmin();
   const funcoes = useQuery({ queryKey: chaveFuncoes, queryFn: () => api<Funcao[]>('/funcoes'), enabled: admin });
+  const catalogo = useParametros();
   const [editando, setEditando] = useState<string | 'nova' | null>(null);
+  const queryClient = useQueryClient();
+  const excluir = useMutation({
+    mutationFn: (f: Funcao) => api(`/funcoes/${f.id}`, { method: 'DELETE' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: chaveFuncoes }),
+  });
 
   if (!admin) return <Alerta>Apenas o Administrador pode configurar funções e permissões.</Alerta>;
 
   return (
     <div className="space-y-6">
-      <Titulo>Configurações</Titulo>
-      <AbasConfiguracoes />
+      <Titulo>Funções e permissões</Titulo>
 
       <div className="flex flex-wrap items-start justify-between gap-3">
         <TextoSuave className="max-w-2xl">
           Defina o que cada função pode fazer em cada módulo. Um usuário pode ter várias funções e recebe o maior acesso
           de cada módulo. As mudanças valem na hora, inclusive para quem já está conectado. Usuários, funções e
-          configurações são exclusivos do Administrador.
+          configurações são exclusivos do Administrador. Só é possível excluir uma função sem usuários; com usuários,
+          desative-a.
         </TextoSuave>
         {editando !== 'nova' && <Botao onClick={() => setEditando('nova')}>Nova função</Botao>}
       </div>
@@ -155,9 +209,11 @@ export function Funcoes() {
       )}
 
       {funcoes.isError && <Alerta>{funcoes.error.message}</Alerta>}
+      <Alerta>{excluir.isError && excluir.error.message}</Alerta>
 
       <Tabela>
         <Cabecalho>
+          <Th>Código</Th>
           <Th>Função</Th>
           {MODULOS.map((m) => (
             <Th key={m.id}>
@@ -176,14 +232,27 @@ export function Funcoes() {
           {funcoes.data?.map((f) =>
             editando === f.id ? (
               <Linha key={f.id} className="bg-superficie-alt">
-                <Td colSpan={MODULOS.length + 3} className="p-4">
+                <Td colSpan={MODULOS.length + 4} className="p-4">
                   <EditorFuncao funcao={f} aoConcluir={() => setEditando(null)} />
                 </Td>
               </Linha>
             ) : (
               <Linha key={f.id} className={f.ativa ? '' : 'opacity-60'}>
-                <Td className="whitespace-nowrap font-medium">
-                  {f.nome} {!f.ativa && <Selo>desativada</Selo>}
+                <Td className="font-mono text-xs font-semibold">{f.codigo}</Td>
+                <Td className="min-w-40">
+                  <span className="whitespace-nowrap font-medium">
+                    {f.nome} {!f.ativa && <Selo>desativada</Selo>}
+                  </span>
+                  {f.descricao && <span className="block text-xs text-texto-suave">{f.descricao}</span>}
+                  {f.parametros.length > 0 && (
+                    <span className="mt-1 flex flex-wrap gap-1">
+                      {f.parametros.map((codigo) => (
+                        <Selo key={codigo} tom="primario">
+                          {catalogo.data?.find((p) => p.codigo === codigo)?.nome ?? codigo}
+                        </Selo>
+                      ))}
+                    </span>
+                  )}
                 </Td>
                 {f.admin ? (
                   <Td colSpan={MODULOS.length} suave>
@@ -197,8 +266,22 @@ export function Funcoes() {
                   ))
                 )}
                 <Td suave>{f.usuarios}</Td>
-                <Td className="text-right">
-                  {!f.admin && <BotaoLink onClick={() => setEditando(f.id)}>Editar</BotaoLink>}
+                <Td className="text-right whitespace-nowrap">
+                  {!f.admin && (
+                    <span className="flex justify-end gap-4">
+                      <BotaoLink onClick={() => setEditando(f.id)}>Editar</BotaoLink>
+                      {/* Com usuário ligado (ativo ou não), a função só pode ser desativada. */}
+                      {f.usuarios === 0 && (
+                        <BotaoLink
+                          perigo
+                          disabled={excluir.isPending}
+                          onClick={() => confirm(`Excluir a função ${f.nome}?`) && excluir.mutate(f)}
+                        >
+                          Excluir
+                        </BotaoLink>
+                      )}
+                    </span>
+                  )}
                 </Td>
               </Linha>
             ),

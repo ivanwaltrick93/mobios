@@ -3,7 +3,8 @@ import { UNIDADES } from './materiais.js';
 
 /*
  * Estoque por material + depósito (chave: SKU + depósito).
- * Disponível = livre para vender/usar agora; reservado = separado para O.S./pedido; físico = disponível + reservado.
+ * Disponível = tudo o que existe no depósito; reservado = a parte dele separada para O.S./pedido (nunca maior que o
+ * disponível); saldo = disponível − reservado, o que está livre para vender ou usar.
  * Por enquanto o saldo muda só por ajuste manual com motivo; compras, vendas e O.S. vão movimentar depois.
  */
 
@@ -24,26 +25,38 @@ const motivoAjuste = z
   .min(3, 'Informe o motivo do ajuste')
   .max(200, 'Máximo de 200 caracteres');
 
-export const estoqueAjusteSchema = z.object({
-  disponivel: quantidade('o disponível'),
-  reservado: quantidade('o reservado'),
-  motivo: motivoAjuste,
-  /** Versão lida do saldo (obrigatória quando o saldo já existe): evita sobrescrever ajuste de outra pessoa. */
-  versao: z.number().int().min(1).optional(),
-});
+/** O reservado é parte do disponível: nunca maior que ele (o banco também confere). */
+export const reservadoAteDisponivel = {
+  regra: (d: { disponivel: number; reservado: number }) => d.reservado <= d.disponivel,
+  erro: { message: 'O reservado não pode ser maior que o disponível', path: ['reservado'] },
+};
+
+export const estoqueAjusteSchema = z
+  .object({
+    disponivel: quantidade('o disponível'),
+    reservado: quantidade('o reservado'),
+    motivo: motivoAjuste,
+    /** Versão lida do saldo (obrigatória quando o saldo já existe): evita sobrescrever ajuste de outra pessoa. */
+    versao: z.number().int().min(1).optional(),
+  })
+  .refine(reservadoAteDisponivel.regra, reservadoAteDisponivel.erro);
 export type EstoqueAjusteInput = z.input<typeof estoqueAjusteSchema>;
 
 /**
  * Lançamento de saldo final pelos códigos digitados (SKU + código do depósito). A API confere se os dois
  * existem antes de gravar. Sem versão: o valor informado é o saldo final (como num inventário).
  */
-export const lancamentoEstoqueSchema = z.object({
+export const lancamentoEstoqueCampos = z.object({
   sku: z.string().trim().toUpperCase().min(1, 'Informe o SKU').max(40, 'Máximo de 40 caracteres'),
   deposito: z.string().trim().toUpperCase().min(1, 'Informe o código do depósito').max(20, 'Máximo de 20 caracteres'),
   disponivel: quantidade('o disponível'),
   reservado: quantidade('o reservado'),
   motivo: motivoAjuste,
 });
+export const lancamentoEstoqueSchema = lancamentoEstoqueCampos.refine(
+  reservadoAteDisponivel.regra,
+  reservadoAteDisponivel.erro,
+);
 export type LancamentoEstoqueInput = z.input<typeof lancamentoEstoqueSchema>;
 
 export const saldoSchema = z.object({
@@ -58,8 +71,8 @@ export const saldoSchema = z.object({
   depositoAtivo: z.boolean(),
   disponivel: z.number(),
   reservado: z.number(),
-  /** Físico = disponível + reservado. */
-  total: z.number(),
+  /** Saldo = disponível − reservado (livre para vender ou usar). */
+  saldo: z.number(),
   atualizadoEm: z.coerce.date().nullable(),
   atualizadoPor: z.string().nullable(),
   /** null = ainda não há saldo gravado para esse material nesse depósito (zero). */
@@ -73,7 +86,7 @@ export const estoqueFiltroSchema = z.object({
   materialId: z.uuid().optional(),
   /**
    * "false" (padrão): todo material ativo que controla estoque × todo depósito ativo (zerado onde não há saldo),
-   * mais as linhas com saldo de itens já inativados. "true": só linhas com disponível ou reservado.
+   * mais as linhas com estoque de itens já inativados. "true": só linhas com saldo (disponível − reservado) > 0.
    */
   comSaldo: z.enum(['true', 'false']).default('false'),
   pagina: z.coerce.number().int().min(1).default(1),

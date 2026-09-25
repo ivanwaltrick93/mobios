@@ -22,6 +22,7 @@ import { publicoRoutes } from './modules/publico/routes.js';
 import { relatoriosRoutes } from './modules/relatorios/routes.js';
 import { usuariosRoutes } from './modules/usuarios/routes.js';
 import { veiculosRoutes } from './modules/veiculos/routes.js';
+import { vendedoresRoutes } from './modules/vendedores/routes.js';
 
 export async function criarApp() {
   const app = Fastify({
@@ -55,6 +56,7 @@ export async function criarApp() {
   await app.register(configuracoesRoutes, { prefix: '/api/configuracoes' });
   await app.register(relatoriosRoutes, { prefix: '/api/relatorios' });
   await app.register(painelRoutes, { prefix: '/api/painel' });
+  await app.register(vendedoresRoutes, { prefix: '/api/vendedores' });
 
   return app;
 }

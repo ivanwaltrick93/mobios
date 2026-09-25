@@ -1,10 +1,12 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
+  LEADTIME_PADRAO_DIAS,
   mascaraCest,
   mascaraCodigo,
   mascaraGtin,
   mascaraNcm,
   materialInputSchema,
+  MULTIPLO_PADRAO,
   ORIGENS_FISCAIS,
   UNIDADES,
   type Material,
@@ -46,6 +48,8 @@ const valoresIniciais = (m?: Material): Entrada =>
         permiteUsoOs: m.permiteUsoOs,
         controlaLote: m.controlaLote,
         controlaSerie: m.controlaSerie,
+        multiplo: String(m.multiplo),
+        leadtimeDias: String(m.leadtimeDias),
       }
     : {
         sku: '',
@@ -66,6 +70,8 @@ const valoresIniciais = (m?: Material): Entrada =>
         permiteUsoOs: true,
         controlaLote: false,
         controlaSerie: false,
+        multiplo: String(MULTIPLO_PADRAO),
+        leadtimeDias: String(LEADTIME_PADRAO_DIAS),
       };
 
 const ETAPAS: EtapaDef[] = [
@@ -77,7 +83,16 @@ const ETAPAS: EtapaDef[] = [
   { titulo: 'Fiscal', campos: ['ncm', 'cest', 'origem'] },
   {
     titulo: 'Controles',
-    campos: ['controlaEstoque', 'permiteVenda', 'permiteCompra', 'permiteUsoOs', 'controlaLote', 'controlaSerie'],
+    campos: [
+      'controlaEstoque',
+      'permiteVenda',
+      'permiteCompra',
+      'permiteUsoOs',
+      'controlaLote',
+      'controlaSerie',
+      'multiplo',
+      'leadtimeDias',
+    ],
   },
 ];
 
@@ -286,9 +301,26 @@ const CONTROLES = [
 ] as const;
 
 function EtapaControles({ form }: { form: Form }) {
+  const erros = form.formState.errors;
   return (
     <div className="space-y-3">
       <TextoSuave>Regras que os módulos de estoque, compras, vendas e O.S. vão respeitar.</TextoSuave>
+      <div className="grid gap-3 md:grid-cols-2">
+        <Campo
+          rotulo="Múltiplo de venda *"
+          dica={`Vendido só em múltiplos desta quantidade (caixa master). Vazio = ${MULTIPLO_PADRAO} (unitário).`}
+          erro={erros.multiplo}
+        >
+          <Input inputMode="numeric" {...form.register('multiplo')} />
+        </Campo>
+        <Campo
+          rotulo="Leadtime (dias corridos) *"
+          dica={`Tempo de ressuprimento do material. Vazio = ${LEADTIME_PADRAO_DIAS} dias.`}
+          erro={erros.leadtimeDias}
+        >
+          <Input inputMode="numeric" {...form.register('leadtimeDias')} />
+        </Campo>
+      </div>
       <div className="grid gap-3 md:grid-cols-2">
         {CONTROLES.map((c) => (
           <div key={c.campo} className="rounded-md border border-borda p-3">

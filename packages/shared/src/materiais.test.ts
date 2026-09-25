@@ -29,7 +29,20 @@ describe('materiais e preços', () => {
       origem: null,
       controlaEstoque: true,
       controlaLote: false,
+      // Suprimento: vazio ou ausente assume os padrões.
+      multiplo: 1,
+      leadtimeDias: 30,
     });
+    expect(materialInputSchema.parse({ ...base, multiplo: '', leadtimeDias: '' })).toMatchObject({
+      multiplo: 1,
+      leadtimeDias: 30,
+    });
+    expect(materialInputSchema.parse({ ...base, multiplo: '12', leadtimeDias: '0' })).toMatchObject({
+      multiplo: 12,
+      leadtimeDias: 0,
+    });
+    for (const invalido of [{ multiplo: '0' }, { multiplo: '1,5' }, { leadtimeDias: '-1' }, { leadtimeDias: 'x' }])
+      expect(materialInputSchema.safeParse({ ...base, ...invalido }).success).toBe(false);
     expect(materialInputSchema.safeParse({ ...base, sku: 'FIL 001' }).success).toBe(false);
     expect(materialInputSchema.safeParse({ ...base, ncm: '123' }).success).toBe(false);
   });
@@ -77,12 +90,13 @@ describe('estoque', async () => {
     expect(quantidadeParaNumero('1.234,567')).toBe(1234.567);
     expect(quantidadeParaNumero('')).toBeNull();
   });
-  it('ajuste exige motivo e não aceita negativo nem 4 casas', () => {
+  it('ajuste exige motivo e não aceita negativo, 4 casas nem reservado maior que o disponível', () => {
     expect(estoqueAjusteSchema.safeParse({ disponivel: 1, reservado: 0, motivo: '' }).success).toBe(false);
     expect(estoqueAjusteSchema.safeParse({ disponivel: -1, reservado: 0, motivo: 'Inventário' }).success).toBe(false);
     expect(estoqueAjusteSchema.safeParse({ disponivel: 1.2345, reservado: 0, motivo: 'Inventário' }).success).toBe(
       false,
     );
-    expect(estoqueAjusteSchema.safeParse({ disponivel: 1.5, reservado: 2, motivo: 'Inventário' }).success).toBe(true);
+    expect(estoqueAjusteSchema.safeParse({ disponivel: 1.5, reservado: 2, motivo: 'Inventário' }).success).toBe(false);
+    expect(estoqueAjusteSchema.safeParse({ disponivel: 1.5, reservado: 1.5, motivo: 'Inventário' }).success).toBe(true);
   });
 });

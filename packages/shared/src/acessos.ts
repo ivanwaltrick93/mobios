@@ -129,12 +129,19 @@ export const temAcesso = (acessos: Acessos | undefined, modulo: ModuloId, nivel:
 export const NOME_FUNCAO_ADMIN = 'Administrador';
 
 /**
+ * Parâmetros de função: marcam o que uma função habilita além dos níveis por módulo. A lista fica na
+ * tabela global `parametros_funcao` (migração 0018); o código usa só os códigos abaixo.
+ */
+export const PARAMETRO_VENDEDOR = 'VENDEDOR';
+
+/**
  * Funções criadas em toda oficina nova (matriz aprovada pelo dono do produto, docs/ENTREGAVEIS.md §1.1).
  * As migrações 0005, 0008 e 0012 aplicam o mesmo às oficinas que já existiam: mantenha tudo igual.
  */
-export const FUNCOES_PADRAO: { nome: string; acessos: Partial<Acessos> }[] = [
+export const FUNCOES_PADRAO: { nome: string; acessos: Partial<Acessos>; parametros?: string[] }[] = [
   {
     nome: 'Atendente',
+    parametros: [PARAMETRO_VENDEDOR],
     acessos: {
       clientes: 'editar',
       os: 'editar',
@@ -176,7 +183,15 @@ export const FUNCOES_PADRAO: { nome: string; acessos: Partial<Acessos> }[] = [
 export const funcaoResumoSchema = z.object({ id: z.uuid(), nome: z.string(), admin: z.boolean() });
 export type FuncaoResumo = z.infer<typeof funcaoResumoSchema>;
 
+export const parametroFuncaoSchema = z.object({ codigo: z.string(), nome: z.string(), descricao: z.string() });
+export type ParametroFuncao = z.infer<typeof parametroFuncaoSchema>;
+
 export const funcaoSchema = funcaoResumoSchema.extend({
+  /** Sequencial por oficina, gerado pelo banco e imutável. */
+  codigo: z.number().int(),
+  descricao: z.string().nullable(),
+  /** Códigos dos parâmetros marcados (ex.: VENDEDOR). */
+  parametros: z.array(z.string()),
   ativa: z.boolean(),
   acessos: acessosSchema,
   usuarios: z.number(),
@@ -185,7 +200,17 @@ export type Funcao = z.infer<typeof funcaoSchema>;
 
 export const funcaoInputSchema = z.object({
   nome: z.string().trim().min(2, 'Informe o nome da função').max(60, 'Nome longo demais'),
+  descricao: z
+    .string()
+    .trim()
+    .max(200, 'Descrição longa demais')
+    .nullish()
+    .transform((v) => v || null),
   ativa: z.boolean(),
+  parametros: z
+    .array(z.string())
+    .default([])
+    .transform((codigos) => [...new Set(codigos)]),
   // O nível precisa existir no módulo (ex.: Relatórios só tem "consultar").
   acessos: acessosSchema.superRefine((a, ctx) => {
     for (const m of MODULOS) {

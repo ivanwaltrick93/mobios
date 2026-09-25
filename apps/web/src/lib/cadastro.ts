@@ -1,8 +1,19 @@
-import type { ListaOpcoes, Opcao, SugestoesVeiculo } from '@mobios/shared';
+import { LISTAS_OPCOES, type ListaOpcoes, type Opcao, type SugestoesVeiculo } from '@mobios/shared';
 import { useQuery } from '@tanstack/react-query';
 import { api } from './api';
 
 export const chaveOpcoes = (lista: ListaOpcoes) => ['opcoes', lista] as const;
+
+/** Página de cada lista em Configurações (uma por lista, no submenu). */
+export const PAGINAS_LISTAS: { lista: ListaOpcoes; para: string; rotulo: string }[] = (
+  [
+    ['origens', '/configuracoes/origens'],
+    ['relacionamentos', '/configuracoes/relacionamentos'],
+    ['cargos', '/configuracoes/cargos'],
+    ['tiposMaterial', '/configuracoes/tipos-material'],
+    ['tiposDeposito', '/configuracoes/tipos-deposito'],
+  ] as const
+).map(([lista, para]) => ({ lista, para, rotulo: LISTAS_OPCOES[lista].titulo }));
 
 /** Itens de uma lista editável da oficina (origem, relacionamento). */
 export const useOpcoes = (lista: ListaOpcoes) =>

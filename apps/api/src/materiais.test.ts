@@ -145,6 +145,8 @@ describe('materiais', () => {
       criadoPor: 'Admin Teste',
       versao: 1,
       ativo: true,
+      multiplo: 1, // sem informar: padrões de suprimento
+      leadtimeDias: 30,
     });
 
     const base = { descricao: 'Outro', tipoId: material.tipoId, categoriaId: filtros.id, unidade: 'UN' };
@@ -185,6 +187,16 @@ describe('materiais', () => {
       versao: 1,
     });
     expect(primeira.json()).toMatchObject({ versao: 2, descricaoCurta: 'Vela', atualizadoPor: 'Admin Teste' });
+    const caixa = await o.chamar('PUT', `/api/materiais/${vela.id}`, {
+      ...dados,
+      multiplo: 4,
+      leadtimeDias: 15,
+      versao: 2,
+    });
+    expect(caixa.json()).toMatchObject({ multiplo: 4, leadtimeDias: 15, versao: 3 });
+    expect(
+      (await o.chamar('PUT', `/api/materiais/${vela.id}`, { ...dados, multiplo: 0, versao: 3 })).json().campos.multiplo,
+    ).toBe('Múltiplo: número inteiro de 1 a 999.999');
     expect((await o.chamar('PUT', `/api/materiais/${vela.id}`, { ...dados, versao: 1 })).statusCode).toBe(409);
     expect((await o.chamar('PUT', `/api/materiais/${vela.id}`, dados)).statusCode).toBe(400); // sem versão
 
@@ -438,7 +450,7 @@ describe('estoque por material + depósito', () => {
       depositoCodigo: 'LOJA',
       disponivel: 10,
       reservado: 2,
-      total: 12,
+      saldo: 8,
       versao: 1,
       atualizadoPor: 'Admin Teste',
     });
@@ -451,6 +463,10 @@ describe('estoque por material + depósito', () => {
     });
     expect((await ajustar(loja.id, { disponivel: 7, reservado: 2, motivo: 'Venda', versao: 1 })).statusCode).toBe(409);
     expect((await ajustar(loja.id, { disponivel: -1, reservado: 0, motivo: 'Erro', versao: 2 })).statusCode).toBe(400);
+    // O reservado é parte do disponível: nunca maior que ele (saldo negativo).
+    const reservaDemais = await ajustar(loja.id, { disponivel: 3, reservado: 4, motivo: 'Erro', versao: 2 });
+    expect(reservaDemais.statusCode).toBe(400);
+    expect(reservaDemais.json().campos.reservado).toBe('O reservado não pode ser maior que o disponível');
 
     const historico = (await o.chamar('GET', `/api/estoque/${material.id}/${loja.id}/ajustes`)).json();
     expect(
@@ -476,7 +492,7 @@ describe('estoque por material + depósito', () => {
     ).json();
     expect(
       (await ajustar(oficina.id, { disponivel: 20.5, reservado: 0.25, motivo: 'Tambor aberto' }, oleo.id)).json(),
-    ).toMatchObject({ disponivel: 20.5, reservado: 0.25, total: 20.75 });
+    ).toMatchObject({ disponivel: 20.5, reservado: 0.25, saldo: 20.25 });
 
     // Tabela de estoque (SKU + depósito), com busca e filtro.
     const linhas = async (filtro = '') =>
@@ -772,7 +788,10 @@ describe('lançamento e importação de estoque', () => {
     expect(errado.json().campos).toEqual({ sku: 'SKU X-1 não encontrado', deposito: 'Depósito NADA não encontrado' });
     expect(
       (await lancar({ sku: 'fil-001', deposito: 'loja', disponivel: 5, reservado: 1, motivo: 'Inventário' })).json(),
-    ).toMatchObject({ sku: 'FIL-001', depositoCodigo: 'LOJA', disponivel: 5, reservado: 1, versao: 1 });
+    ).toMatchObject({ sku: 'FIL-001', depositoCodigo: 'LOJA', disponivel: 5, reservado: 1, saldo: 4, versao: 1 });
+    expect(
+      (await lancar({ sku: 'FIL-001', deposito: 'LOJA', disponivel: 1, reservado: 2, motivo: 'Erro' })).statusCode,
+    ).toBe(400);
 
     const importar = (texto: string) =>
       o.chamar('POST', '/api/estoque/importar', texto, { 'content-type': 'text/csv' });
@@ -786,11 +805,12 @@ describe('lançamento e importação de estoque', () => {
           'NAO-EXISTE;LOJA;1;0;',
           'FIL-001;LOJA;-1;0;',
           'FIL-001;OFI;3;0;',
+          'FIL-001;LOJA;0;;', // mantém o reservado 1, maior que o novo disponível
         ),
       )
     ).json();
     expect(resultado).toEqual({
-      linhas: 6,
+      linhas: 7,
       importadas: 2,
       ignoradas: 1,
       erros: [
@@ -800,6 +820,7 @@ describe('lançamento e importação de estoque', () => {
           linha: 6,
           mensagem: 'Disponível "-1" inválido: use um número não negativo com até 3 casas decimais.',
         },
+        { linha: 8, mensagem: 'O reservado não pode ser maior que o disponível.' },
       ],
     });
     const saldos = (await o.chamar('GET', `/api/estoque/material/${material.id}`)).json();
@@ -910,6 +931,32 @@ describe('importação de categorias e materiais por planilha', () => {
     });
     const [oleo] = (await o.chamar('GET', '/api/materiais?q=OLE-5W30')).json().itens;
     expect(oleo).toMatchObject({ unidade: 'L', marcaNome: 'Mann Filter', categoriaNome: 'Filtros' });
+    const suprimento = async () => {
+      const m = (await o.chamar('GET', `/api/materiais/${oleo.id}`)).json();
+      return [m.multiplo, m.leadtimeDias];
+    };
+    expect(await suprimento()).toEqual([1, 30]); // colunas ausentes: padrões
+
+    // Múltiplo e leadtime: coluna presente e vazia = padrão; ausente = mantém; inválido = erro na linha.
+    const comSuprimento = (
+      await importar(
+        o,
+        '/api/materiais/importar',
+        planilha(
+          'sku;descricao;tipo;categoria;unidade;multiplo;leadtime_dias',
+          'OLE-5W30;Óleo 5W30;Peça;PEC;L;12;',
+          'X-9;Item;Peça;PEC;UN;0;10',
+        ),
+      )
+    ).json();
+    expect(comSuprimento.erros).toEqual([{ linha: 3, mensagem: 'multiplo: Múltiplo: número inteiro de 1 a 999.999' }]);
+    expect(await suprimento()).toEqual([12, 30]);
+    await importar(
+      o,
+      '/api/materiais/importar',
+      planilha('sku;descricao;tipo;categoria;unidade', 'OLE-5W30;Óleo;Peça;PEC;L'),
+    );
+    expect(await suprimento()).toEqual([12, 30]);
   });
 
   it('linhas de preço: a tabela da tela vale quando a coluna tabela fica vazia', async () => {

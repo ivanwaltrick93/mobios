@@ -122,6 +122,17 @@ export type Marca = z.infer<typeof marcaSchema>;
 
 // ---------- Material ----------
 
+/** Inteiro de formulário ou planilha em que vazio assume o padrão (não é "sem valor"). */
+const inteiroComPadrao = (padrao: number, min: number, max: number, mensagem: string) =>
+  z.preprocess(
+    (v) => (v === '' || v == null ? padrao : Number(v)),
+    z.number({ error: mensagem }).int(mensagem).min(min, mensagem).max(max, mensagem),
+  );
+
+/** Suprimento: múltiplo de venda (caixa master) e tempo de ressuprimento em dias corridos. */
+export const MULTIPLO_PADRAO = 1;
+export const LEADTIME_PADRAO_DIAS = 30;
+
 export const materialInputSchema = z.object({
   sku: codigo('SKU', 40),
   codigoBarras: z
@@ -159,6 +170,8 @@ export const materialInputSchema = z.object({
   permiteUsoOs: z.boolean().default(true),
   controlaLote: z.boolean().default(false),
   controlaSerie: z.boolean().default(false),
+  multiplo: inteiroComPadrao(MULTIPLO_PADRAO, 1, 999_999, 'Múltiplo: número inteiro de 1 a 999.999'),
+  leadtimeDias: inteiroComPadrao(LEADTIME_PADRAO_DIAS, 0, 3650, 'Leadtime: número inteiro de dias, de 0 a 3.650'),
   versao,
 });
 export type MaterialInput = z.input<typeof materialInputSchema>;
@@ -194,6 +207,10 @@ export const materialSchema = materialResumoSchema.extend({
   permiteUsoOs: z.boolean(),
   controlaLote: z.boolean(),
   controlaSerie: z.boolean(),
+  /** Vende-se só em múltiplos desta quantidade (caixa master); 1 = unitário. */
+  multiplo: z.number().int(),
+  /** Tempo de ressuprimento, em dias corridos. */
+  leadtimeDias: z.number().int(),
   ...auditoria,
 });
 export type Material = z.infer<typeof materialSchema>;

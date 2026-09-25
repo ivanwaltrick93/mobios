@@ -37,7 +37,7 @@ export function EstoqueMaterial({ material }: { material: Material }) {
       />
     );
   }
-  const soma = (campo: 'disponivel' | 'reservado' | 'total') => saldos.data.reduce((acc, s) => acc + s[campo], 0);
+  const soma = (campo: 'disponivel' | 'reservado' | 'saldo') => saldos.data.reduce((acc, s) => acc + s[campo], 0);
   const unidade = `${material.unidade} — ${UNIDADES[material.unidade].nome}`;
 
   return (
@@ -45,9 +45,9 @@ export function EstoqueMaterial({ material }: { material: Material }) {
       <div className="grid gap-4 sm:grid-cols-3">
         {(
           [
-            ['Disponível', 'disponivel', 'Livre para vender ou usar'],
+            ['Disponível', 'disponivel', 'Tudo o que existe no depósito'],
             ['Reservado', 'reservado', 'Separado para O.S. ou pedido'],
-            ['Físico', 'total', 'Disponível + reservado'],
+            ['Saldo', 'saldo', 'Disponível − reservado: livre para vender ou usar'],
           ] as const
         ).map(([rotulo, campo, dica]) => (
           <Cartao key={campo} className="p-5">
@@ -72,15 +72,14 @@ export function EstoqueMaterial({ material }: { material: Material }) {
               </span>
               <span className="flex flex-wrap items-center gap-4">
                 <span>
-                  Disponível{' '}
-                  <strong className={s.disponivel === 0 ? 'text-alerta' : ''}>
-                    {formatarQuantidade(s.disponivel)}
-                  </strong>
+                  Disponível <strong>{formatarQuantidade(s.disponivel)}</strong>
                 </span>
                 <span>
                   Reservado <strong>{formatarQuantidade(s.reservado)}</strong>
                 </span>
-                <span className="text-texto-suave">Físico {formatarQuantidade(s.total)}</span>
+                <span>
+                  Saldo <strong className={s.saldo === 0 ? 'text-alerta' : ''}>{formatarQuantidade(s.saldo)}</strong>
+                </span>
                 {editar && material.ativo && s.depositoAtivo && (
                   <BotaoLink onClick={() => setAberto({ depositoId: s.depositoId, modo: 'ajuste' })}>Ajustar</BotaoLink>
                 )}

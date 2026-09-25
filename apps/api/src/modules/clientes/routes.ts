@@ -9,6 +9,7 @@ import {
   COLUNAS_IMPORTACAO_CLIENTES,
   DIAS_ANIVERSARIO_SEMANA,
   hojeIso,
+  LISTAS_OPCOES,
   pendenciasCliente,
   resultadoImportacaoSchema,
   type Cliente,
@@ -216,13 +217,16 @@ async function idsPorNome(tx: Tx, tabela: ListaDeOpcoes) {
   return new Map(itens.map((i) => [comparavel(i.nome), i.id]));
 }
 
+/** Colunas da planilha que apontam para listas de Configurações. */
+const LISTA_DA_COLUNA = { origem: 'origens', relacionamento: 'relacionamentos', responsavel_funcao: 'cargos' } as const;
+
 /**
  * Monta a entrada do cadastro a partir da linha. Colunas ausentes do arquivo mantêm o valor do cliente
  * existente; o endereço da linha substitui o principal e o responsável da linha (PJ) substitui o principal.
  */
 function clienteDaLinha(
   valores: Record<string, string>,
-  listas: Record<'origem' | 'relacionamento' | 'responsavel_funcao', Map<string, string>>,
+  listas: Record<keyof typeof LISTA_DA_COLUNA, Map<string, string>>,
   atual?: Cliente,
 ): ClienteInput {
   const valor = (coluna: string) => valores[coluna] ?? '';
@@ -233,7 +237,11 @@ function clienteDaLinha(
     if (!temColuna(coluna)) return atualId ?? null;
     if (!valor(coluna)) return null;
     const id = listas[coluna].get(comparavel(valor(coluna)));
-    if (!id) throw new ErroHttp(400, `${coluna}: "${valor(coluna)}" não está na lista (Configurações → Cadastros).`);
+    if (!id)
+      throw new ErroHttp(
+        400,
+        `${coluna}: "${valor(coluna)}" não está na lista (Configurações → ${LISTAS_OPCOES[LISTA_DA_COLUNA[coluna]].titulo}).`,
+      );
     return id;
   };
   const tipo = valor('tipo').toUpperCase() as 'PF' | 'PJ';

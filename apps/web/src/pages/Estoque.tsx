@@ -30,7 +30,7 @@ import { usePode } from '../lib/sessao';
 
 const chave = (s: Saldo) => `${s.materialId}:${s.depositoId}`;
 
-/** Tabela de estoque: uma linha por SKU + depósito, com disponível (livre) e reservado. */
+/** Tabela de estoque: uma linha por SKU + depósito, com disponível (total), reservado e saldo (livre). */
 export function Estoque() {
   const pode = usePode();
   const editar = pode('estoque', 'editar');
@@ -85,9 +85,9 @@ export function Estoque() {
         Estoque
       </Titulo>
       <TextoSuave>
-        Disponível = livre para vender ou usar. Reservado = separado para O.S. ou pedido. Físico = disponível +
-        reservado. Todo material ativo aparece em cada depósito; os saldos mudam por ajuste, lançamento ou planilha,
-        sempre com motivo.
+        Disponível = tudo o que existe no depósito. Reservado = parte dele separada para O.S. ou pedido. Saldo =
+        disponível − reservado, o que está livre para vender ou usar. Todo material ativo aparece em cada depósito; as
+        quantidades mudam por ajuste, lançamento ou planilha, sempre com motivo.
       </TextoSuave>
 
       {painel === 'lancamento' && <LancamentoEstoqueForm aoConcluir={() => setPainel(null)} />}
@@ -133,7 +133,7 @@ export function Estoque() {
           <Th>Depósito</Th>
           <Th className="text-right">Disponível</Th>
           <Th className="text-right">Reservado</Th>
-          <Th className="text-right">Físico</Th>
+          <Th className="text-right">Saldo</Th>
           <Th />
         </Cabecalho>
         <tbody>
@@ -154,13 +154,12 @@ export function Estoque() {
                 <Td suave className="whitespace-nowrap">
                   {s.depositoCodigo} — {s.depositoNome}
                 </Td>
-                <Td className={`text-right font-semibold whitespace-nowrap ${s.disponivel === 0 ? 'text-alerta' : ''}`}>
-                  {formatarQuantidade(s.disponivel)}{' '}
-                  <span className="text-xs font-normal text-texto-suave">{s.unidade}</span>
+                <Td className="text-right whitespace-nowrap">
+                  {formatarQuantidade(s.disponivel)} <span className="text-xs text-texto-suave">{s.unidade}</span>
                 </Td>
                 <Td className="text-right whitespace-nowrap">{formatarQuantidade(s.reservado)}</Td>
-                <Td suave className="text-right whitespace-nowrap">
-                  {formatarQuantidade(s.total)}
+                <Td className={`text-right font-semibold whitespace-nowrap ${s.saldo === 0 ? 'text-alerta' : ''}`}>
+                  {formatarQuantidade(s.saldo)}
                 </Td>
                 <Td className="text-right whitespace-nowrap">
                   <span className="flex justify-end gap-3">
