@@ -128,12 +128,13 @@ export function OrcamentoDetalhe() {
             tipo: 'aprovar' as const,
             rotulo: 'Aprovar',
             icone: <CheckCircle2 className="mr-1.5 size-4" aria-hidden />,
+            variante: 'sucesso' as const,
           },
           {
             tipo: 'recusar' as const,
             rotulo: 'Recusar',
             icone: <XCircle className="mr-1.5 size-4" aria-hidden />,
-            variante: 'secundario' as const,
+            variante: 'perigo' as const,
           },
         ]
       : []),
@@ -329,7 +330,7 @@ export function OrcamentoDetalhe() {
                 variante={
                   confirmando === 'cancelar' || confirmando === 'recusar'
                     ? 'perigo'
-                    : confirmando === 'emitir'
+                    : confirmando === 'emitir' || confirmando === 'aprovar'
                       ? 'sucesso'
                       : 'primario'
                 }
