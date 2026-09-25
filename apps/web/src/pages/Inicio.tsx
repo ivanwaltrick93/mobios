@@ -1,85 +1,58 @@
 import {
+  formatarDataIso,
   formatarMoeda,
+  PERIODOS_PAINEL,
+  SITUACOES_ORCAMENTO,
   type Aniversariante,
   type Indicador,
   type ModuloId,
   type Nivel,
   type Painel,
+  type PeriodoPainel,
+  type SituacaoOrcamento,
 } from '@mobios/shared';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import {
   AlertTriangle,
   ArrowRight,
   Cake,
   CarFront,
-  ClipboardPlus,
   FileBarChart,
+  FilePlus2,
   Info,
   Package,
   UserPlus,
   type LucideIcon,
 } from 'lucide-react';
+import { useState } from 'react';
 import { Link } from 'react-router';
 import { LinkWhatsApp, SeloAniversario } from '../components/Cliente';
-import { Alerta, Cartao, Selo, TextoSuave } from '../components/ui';
+import { GraficoBarras, GraficoRosca } from '../components/Graficos';
+import { Alerta, Bloco, CabecalhoPagina, CartaoKpi, classesBotao, FiltroSelect, TextoSuave } from '../components/ui';
 import { api } from '../lib/api';
 import { usePode, useSessao } from '../lib/sessao';
 
-type Atalho = {
-  para: string;
-  rotulo: string;
-  descricao: string;
-  icone: LucideIcon;
-  emBreve?: boolean;
-  modulo: ModuloId;
-  nivel: Nivel;
-};
+type Atalho = { para: string; rotulo: string; icone: LucideIcon; modulo: ModuloId; nivel: Nivel };
 
-// Ações mais frequentes do balcão, em botões grandes (fáceis de tocar em tablet).
+// Ações mais frequentes do balcão, no topo da página.
 const atalhos: Atalho[] = [
-  {
-    para: '/clientes/novo',
-    rotulo: 'Novo cliente',
-    descricao: 'Cadastrar pessoa ou empresa',
-    icone: UserPlus,
-    modulo: 'clientes',
-    nivel: 'editar',
-  },
-  {
-    para: '/veiculos/novo',
-    rotulo: 'Novo veículo',
-    descricao: 'Vincular a um cliente',
-    icone: CarFront,
-    modulo: 'clientes',
-    nivel: 'editar',
-  },
-  {
-    para: '/os',
-    rotulo: 'Abrir O.S.',
-    descricao: 'Nova ordem de serviço',
-    icone: ClipboardPlus,
-    emBreve: true,
-    modulo: 'os',
-    nivel: 'editar',
-  },
-  {
-    para: '/estoque',
-    rotulo: 'Estoque',
-    descricao: 'Peças e quantidades',
-    icone: Package,
-    emBreve: true,
-    modulo: 'estoque',
-    nivel: 'consultar',
-  },
-  {
-    para: '/relatorios',
-    rotulo: 'Relatórios',
-    descricao: 'Extrair em CSV/Excel',
-    icone: FileBarChart,
-    modulo: 'relatorios',
-    nivel: 'consultar',
-  },
+  { para: '/clientes/novo', rotulo: 'Novo cliente', icone: UserPlus, modulo: 'clientes', nivel: 'editar' },
+  { para: '/veiculos/novo', rotulo: 'Novo veículo', icone: CarFront, modulo: 'clientes', nivel: 'editar' },
+  { para: '/orcamentos/novo', rotulo: 'Novo orçamento', icone: FilePlus2, modulo: 'orcamentos', nivel: 'editar' },
+  { para: '/estoque', rotulo: 'Estoque', icone: Package, modulo: 'estoque', nivel: 'consultar' },
+  { para: '/relatorios', rotulo: 'Relatórios', icone: FileBarChart, modulo: 'relatorios', nivel: 'consultar' },
 ];
+
+/** Cor de cada situação no gráfico (tokens do style guide). */
+const COR_SITUACAO: Record<SituacaoOrcamento, string> = {
+  rascunho: 'var(--cor-borda-forte)',
+  emitido: 'var(--cor-info)',
+  enviado: 'var(--cor-primaria)',
+  aprovado: 'var(--cor-sucesso)',
+  recusado: 'var(--cor-perigo)',
+  vencido: 'var(--cor-alerta)',
+  cancelado: 'var(--cor-texto-suave)',
+};
 
 function saudacao() {
   const hora = Number(
@@ -88,103 +61,161 @@ function saudacao() {
   return hora < 12 ? 'Bom dia' : hora < 18 ? 'Boa tarde' : 'Boa noite';
 }
 
-function CartaoIndicador({ indicador }: { indicador: Indicador }) {
-  const disponivel = indicador.valor !== null;
-  const valor = !disponivel
-    ? '—'
-    : indicador.formato === 'moeda'
-      ? formatarMoeda(indicador.valor!)
-      : indicador.valor!.toLocaleString('pt-BR');
-  const conteudo = (
-    <Cartao className={`h-full p-5 ${indicador.link ? 'transition hover:border-primaria' : ''}`}>
-      <div className="flex items-start justify-between gap-2">
-        <TextoSuave>{indicador.titulo}</TextoSuave>
-        {!disponivel && <Selo>Em breve</Selo>}
-      </div>
-      <div className={`mt-2 text-3xl font-semibold ${disponivel ? 'text-texto' : 'text-texto-suave'}`}>{valor}</div>
-      <TextoSuave className="mt-1 text-xs">{indicador.detalhe}</TextoSuave>
-    </Cartao>
-  );
-  return indicador.link ? <Link to={indicador.link}>{conteudo}</Link> : conteudo;
-}
+const valorDoIndicador = (i: Indicador) =>
+  i.valor === null
+    ? null
+    : i.formato === 'moeda'
+      ? formatarMoeda(i.valor)
+      : i.formato === 'percentual'
+        ? `${i.valor.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`
+        : i.valor.toLocaleString('pt-BR');
 
+/** Início: indicadores do período com variação, orçamentos por situação e por vendedor, alertas e aniversários. */
 export function Inicio() {
   const sessao = useSessao();
-  const painel = useQuery({ queryKey: ['painel'], queryFn: () => api<Painel>('/painel'), refetchInterval: 60_000 });
   const pode = usePode();
+  const [periodo, setPeriodo] = useState<PeriodoPainel>('mes');
+  const painel = useQuery({
+    queryKey: ['painel', periodo],
+    queryFn: () => api<Painel>(`/painel?periodo=${periodo}`),
+    refetchInterval: 60_000,
+    placeholderData: keepPreviousData,
+  });
+  const dados = painel.data;
+  const oficina = sessao.data?.oficina.nome;
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-semibold">
-          {saudacao()}, {sessao.data?.usuario.nome.split(' ')[0]}
-        </h1>
-        <TextoSuave>O que vamos fazer agora?</TextoSuave>
-      </div>
-
-      <section aria-label="Atalhos" className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        {atalhos
-          .filter((a) => pode(a.modulo, a.nivel))
-          .map(({ para, rotulo, descricao, icone: Icone, emBreve }) => (
-            <Link
-              key={para}
-              to={para}
-              className="group relative flex min-h-36 flex-col items-center justify-center gap-2 rounded-xl border border-borda bg-superficie p-4 text-center shadow-sm transition hover:border-primaria hover:bg-primaria-suave focus-visible:outline-2 focus-visible:outline-primaria"
+    <div className="space-y-4">
+      <CabecalhoPagina
+        titulo={`${saudacao()}, ${sessao.data?.usuario.nome.split(' ')[0] ?? ''}`}
+        subtitulo={
+          dados &&
+          `${oficina} · ${PERIODOS_PAINEL[periodo]}: ${formatarDataIso(dados.periodo.inicio)}${
+            dados.periodo.inicio === dados.periodo.fim ? '' : ` a ${formatarDataIso(dados.periodo.fim)}`
+          }`
+        }
+        acoes={
+          <>
+            <FiltroSelect
+              rotulo="Período"
+              value={periodo}
+              onChange={(e) => setPeriodo(e.target.value as PeriodoPainel)}
             >
-              {emBreve && (
-                <span className="absolute top-2 right-2">
-                  <Selo>Em breve</Selo>
-                </span>
-              )}
-              <Icone className="size-10 text-primaria" strokeWidth={1.75} aria-hidden />
-              <span className="text-base font-semibold text-texto">{rotulo}</span>
-              <span className="text-xs text-texto-suave">{descricao}</span>
-            </Link>
-          ))}
-      </section>
+              {Object.entries(PERIODOS_PAINEL).map(([valor, rotulo]) => (
+                <option key={valor} value={valor}>
+                  {rotulo}
+                </option>
+              ))}
+            </FiltroSelect>
+            {atalhos
+              .filter((a) => pode(a.modulo, a.nivel))
+              .map(({ para, rotulo, icone: Icone }) => (
+                <Link key={para} to={para} className={classesBotao('secundario')}>
+                  <Icone className="mr-1.5 size-4 text-primaria" aria-hidden /> {rotulo}
+                </Link>
+              ))}
+          </>
+        }
+      />
 
       {painel.isError && <Alerta>{painel.error.message}</Alerta>}
 
-      <section aria-label="Indicadores" className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {painel.data?.indicadores.map((i) => (
-          <CartaoIndicador key={i.id} indicador={i} />
+      <section aria-label="Indicadores" className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
+        {dados?.indicadores.map((i) => (
+          <CartaoKpi
+            key={i.id}
+            titulo={i.titulo}
+            valor={valorDoIndicador(i)}
+            detalhe={i.detalhe}
+            variacao={i.variacao}
+            para={i.link}
+          />
         ))}
       </section>
 
-      {painel.data && painel.data.aniversariantes.length > 0 && <Aniversariantes lista={painel.data.aniversariantes} />}
-
-      {painel.data && (
-        <section aria-label="Alertas">
-          <h2 className="mb-3 text-lg font-medium">Alertas</h2>
-          <Cartao className="divide-y divide-borda">
-            {painel.data.alertas.length === 0 && <TextoSuave className="p-4">Nenhum alerta. Tudo em ordem.</TextoSuave>}
-            {painel.data.alertas.map((a) => {
-              const Icone = a.nivel === 'aviso' ? AlertTriangle : Info;
-              return (
-                <div key={a.mensagem} className="flex items-center gap-3 p-4">
-                  <span
-                    className={`rounded-full p-2 ${a.nivel === 'aviso' ? 'bg-alerta-suave text-alerta' : 'bg-primaria-suave text-primaria'}`}
-                  >
-                    <Icone className="size-4" aria-hidden />
+      <div className="grid gap-4 lg:grid-cols-3">
+        {dados?.orcamentosPorSituacao && (
+          <Bloco
+            titulo="Orçamentos do período por situação"
+            acao={
+              <Link to="/orcamentos" className="text-xs text-primaria hover:underline">
+                Ver orçamentos
+              </Link>
+            }
+          >
+            <GraficoRosca
+              vazio="Nenhum orçamento criado no período."
+              centro={
+                <>
+                  <span className="text-xl font-semibold tabular-nums">
+                    {dados.orcamentosPorSituacao.reduce((s, o) => s + o.quantidade, 0)}
                   </span>
-                  <span className="flex-1 text-sm">{a.mensagem}</span>
-                  {a.link && (
-                    <Link to={a.link} className="text-primaria hover:underline" aria-label="Ver detalhes">
-                      <ArrowRight className="size-4" />
-                    </Link>
-                  )}
-                </div>
-              );
-            })}
-            {painel.data.modulosPendentes.length > 0 && (
-              <TextoSuave className="p-4 text-xs">
-                Em breve neste painel: {painel.data.modulosPendentes.join(' · ')}.
-              </TextoSuave>
-            )}
-          </Cartao>
-        </section>
-      )}
+                  <span className="text-xs text-texto-suave">orçamentos</span>
+                </>
+              }
+              fatias={(Object.keys(SITUACOES_ORCAMENTO) as SituacaoOrcamento[])
+                .map((s) => {
+                  const linha = dados.orcamentosPorSituacao!.find((o) => o.situacao === s);
+                  return {
+                    rotulo: SITUACOES_ORCAMENTO[s],
+                    valor: linha?.quantidade ?? 0,
+                    cor: COR_SITUACAO[s],
+                    detalhe: linha ? formatarMoeda(linha.totalCentavos) : undefined,
+                  };
+                })
+                .filter((f) => f.valor > 0)}
+            />
+          </Bloco>
+        )}
+        {dados?.aprovadosPorVendedor && (
+          <Bloco titulo="Valor aprovado por vendedor">
+            <GraficoBarras
+              vazio="Nenhum orçamento aprovado no período."
+              barras={dados.aprovadosPorVendedor.map((v) => ({
+                rotulo: v.vendedor,
+                valor: v.totalCentavos,
+                texto: formatarMoeda(v.totalCentavos),
+                detalhe: `${v.quantidade} orç.`,
+              }))}
+            />
+          </Bloco>
+        )}
+        {dados && <Alertas painel={dados} />}
+      </div>
+
+      {dados && dados.aniversariantes.length > 0 && <Aniversariantes lista={dados.aniversariantes} />}
     </div>
+  );
+}
+
+/** Pendências de cadastro que impedem abrir O.S. e o que ainda vem por aí. */
+function Alertas({ painel }: { painel: Painel }) {
+  return (
+    <Bloco titulo="Alertas">
+      <ul className="-my-2 divide-y divide-borda">
+        {painel.alertas.length === 0 && <TextoSuave className="py-2">Nenhum alerta. Tudo em ordem.</TextoSuave>}
+        {painel.alertas.map((a) => {
+          const Icone = a.nivel === 'aviso' ? AlertTriangle : Info;
+          return (
+            <li key={a.mensagem} className="flex items-start gap-2.5 py-2 text-sm">
+              <Icone
+                className={`mt-0.5 size-4 shrink-0 ${a.nivel === 'aviso' ? 'text-alerta' : 'text-info'}`}
+                aria-hidden
+              />
+              <span className="flex-1">{a.mensagem}</span>
+              {a.link && (
+                <Link to={a.link} className="text-primaria hover:underline" aria-label="Ver detalhes">
+                  <ArrowRight className="size-4" />
+                </Link>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      {painel.modulosPendentes.length > 0 && (
+        <TextoSuave className="mt-3 text-xs">Em breve neste painel: {painel.modulosPendentes.join(' · ')}.</TextoSuave>
+      )}
+    </Bloco>
   );
 }
 
@@ -192,22 +223,25 @@ export function Inicio() {
 function Aniversariantes({ lista }: { lista: Aniversariante[] }) {
   const hoje = lista.filter((a) => a.dias === 0).length;
   return (
-    <section aria-label="Aniversariantes">
-      <h2 className="mb-3 flex items-center gap-2 text-lg font-medium">
-        <Cake className="size-5 text-primaria" aria-hidden />
-        {hoje > 0 ? `Hoje é aniversário de ${hoje} cliente(s)` : 'Aniversários da semana'}
-      </h2>
-      <Cartao className="divide-y divide-borda">
+    <Bloco
+      titulo={
+        <span className="flex items-center gap-2">
+          <Cake className="size-4 text-primaria" aria-hidden />
+          {hoje > 0 ? `Hoje é aniversário de ${hoje} cliente(s)` : 'Aniversários da semana'}
+        </span>
+      }
+    >
+      <ul className="-my-2 grid gap-x-6 divide-y divide-borda md:grid-cols-2 md:divide-y-0 xl:grid-cols-3">
         {lista.map((a) => (
-          <div key={a.id} className="flex flex-wrap items-center gap-3 p-4">
-            <Link to={`/clientes/${a.id}`} className="flex-1 font-medium text-texto hover:text-primaria">
+          <li key={a.id} className="flex flex-wrap items-center gap-2 py-2 text-sm">
+            <Link to={`/clientes/${a.id}`} className="flex-1 truncate font-medium text-texto hover:text-primaria">
               {a.nome}
             </Link>
             <SeloAniversario dias={a.dias} />
             {a.whatsapp && <LinkWhatsApp numero={a.whatsapp} />}
-          </div>
+          </li>
         ))}
-      </Cartao>
-    </section>
+      </ul>
+    </Bloco>
   );
 }

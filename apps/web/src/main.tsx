@@ -3,8 +3,10 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createBrowserRouter, RouterProvider } from 'react-router';
 import { Layout } from './components/Layout';
+import { ProvedorNotificacoes } from './components/ui';
 import { ErroApi } from './lib/api';
 import { PAGINAS_LISTAS } from './lib/cadastro';
+import '@fontsource-variable/inter';
 import './index.css';
 import { Categorias } from './pages/Categorias';
 import { Depositos } from './pages/Depositos';
@@ -115,7 +117,9 @@ const router = createBrowserRouter([
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
+      <ProvedorNotificacoes>
+        <RouterProvider router={router} />
+      </ProvedorNotificacoes>
     </QueryClientProvider>
   </StrictMode>,
 );

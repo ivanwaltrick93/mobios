@@ -769,6 +769,19 @@ describe('lista de clientes: filtros, aniversários e frota', () => {
     expect(await nomes({ aniversario: 'semana' })).toEqual(['Ana Hoje', 'Beto Semana']);
     expect((await chamar('GET', '/api/clientes?desde=2024-01-01&ate=2023-01-01')).statusCode).toBe(400);
 
+    // Ordenação pela coluna: cliente desde (mais recente primeiro) e nome decrescente; coluna fora da lista, 400.
+    expect(await nomes({ ativo: '', ordenar: 'clienteDesde', direcao: 'desc' })).toEqual([
+      'Beto Semana',
+      'Ana Hoje',
+      'Caio Longe',
+    ]);
+    expect(await nomes({ ativo: '', ordenar: 'nome', direcao: 'desc' })).toEqual([
+      'Caio Longe',
+      'Beto Semana',
+      'Ana Hoje',
+    ]);
+    expect((await chamar('GET', '/api/clientes?ordenar=cpfCnpj')).statusCode).toBe(400);
+
     const [primeiro] = (await chamar('GET', '/api/clientes?aniversario=semana')).json().itens;
     expect(primeiro).toMatchObject({ nome: 'Ana Hoje', diasAteAniversario: 0, cidade: 'Florianópolis/SC' });
     expect((await chamar('GET', `/api/clientes/${ana.id}`)).json().diasAteAniversario).toBe(0);
@@ -913,7 +926,7 @@ describe('personas e permissões', () => {
     expect((await atendente.chamar('GET', '/api/relatorios')).statusCode).toBe(403);
     expect((await atendente.chamar('GET', '/api/usuarios')).statusCode).toBe(403);
     expect((await atendente.chamar('PUT', '/api/configuracoes/aparencia', TEMA_VAZIO)).statusCode).toBe(403);
-    expect(await indicadores(atendente)).not.toContain('faturado_hoje');
+    expect(await indicadores(atendente)).not.toContain('faturamento');
 
     // Mecânico: consulta clientes/veículos, não cadastra nem altera; sem relatórios e faturamento.
     expect((await mecanico.chamar('GET', '/api/clientes')).statusCode).toBe(200);
@@ -933,15 +946,15 @@ describe('personas e permissões', () => {
       ).statusCode,
     ).toBe(403);
     expect((await mecanico.chamar('GET', '/api/relatorios')).statusCode).toBe(403);
-    expect(await indicadores(mecanico)).not.toContain('faturado_hoje');
+    expect(await indicadores(mecanico)).not.toContain('faturamento');
 
     // Financeiro: relatórios e faturamento; consulta cadastros sem alterar.
     expect((await financeiro.chamar('GET', '/api/relatorios/clientes')).statusCode).toBe(200);
     expect((await financeiro.chamar('DELETE', `/api/clientes/${balcao.json().id}`)).statusCode).toBe(403);
-    expect(await indicadores(financeiro)).toContain('faturado_hoje');
+    expect(await indicadores(financeiro)).toContain('faturamento');
 
     // Admin: tudo.
-    expect(await indicadores(admin)).toContain('faturado_hoje');
+    expect(await indicadores(admin)).toContain('faturamento');
     expect((await admin.chamar('GET', '/api/relatorios')).json()).toHaveLength(3);
   });
 });
@@ -1367,11 +1380,17 @@ describe('painel', () => {
     const a = await novaOficina('Oficina Painel');
     const vazio = (await a.chamar('GET', '/api/painel')).json();
     expect(vazio.indicadores.map((i: { id: string; valor: number | null }) => [i.id, i.valor])).toEqual([
-      ['os_abertas', null],
-      ['faturado_hoje', null],
       ['clientes', 0],
       ['veiculos', 0],
+      ['orcamentos', 0],
+      ['valor_aprovado', 0],
+      ['ticket_medio', 0],
+      ['taxa_aprovacao', null],
+      ['os_abertas', null],
+      ['faturamento', null],
     ]);
+    expect(vazio.periodo.id).toBe('mes');
+    expect(vazio.orcamentosPorSituacao).toEqual([]);
     expect(vazio.alertas).toEqual([]);
 
     const c = (await a.chamar('POST', '/api/clientes', cliente({ nome: 'Com Veículo' }))).json();
@@ -1380,14 +1399,20 @@ describe('painel', () => {
 
     const painel = (await a.chamar('GET', '/api/painel')).json();
     const porId = Object.fromEntries(painel.indicadores.map((i: { id: string }) => [i.id, i]));
-    expect(porId.clientes).toMatchObject({ valor: 2, detalhe: '2 cadastrado(s) hoje' });
-    expect(porId.veiculos).toMatchObject({ valor: 1, detalhe: '1 cadastrado(s) hoje' });
+    expect(porId.clientes).toMatchObject({ valor: 2, detalhe: '2 novo(s) no período' });
+    expect(porId.veiculos).toMatchObject({ valor: 1, detalhe: '1 novo(s) no período' });
+    // Sem nada no período anterior, não há base para a variação.
+    expect(porId.clientes.variacao).toBeNull();
+    expect((await a.chamar('GET', '/api/painel?periodo=hoje')).json().periodo.inicio).toBe(
+      (await a.chamar('GET', '/api/painel?periodo=hoje')).json().periodo.fim,
+    );
+    expect((await a.chamar('GET', '/api/painel?periodo=ano')).statusCode).toBe(400);
     expect(painel.alertas.map((x: { mensagem: string }) => x.mensagem)).toEqual([
       '1 cliente(s) sem veículo cadastrado.',
     ]);
 
     const b = await novaOficina('Outra Oficina Painel');
-    expect((await b.chamar('GET', '/api/painel')).json().indicadores[2].valor).toBe(0);
+    expect((await b.chamar('GET', '/api/painel')).json().indicadores[0]).toMatchObject({ id: 'clientes', valor: 0 });
     expect((await app.inject({ method: 'GET', url: '/api/painel' })).statusCode).toBe(401);
   });
 });

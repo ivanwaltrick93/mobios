@@ -17,7 +17,7 @@ Regra de negócio ambígua: pergunte. Commit e push só quando pedido.
 - Monorepo pnpm, TypeScript estrito, ESM.
   - `packages/shared`: schemas Zod, tipos e regras puras (sem banco nem DOM), usados pela API e pelo front.
   - `apps/api`: Fastify 5 + fastify-type-provider-zod + Drizzle + PostgreSQL 17. `src/modules/<recurso>/routes.ts`, `src/lib/` (erros, cadastro, auth), `src/db/schema.ts`, `drizzle/` (migrações).
-  - `apps/web`: React 19 + Vite + React Router + TanStack Query + react-hook-form + Tailwind 4. `pages/`, `components/` (kit em `ui.tsx`), `lib/`.
+  - `apps/web`: React 19 + Vite + React Router + TanStack Query + react-hook-form + Tailwind 4. `pages/`, `components/` (kit em `components/ui/`), `lib/`.
 - Não há controller, service, repository nem DTO: o handler valida com o schema do `shared`, usa o Drizzle dentro de `withTenant` e helpers de `src/lib/`.
 - Não introduza camadas, design patterns, factories, repositories, services, wrappers, abstrações ou dependências sem necessidade concreta e combinada.
 
@@ -70,7 +70,7 @@ Tenant = oficina: a unidade de isolamento dos dados.
 
 ## Frontend (visual: `docs/STYLE_GUIDE.md`)
 - Cores só por tokens (`apps/web/src/index.css`). Proibido `slate-*`, `blue-*`, `bg-white`, `text-white` e hex nas telas.
-- Use os componentes de `components/ui.tsx` e `components/` (catálogo no STYLE_GUIDE) antes de criar outros.
+- Use os componentes de `components/ui/` e `components/` (catálogo no STYLE_GUIDE) antes de criar outros.
 - Dados do servidor: TanStack Query + `api()` (`lib/api.ts`); `fetch` direto só em upload/download e ViaCEP. `queryKey` começa pelo recurso; após gravar, invalide as chaves afetadas.
 - Formulário: react-hook-form + `zodResolver(<schema do shared>)`, `mode: 'onTouched'`, erros da API com `aplicarErrosDaApi`; máscaras de `shared/mascaras.ts` via `InputMascara`; etapas com `useAssistente` + `Etapas`.
 - Rota nova em `main.tsx`; item de menu em `Layout.tsx` (que já tem o `Voltar`).

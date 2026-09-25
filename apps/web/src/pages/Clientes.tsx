@@ -2,25 +2,30 @@ import {
   COLUNAS_IMPORTACAO_CLIENTES,
   formatarDataIso,
   formatarDocumento,
+  formatarTelefone,
   type ClienteFiltro,
   type ClienteResumo,
+  type OrdenacaoCliente,
 } from '@mobios/shared';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronDown, FileUp, Plus, Search, SlidersHorizontal, Users } from 'lucide-react';
+import { Eye, FileUp, MessageCircle, Pencil, Plus, Search, Users } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { SeloAniversario, SeloPendencias } from '../components/Cliente';
 import { ImportarCsv } from '../components/ImportarCsv';
 import {
+  Alerta,
+  BarraFiltros,
   Botao,
-  BotaoLink,
-  BotaoVisualizar,
   Cabecalho,
+  CabecalhoPagina,
   Campo,
-  CampoBusca,
+  Carregando,
   classesBotao,
+  FiltroSelect,
   Input,
   Linha,
+  MenuAcoes,
   Paginacao,
   POR_PAGINA,
   Select,
@@ -28,14 +33,15 @@ import {
   Tabela,
   Td,
   Th,
-  Titulo,
+  ThOrdenavel,
   Vazio,
+  type Ordem,
 } from '../components/ui';
 import { api } from '../lib/api';
 import { useOpcoes } from '../lib/cadastro';
 import { usePode } from '../lib/sessao';
 
-type Filtro = Required<Omit<ClienteFiltro, 'pagina' | 'porPagina'>>;
+type Filtro = Required<Omit<ClienteFiltro, 'pagina' | 'porPagina' | 'ordenar' | 'direcao'>>;
 
 const FILTRO_INICIAL: Filtro = {
   q: '',
@@ -48,17 +54,28 @@ const FILTRO_INICIAL: Filtro = {
   aniversario: '',
 };
 
-/** Clientes em tabela, com filtros (status, tipo, cliente desde, origem, relacionamento e aniversário). */
+/** Filtros que ficam em "Mais filtros" (os demais aparecem na barra). */
+const EM_MAIS: (keyof Filtro)[] = ['origemId', 'relacionamentoId', 'desde', 'ate', 'aniversario'];
+
+/** Clientes em tabela, com busca, filtros (status, tipo e, em "Mais filtros", origem, relacionamento, período e
+ * aniversário), ordenação por nome ou "cliente desde" e ações por linha. */
 export function Clientes() {
   const podeEditar = usePode()('clientes', 'editar');
   const origens = useOpcoes('origens');
   const relacionamentos = useOpcoes('relacionamentos');
   const [filtro, setFiltro] = useState<Filtro>(FILTRO_INICIAL);
+  const [ordem, setOrdem] = useState<Ordem<OrdenacaoCliente>>({ campo: 'nome', direcao: 'asc' });
   const [pagina, setPagina] = useState(1);
   const [importando, setImportando] = useState(false);
   const queryClient = useQueryClient();
   const parametros = new URLSearchParams(
-    Object.entries({ ...filtro, pagina: String(pagina), porPagina: String(POR_PAGINA) }).filter(([, v]) => v),
+    Object.entries({
+      ...filtro,
+      ordenar: ordem.campo,
+      direcao: ordem.direcao,
+      pagina: String(pagina),
+      porPagina: String(POR_PAGINA),
+    }).filter(([, v]) => v),
   );
   const clientes = useQuery({
     queryKey: ['clientes', parametros.toString()],
@@ -70,31 +87,30 @@ export function Clientes() {
     setFiltro((f) => ({ ...f, [campo]: valor }));
     setPagina(1);
   };
+  const ordenar = (nova: Ordem<OrdenacaoCliente>) => {
+    setOrdem(nova);
+    setPagina(1);
+  };
   const filtrado = JSON.stringify(filtro) !== JSON.stringify(FILTRO_INICIAL);
-  // Os filtros começam recolhidos; o contador mostra quantos estão diferentes do padrão.
-  const [filtrosAbertos, setFiltrosAbertos] = useState(false);
-  const filtrosAtivos = (Object.keys(FILTRO_INICIAL) as (keyof Filtro)[]).filter(
-    (campo) => campo !== 'q' && filtro[campo] !== FILTRO_INICIAL[campo],
-  ).length;
+  const ativosEmMais = EM_MAIS.filter((campo) => filtro[campo] !== FILTRO_INICIAL[campo]).length;
 
   return (
-    <div className="space-y-6">
-      <Titulo
-        acao={
+    <div className="space-y-3">
+      <CabecalhoPagina
+        titulo="Clientes"
+        acoes={
           podeEditar && (
-            <div className="flex flex-wrap gap-2">
+            <>
               <Botao variante="secundario" onClick={() => setImportando(!importando)}>
                 <FileUp className="mr-1.5 size-4" aria-hidden /> Importar planilha
               </Botao>
               <Link to="/clientes/novo" className={classesBotao('primario')}>
                 <Plus className="mr-1.5 size-4" aria-hidden /> Novo cliente
               </Link>
-            </div>
+            </>
           )
         }
-      >
-        Clientes
-      </Titulo>
+      />
 
       {importando && (
         <ImportarCsv
@@ -107,40 +123,25 @@ export function Clientes() {
         />
       )}
 
-      <div className="space-y-3">
-        <CampoBusca
-          rotulo="Buscar clientes"
-          placeholder="Buscar por nome, placa, CPF/CNPJ ou telefone"
-          valor={filtro.q}
-          aoMudar={(valor) => mudar('q', valor)}
-        />
-        <button
-          type="button"
-          aria-expanded={filtrosAbertos}
-          onClick={() => setFiltrosAbertos(!filtrosAbertos)}
-          className="inline-flex items-center gap-2 text-sm font-medium text-primaria hover:underline"
-        >
-          <SlidersHorizontal className="size-4" aria-hidden />
-          {filtrosAbertos ? 'Ocultar filtros' : 'Mostrar filtros'}
-          {filtrosAtivos > 0 && <Selo tom="primario">{filtrosAtivos} alterado(s)</Selo>}
-          <ChevronDown className={`size-4 transition ${filtrosAbertos ? 'rotate-180' : ''}`} aria-hidden />
-        </button>
-        {filtrosAbertos && (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <Campo rotulo="Status">
-              <Select value={filtro.ativo} onChange={(e) => mudar('ativo', e.target.value)}>
-                <option value="true">Ativos</option>
-                <option value="false">Inativos</option>
-                <option value="">Ativos e inativos</option>
-              </Select>
-            </Campo>
-            <Campo rotulo="Tipo">
-              <Select value={filtro.tipo} onChange={(e) => mudar('tipo', e.target.value)}>
-                <option value="">Pessoa física e jurídica</option>
-                <option value="PF">Pessoa física</option>
-                <option value="PJ">Pessoa jurídica</option>
-              </Select>
-            </Campo>
+      <BarraFiltros
+        busca={{
+          rotulo: 'Buscar clientes',
+          placeholder: 'Nome, placa, CPF/CNPJ ou telefone',
+          valor: filtro.q,
+          aoMudar: (valor) => mudar('q', valor),
+        }}
+        ativosEmMais={ativosEmMais}
+        aoLimpar={
+          filtrado
+            ? () => {
+                setFiltro(FILTRO_INICIAL);
+                setPagina(1);
+              }
+            : undefined
+        }
+        total={dados?.total}
+        mais={
+          <>
             <Campo rotulo="Origem">
               <Select value={filtro.origemId} onChange={(e) => mudar('origemId', e.target.value)}>
                 <option value="">Todas</option>
@@ -174,23 +175,25 @@ export function Clientes() {
                 <option value="semana">Hoje e próximos 7 dias</option>
               </Select>
             </Campo>
-            {filtrado && (
-              <div className="flex items-end pb-2">
-                <BotaoLink
-                  onClick={() => {
-                    setFiltro(FILTRO_INICIAL);
-                    setPagina(1);
-                  }}
-                >
-                  Limpar filtros
-                </BotaoLink>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+          </>
+        }
+      >
+        <FiltroSelect rotulo="Status" value={filtro.ativo} onChange={(e) => mudar('ativo', e.target.value)}>
+          <option value="true">Ativos</option>
+          <option value="false">Inativos</option>
+          <option value="">Todos</option>
+        </FiltroSelect>
+        <FiltroSelect rotulo="Tipo" value={filtro.tipo} onChange={(e) => mudar('tipo', e.target.value)}>
+          <option value="">PF e PJ</option>
+          <option value="PF">Pessoa física</option>
+          <option value="PJ">Pessoa jurídica</option>
+        </FiltroSelect>
+      </BarraFiltros>
 
-      {dados && dados.itens.length === 0 ? (
+      {clientes.isError && <Alerta>{clientes.error.message}</Alerta>}
+      {!dados ? (
+        clientes.isPending && <Carregando />
+      ) : dados.itens.length === 0 ? (
         filtrado ? (
           <Vazio icone={<Search />} titulo="Nenhum cliente encontrado">
             Confira a grafia, busque pela placa do carro ou limpe os filtros.
@@ -211,17 +214,23 @@ export function Clientes() {
       ) : (
         <Tabela>
           <Cabecalho>
-            <Th>Nome / Razão social</Th>
+            <ThOrdenavel campo="nome" ordem={ordem} aoOrdenar={ordenar}>
+              Nome / Razão social
+            </ThOrdenavel>
             <Th>Tipo</Th>
             <Th>CPF/CNPJ</Th>
-            <Th>Cliente desde</Th>
+            <Th>Contato</Th>
+            <Th>Cidade</Th>
+            <ThOrdenavel campo="clienteDesde" ordem={ordem} aoOrdenar={ordenar}>
+              Cliente desde
+            </ThOrdenavel>
             <Th className="text-right">Veículos</Th>
             <Th>Status</Th>
-            <Th />
+            <Th className="w-10" />
           </Cabecalho>
           <tbody>
-            {dados?.itens.map((c) => (
-              <LinhaCliente key={c.id} cliente={c} />
+            {dados.itens.map((c) => (
+              <LinhaCliente key={c.id} cliente={c} podeEditar={podeEditar} />
             ))}
           </tbody>
         </Tabela>
@@ -232,31 +241,53 @@ export function Clientes() {
   );
 }
 
-function LinhaCliente({ cliente: c }: { cliente: ClienteResumo }) {
+function LinhaCliente({ cliente: c, podeEditar }: { cliente: ClienteResumo; podeEditar: boolean }) {
+  const contato = c.whatsapp ?? c.telefone;
   return (
     <Linha className="hover:bg-superficie-alt">
       <Td className="min-w-56">
         <Link to={`/clientes/${c.id}`} className="font-medium text-texto hover:text-primaria">
           {c.nome}
         </Link>
-        <div className="mt-1 flex flex-wrap gap-1">
-          <SeloAniversario dias={c.diasAteAniversario} />
-          <SeloPendencias pendencias={c.pendencias} />
-        </div>
+        {(c.pendencias.length > 0 || (c.diasAteAniversario ?? 99) <= 7) && (
+          <div className="mt-0.5 flex flex-wrap gap-1">
+            <SeloAniversario dias={c.diasAteAniversario} />
+            <SeloPendencias pendencias={c.pendencias} />
+          </div>
+        )}
       </Td>
       <Td suave>{c.tipo}</Td>
-      <Td suave className="whitespace-nowrap">
+      <Td suave className="whitespace-nowrap tabular-nums">
         {formatarDocumento(c.cpfCnpj)}
       </Td>
+      <Td suave className="whitespace-nowrap tabular-nums">
+        {contato ? formatarTelefone(contato) : '—'}
+      </Td>
       <Td suave className="whitespace-nowrap">
+        {c.cidade ?? '—'}
+      </Td>
+      <Td suave className="whitespace-nowrap tabular-nums">
         {c.clienteDesde ? formatarDataIso(c.clienteDesde) : '—'}
       </Td>
-      <Td suave className="text-right">
-        {c.totalVeiculos}
+      <Td className="text-right tabular-nums">{c.totalVeiculos}</Td>
+      <Td>
+        <Selo ponto tom={c.ativo ? 'sucesso' : 'neutro'}>
+          {c.ativo ? 'Ativo' : 'Inativo'}
+        </Selo>
       </Td>
-      <Td>{c.ativo ? <Selo tom="sucesso">Ativo</Selo> : <Selo>Inativo</Selo>}</Td>
       <Td className="text-right">
-        <BotaoVisualizar para={`/clientes/${c.id}`} />
+        <MenuAcoes
+          acoes={[
+            { rotulo: 'Visualizar', icone: Eye, para: `/clientes/${c.id}` },
+            podeEditar && { rotulo: 'Editar', icone: Pencil, para: `/clientes/${c.id}/editar` },
+            !!c.whatsapp && {
+              rotulo: 'Abrir WhatsApp',
+              icone: MessageCircle,
+              para: `https://wa.me/55${c.whatsapp}`,
+              externo: true,
+            },
+          ]}
+        />
       </Td>
     </Linha>
   );

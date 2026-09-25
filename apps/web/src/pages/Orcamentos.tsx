@@ -9,7 +9,7 @@ import {
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { FileText, Plus } from 'lucide-react';
 import { useState } from 'react';
-import { Link } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
 import { SeloSituacao } from '../components/Orcamento';
 import {
   Alerta,
@@ -38,7 +38,9 @@ const FILTRO_INICIAL = { q: '', situacao: '', vendedorId: '', desde: '', ate: ''
 /** Orçamentos: lista com número, versão, cliente, vendedor, total, validade e situação ("vencido" é automático). */
 export function Orcamentos() {
   const pode = usePode();
-  const [filtro, setFiltro] = useState(FILTRO_INICIAL);
+  // Links do Início chegam com a situação na URL (ex.: ?situacao=aprovado).
+  const [params] = useSearchParams();
+  const [filtro, setFiltro] = useState(() => ({ ...FILTRO_INICIAL, situacao: params.get('situacao') ?? '' }));
   const [pagina, setPagina] = useState(1);
   const vendedores = useVendedoresOrcamento();
   const parametros = new URLSearchParams(

@@ -18,7 +18,7 @@ import {
   type ClienteResumo,
   type TipoEndereco,
 } from '@mobios/shared';
-import { and, asc, count, eq, gte, ilike, lte, or, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gte, ilike, lte, or, sql } from 'drizzle-orm';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { withTenant, type Tx } from '../../db/client.js';
@@ -352,7 +352,20 @@ export const clientesRoutes: FastifyPluginAsyncZod = async (app) => {
       },
     },
     async (req) => {
-      const { q, ativo, tipo, desde, ate, origemId, relacionamentoId, aniversario, pagina, porPagina } = req.query;
+      const {
+        q,
+        ativo,
+        tipo,
+        desde,
+        ate,
+        origemId,
+        relacionamentoId,
+        aniversario,
+        ordenar,
+        direcao,
+        pagina,
+        porPagina,
+      } = req.query;
       const digitos = q?.replace(/\D/g, '');
       const documento = q ? normalizarDocumento(q) : '';
       // Placa sem hífen e em maiúsculas: no balcão o cliente chega com o carro, e a placa leva ao dono.
@@ -387,8 +400,13 @@ export const clientesRoutes: FastifyPluginAsyncZod = async (app) => {
           .select(colunasResumo())
           .from(clientes)
           .where(filtro)
-          // Filtrando aniversariantes, os mais próximos primeiro.
-          .orderBy(...(aniversario ? [asc(dias)] : []), asc(clientes.nome), asc(clientes.id))
+          // Filtrando aniversariantes, os mais próximos primeiro; depois a coluna escolhida e o nome, para desempatar.
+          .orderBy(
+            ...(aniversario ? [asc(dias)] : []),
+            (direcao === 'desc' ? desc : asc)(ordenar === 'clienteDesde' ? clientes.clienteDesde : clientes.nome),
+            asc(clientes.nome),
+            asc(clientes.id),
+          )
           .limit(porPagina)
           .offset((pagina - 1) * porPagina);
         const [{ total }] = (await tx.select({ total: count() }).from(clientes).where(filtro)) as [{ total: number }];

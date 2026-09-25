@@ -549,6 +549,10 @@ export const DIAS_ANIVERSARIO_SEMANA = 7;
 
 const dataFiltro = z.union([z.literal(''), z.iso.date('Data inválida')]).optional();
 
+/** Colunas pelas quais a lista de clientes pode ser ordenada (com índice no banco). */
+export const ORDENACOES_CLIENTE = ['nome', 'clienteDesde'] as const;
+export type OrdenacaoCliente = (typeof ORDENACOES_CLIENTE)[number];
+
 /** Filtros da lista de clientes (todos opcionais; vazio = sem filtro). */
 export const clienteFiltroSchema = z
   .object({
@@ -561,6 +565,9 @@ export const clienteFiltroSchema = z
     origemId: z.union([z.literal(''), z.uuid()]).optional(),
     relacionamentoId: z.union([z.literal(''), z.uuid()]).optional(),
     aniversario: z.enum(['hoje', 'semana', '']).optional(),
+    /** Ordenação pela coluna da tabela (lista fechada; filtrando aniversariantes, os mais próximos vêm antes). */
+    ordenar: z.enum(ORDENACOES_CLIENTE).default('nome'),
+    direcao: z.enum(['asc', 'desc']).default('asc'),
     pagina: z.coerce.number().int().min(1).default(1),
     porPagina: z.coerce.number().int().min(1).max(100).default(20),
   })
@@ -762,13 +769,34 @@ export type RelatorioPrevia = z.infer<typeof relatorioPreviaSchema>;
 
 // ---------- Painel (página inicial) ----------
 
+/** Período do painel. A variação compara com o período anterior de mesmo tamanho. */
+export const PERIODOS_PAINEL = {
+  hoje: 'Hoje',
+  '7d': 'Últimos 7 dias',
+  '30d': 'Últimos 30 dias',
+  mes: 'Este mês',
+} as const;
+export type PeriodoPainel = keyof typeof PERIODOS_PAINEL;
+export const painelQuerySchema = z.object({ periodo: z.enum(chaves(PERIODOS_PAINEL)).default('mes') });
+
 export const indicadorSchema = z.object({
-  id: z.enum(['os_abertas', 'faturado_hoje', 'clientes', 'veiculos']),
+  id: z.enum([
+    'clientes',
+    'veiculos',
+    'orcamentos',
+    'valor_aprovado',
+    'ticket_medio',
+    'taxa_aprovacao',
+    'os_abertas',
+    'faturamento',
+  ]),
   titulo: z.string(),
   /** null = o módulo que fornece o dado ainda não existe (nunca mostrar número inventado). */
   valor: z.number().nullable(),
-  formato: z.enum(['numero', 'moeda']),
+  formato: z.enum(['numero', 'moeda', 'percentual']),
   detalhe: z.string(),
+  /** Variação em % contra o período anterior (null = sem base de comparação). */
+  variacao: z.number().nullable(),
   link: z.string().optional(),
 });
 export type Indicador = z.infer<typeof indicadorSchema>;
@@ -791,7 +819,16 @@ export const aniversarianteSchema = z.object({
 export type Aniversariante = z.infer<typeof aniversarianteSchema>;
 
 export const painelSchema = z.object({
+  periodo: z.object({ id: z.enum(chaves(PERIODOS_PAINEL)), inicio: z.string(), fim: z.string() }),
   indicadores: z.array(indicadorSchema),
+  /** Orçamentos criados no período, por situação (null = sem acesso a Orçamentos). */
+  orcamentosPorSituacao: z
+    .array(z.object({ situacao: z.string(), quantidade: z.number(), totalCentavos: z.number() }))
+    .nullable(),
+  /** Valor aprovado no período por vendedor, os 5 maiores (null = sem acesso a Orçamentos). */
+  aprovadosPorVendedor: z
+    .array(z.object({ vendedor: z.string(), quantidade: z.number(), totalCentavos: z.number() }))
+    .nullable(),
   alertas: z.array(alertaPainelSchema),
   /** Clientes PF que fazem aniversário hoje e nos próximos 7 dias (vazio para quem não acessa Clientes). */
   aniversariantes: z.array(aniversarianteSchema),

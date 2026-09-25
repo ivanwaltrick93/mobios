@@ -37,6 +37,7 @@
   --cor-perigo: #dc2626;
   --cor-sobre-perigo: #ffffff;
   --cor-alerta: #b45309;
+  --cor-info: #2563eb;
 
   /* Placa de veículo (padrão Mercosul, fixo) */
   --cor-placa-fundo: #ffffff;
@@ -55,6 +56,7 @@
   --cor-menu-borda: color-mix(in oklab, var(--cor-menu-texto) 15%, var(--cor-menu));
   --cor-sucesso-suave: color-mix(in oklab, var(--cor-sucesso) 12%, var(--cor-superficie));
   --cor-alerta-suave: color-mix(in oklab, var(--cor-alerta) 12%, var(--cor-superficie));
+  --cor-info-suave: color-mix(in oklab, var(--cor-info) 10%, var(--cor-superficie));
   --cor-perigo-suave: color-mix(in oklab, var(--cor-perigo) 10%, var(--cor-superficie));
   --cor-perigo-hover: color-mix(in oklab, var(--cor-perigo), black 15%);
   --cor-sucesso-hover: color-mix(in oklab, var(--cor-sucesso), black 15%);
@@ -94,13 +96,20 @@
   --color-sobre-perigo: var(--cor-sobre-perigo);
   --color-alerta: var(--cor-alerta);
   --color-alerta-suave: var(--cor-alerta-suave);
+  --color-info: var(--cor-info);
+  --color-info-suave: var(--cor-info-suave);
   --color-placa-fundo: var(--cor-placa-fundo);
   --color-placa-texto: var(--cor-placa-texto);
   --color-placa-borda: var(--cor-placa-borda);
   --color-placa-faixa: var(--cor-placa-faixa);
   --color-placa-faixa-texto: var(--cor-placa-faixa-texto);
+
+  /* Tipografia: Inter embutida (@fontsource-variable/inter, importada em main.tsx). */
+  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
+  /* Sombra única e leve: superfícies se separam pela borda, não pela sombra. */
+  --shadow-sm: 0 1px 2px 0 rgb(15 23 42 / 0.05);
 }
 
 body {
-  @apply bg-fundo text-texto antialiased;
+  @apply bg-fundo text-sm text-texto antialiased;
 }

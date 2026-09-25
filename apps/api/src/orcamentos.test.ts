@@ -457,6 +457,18 @@ describe('orçamento: emissão, aprovação e versões', () => {
     expect(aprovado.aprovadoEm).toBeTruthy();
     expect((await transicao(c.chamar, o.id, 'nova-versao', aprovado.versao)).statusCode).toBe(409);
 
+    // Painel do Início: valor aprovado, ticket, taxa de aprovação e aprovados por vendedor.
+    const painel = (await c.chamar('GET', '/api/painel')).json();
+    const kpi = Object.fromEntries(painel.indicadores.map((i: { id: string }) => [i.id, i]));
+    expect(kpi.orcamentos.valor).toBe(1);
+    expect(kpi.valor_aprovado.valor).toBe(aprovado.totalCentavos);
+    expect(kpi.ticket_medio.valor).toBe(aprovado.totalCentavos);
+    expect(kpi.taxa_aprovacao.valor).toBe(100);
+    expect(painel.orcamentosPorSituacao).toEqual([
+      { situacao: 'aprovado', quantidade: 1, totalCentavos: aprovado.totalCentavos },
+    ]);
+    expect(painel.aprovadosPorVendedor[0]).toMatchObject({ quantidade: 1, totalCentavos: aprovado.totalCentavos });
+
     // Validade anteontem: vencido (calculado), não aprova nem gera versão.
     const outro = (await c.chamar('POST', '/api/orcamentos', orcamento(c, [itemFiltro(c)]))).json();
     const outroEmitido = (await transicao(c.chamar, outro.id, 'emitir', outro.versao)).json();

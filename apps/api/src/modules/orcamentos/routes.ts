@@ -56,7 +56,7 @@ type Gravado = typeof orcamentos.$inferSelect;
 /** Emitido/enviado vence sozinho depois do dia seguinte ao da validade (a mesma regra de situacaoOrcamento). */
 const vencidoSql = (hoje: string) =>
   sql`(${orcamentos.status} in ('emitido', 'enviado') and ${orcamentos.validadeAte} + 1 < ${hoje}::date)`;
-const situacaoSql = (hoje: string) =>
+export const situacaoSql = (hoje: string) =>
   sql<SituacaoOrcamento>`case when ${vencidoSql(hoje)} then 'vencido' else ${orcamentos.status}::text end`;
 
 /** Filtro da situação exibida (vencido é calculado; emitido/enviado só enquanto não vencem). */
