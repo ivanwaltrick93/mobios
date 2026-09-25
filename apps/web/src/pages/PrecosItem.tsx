@@ -7,11 +7,11 @@ import {
   EVENTOS_PRECO_PADRAO,
   SITUACOES_PRECO,
   type EventoPrecoPadrao,
-  type Material,
   type Preco,
   type PrecoPadrao,
   type SituacaoPreco,
   type TabelaPreco,
+  type TipoItemPreco,
 } from '@mobios/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { History, Tag } from 'lucide-react';
@@ -42,23 +42,36 @@ const tomSituacao: Record<SituacaoPreco, 'sucesso' | 'primario' | 'neutro' | 'al
 const periodo = (p: Preco) =>
   `${formatarDataIso(p.dataInicio)} → ${p.dataFim ? formatarDataIso(p.dataFim) : 'sem fim'}`;
 
-/** Aba Preços do material: por tabela, o preço vigente, os programados e o histórico (nada é apagado). */
-export function PrecosMaterial({ material }: { material: Material }) {
+/**
+ * Material ou serviço dono dos preços. `porHora`: serviço no valor-hora (o preço da tabela é o de uma hora).
+ */
+export type ItemDosPrecos = { tipo: TipoItemPreco; id: string; ativo: boolean; porHora?: boolean };
+
+/** Campo que identifica o item na API de preços (`materialId` ou `servicoId`). */
+const campoDoItem = (item: ItemDosPrecos) => (item.tipo === 'material' ? 'materialId' : 'servicoId');
+const nomeDoItem = (item: ItemDosPrecos) => (item.tipo === 'material' ? 'material' : 'serviço');
+
+/**
+ * Aba Preços do material ou do serviço: por tabela, o preço vigente, os programados e o histórico (nada é
+ * apagado).
+ */
+export function PrecosItem({ item }: { item: ItemDosPrecos }) {
   const pode = usePode();
   const editar = pode('precos', 'editar');
   const tabelas = useTabelasPreco();
+  const consulta = `${campoDoItem(item)}=${item.id}`;
   const precos = useQuery({
-    queryKey: ['precos', material.id],
-    queryFn: () => api<Preco[]>(`/precos?materialId=${material.id}`),
+    queryKey: ['precos', item.id],
+    queryFn: () => api<Preco[]>(`/precos?${consulta}`),
   });
   const padroes = useQuery({
-    queryKey: ['precos', material.id, 'padrao'],
-    queryFn: () => api<PrecoPadrao[]>(`/precos/padrao?materialId=${material.id}`),
+    queryKey: ['precos', item.id, 'padrao'],
+    queryFn: () => api<PrecoPadrao[]>(`/precos/padrao?${consulta}`),
   });
 
   if (tabelas.isPending || precos.isPending) return <TextoSuave>Carregando…</TextoSuave>;
   if (tabelas.isError) return <Alerta>{tabelas.error.message}</Alerta>;
-  // Tabelas ativas, mais as inativas que têm histórico deste material.
+  // Tabelas ativas, mais as inativas que têm histórico deste item.
   const lista = tabelas.data.filter((t) => t.ativa || precos.data?.some((p) => p.tabelaPrecoId === t.id));
   if (lista.length === 0) {
     return (
@@ -73,19 +86,25 @@ export function PrecosMaterial({ material }: { material: Material }) {
           )
         }
       >
-        Crie as tabelas (Varejo, Oficina, Atacado...) para informar os preços deste material.
+        Crie as tabelas (Varejo, Oficina, Atacado...) para informar os preços deste {nomeDoItem(item)}.
       </Vazio>
     );
   }
   return (
     <div className="space-y-4">
-      {!material.ativo && (
-        <Alerta>Material inativo: não recebe preços novos, mas o histórico continua disponível.</Alerta>
+      {!item.ativo && (
+        <Alerta>
+          {item.tipo === 'material' ? 'Material inativo' : 'Serviço inativo'}: não recebe preços novos, mas o histórico
+          continua disponível.
+        </Alerta>
+      )}
+      {item.porHora && (
+        <TextoSuave>Serviço no valor-hora: os preços abaixo são o valor de uma hora de trabalho.</TextoSuave>
       )}
       {lista.map((t) => (
         <PrecosDaTabela
           key={t.id}
-          material={material}
+          item={item}
           tabela={t}
           precos={precos.data?.filter((p) => p.tabelaPrecoId === t.id) ?? []}
           padrao={padroes.data?.find((p) => p.tabelaPrecoId === t.id)}
@@ -97,13 +116,13 @@ export function PrecosMaterial({ material }: { material: Material }) {
 }
 
 function PrecosDaTabela({
-  material,
+  item,
   tabela,
   precos,
   padrao,
   editar,
 }: {
-  material: Material;
+  item: ItemDosPrecos;
   tabela: TabelaPreco;
   precos: Preco[];
   padrao?: PrecoPadrao;
@@ -116,7 +135,7 @@ function PrecosDaTabela({
     .filter((p) => p.situacao === 'futuro')
     .sort((a, b) => a.dataInicio.localeCompare(b.dataInicio));
   const passados = precos.filter((p) => p.situacao === 'encerrado' || p.situacao === 'cancelado');
-  const podeNova = editar && material.ativo && tabela.ativa;
+  const podeNova = editar && item.ativo && tabela.ativa;
 
   return (
     <Cartao className="space-y-4 p-5">
@@ -129,7 +148,10 @@ function PrecosDaTabela({
           </div>
           {vigente ? (
             <div className="mt-1">
-              <span className="text-2xl font-semibold text-texto">{formatarMoeda(vigente.precoCentavos)}</span>
+              <span className="text-2xl font-semibold text-texto">
+                {formatarMoeda(vigente.precoCentavos)}
+                {item.porHora && <span className="text-base font-normal text-texto-suave"> /hora</span>}
+              </span>
               <span className="ml-2 text-sm text-texto-suave">vigente · {periodo(vigente)}</span>
             </div>
           ) : (
@@ -139,14 +161,14 @@ function PrecosDaTabela({
         {podeNova && !nova && <Botao onClick={() => setNova(true)}>Nova vigência</Botao>}
       </div>
 
-      {nova && <NovaVigencia material={material} tabela={tabela} vigente={vigente} aoConcluir={() => setNova(false)} />}
+      {nova && <NovaVigencia item={item} tabela={tabela} vigente={vigente} aoConcluir={() => setNova(false)} />}
 
       {vigente && editar && <AcoesPreco preco={vigente} />}
       <PrecoPadraoDaTabela
-        material={material}
+        item={item}
         tabela={tabela}
         padrao={padrao}
-        podeEditar={editar && material.ativo && tabela.ativa}
+        podeEditar={editar && item.ativo && tabela.ativa}
       />
       {futuros.length > 0 && (
         <div className="space-y-2">
@@ -177,27 +199,27 @@ function PrecosDaTabela({
 
 /** Preço padrão (sem vigência) da tabela: vale nos dias sem vigência. Alterar ou remover fica na trilha. */
 function PrecoPadraoDaTabela({
-  material,
+  item,
   tabela,
   padrao,
   podeEditar,
 }: {
-  material: Material;
+  item: ItemDosPrecos;
   tabela: TabelaPreco;
   padrao?: PrecoPadrao;
   podeEditar: boolean;
 }) {
-  const invalidar = useInvalidarPrecos(material.id);
+  const invalidar = useInvalidarPrecos(item.id);
   const [editando, setEditando] = useState(false);
   const [historico, setHistorico] = useState(false);
   const [valor, setValor] = useState('');
-  const chave = `materialId=${material.id}&tabelaPrecoId=${tabela.id}`;
+  const chave = `${campoDoItem(item)}=${item.id}&tabelaPrecoId=${tabela.id}`;
   const salvar = useMutation({
     mutationFn: () =>
       api('/precos/padrao', {
         method: 'PUT',
         body: {
-          materialId: material.id,
+          [campoDoItem(item)]: item.id,
           tabelaPrecoId: tabela.id,
           precoCentavos: moedaParaCentavos(valor),
           versao: padrao?.versao,
@@ -213,7 +235,7 @@ function PrecoPadraoDaTabela({
     onSuccess: invalidar,
   });
   const eventos = useQuery({
-    queryKey: ['precos', material.id, 'padrao', 'eventos', tabela.id],
+    queryKey: ['precos', item.id, 'padrao', 'eventos', tabela.id],
     queryFn: () => api<EventoPrecoPadrao[]>(`/precos/padrao/eventos?${chave}`),
     enabled: historico,
   });
@@ -286,10 +308,10 @@ function PrecoPadraoDaTabela({
   );
 }
 
-function useInvalidarPrecos(materialId: string) {
+function useInvalidarPrecos(itemId: string) {
   const queryClient = useQueryClient();
   return () => {
-    queryClient.invalidateQueries({ queryKey: ['precos', materialId] });
+    queryClient.invalidateQueries({ queryKey: ['precos', itemId] });
     queryClient.invalidateQueries({ queryKey: ['tabelas-preco'] });
     queryClient.invalidateQueries({ queryKey: ['linhas-preco'] });
   };
@@ -297,17 +319,17 @@ function useInvalidarPrecos(materialId: string) {
 
 /** Nova vigência: a atual é encerrada na véspera; nada do histórico é apagado. */
 function NovaVigencia({
-  material,
+  item,
   tabela,
   vigente,
   aoConcluir,
 }: {
-  material: Material;
+  item: ItemDosPrecos;
   tabela: TabelaPreco;
   vigente?: Preco;
   aoConcluir: () => void;
 }) {
-  const invalidar = useInvalidarPrecos(material.id);
+  const invalidar = useInvalidarPrecos(item.id);
   const [valor, setValor] = useState('');
   const [inicio, setInicio] = useState(hojeIso());
   const [fim, setFim] = useState('');
@@ -316,7 +338,7 @@ function NovaVigencia({
       api<Preco>('/precos', {
         method: 'POST',
         body: {
-          materialId: material.id,
+          [campoDoItem(item)]: item.id,
           tabelaPrecoId: tabela.id,
           precoCentavos: moedaParaCentavos(valor),
           dataInicio: inicio,
@@ -336,7 +358,7 @@ function NovaVigencia({
   return (
     <form onSubmit={enviar} className="space-y-3 rounded-md border border-borda bg-superficie-alt p-4">
       <div className="grid gap-3 sm:grid-cols-3">
-        <Campo rotulo="Preço (R$) *">
+        <Campo rotulo={item.porHora ? 'Valor da hora (R$) *' : 'Preço (R$) *'}>
           <Input
             autoFocus
             inputMode="numeric"
@@ -396,7 +418,7 @@ type Acao = 'editar' | 'encerrar' | 'cancelar' | 'eventos' | null;
 
 /** Futuro: editar valor/fim ou cancelar. Vigente: encerrar. Todos: ver a trilha de alterações. */
 function AcoesPreco({ preco }: { preco: Preco }) {
-  const invalidar = useInvalidarPrecos(preco.materialId);
+  const invalidar = useInvalidarPrecos((preco.materialId ?? preco.servicoId)!);
   const [acao, setAcao] = useState<Acao>(null);
   const [valor, setValor] = useState(mascaraMoeda(String(preco.precoCentavos)));
   const [data, setData] = useState(preco.dataFim ?? '');

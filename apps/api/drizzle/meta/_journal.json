@@ -162,6 +162,13 @@
       "when": 1790297734468,
       "tag": "0022_suprimento_material",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1790299472830,
+      "tag": "0023_servicos",
+      "breakpoints": true
     }
   ]
 }

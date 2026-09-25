@@ -1,4 +1,4 @@
-import { formatarDataIso, hojeIso } from '@mobios/shared';
+import { formatarDataIso, hojeIso, type TipoItemPreco } from '@mobios/shared';
 import { and, asc, eq, gt, gte, isNull, lte, not, or, sql, type SQL } from 'drizzle-orm';
 import type { Tx } from '../../db/client.js';
 import {
@@ -7,21 +7,43 @@ import {
   precosEventos,
   precosPadrao,
   precosPadraoEventos,
+  servicos,
   tabelasPreco,
 } from '../../db/schema.js';
 import { ErroHttp, naoEncontrado } from '../../lib/erros.js';
 
-// Regras de gravação de preço (vigências e preço padrão), usadas pelas rotas e pela importação de planilha.
-// Tudo roda dentro de withTenant e da trava por material + tabela.
+// Regras de gravação de preço (vigências e preço padrão) de materiais e serviços, usadas pelas rotas e pela
+// importação de planilha. Tudo roda dentro de withTenant e da trava por item + tabela.
+
+/** Material ou serviço que recebe o preço. */
+export type ItemPreco = { tipo: TipoItemPreco; id: string; ativo: boolean };
+
+/** Colunas material_id/servico_id preenchidas para o item (a outra fica nula). */
+export const colunasDoItem = (item: { tipo: TipoItemPreco; id: string }) => ({
+  materialId: item.tipo === 'material' ? item.id : null,
+  servicoId: item.tipo === 'servico' ? item.id : null,
+});
+
+/** Filtro "é deste item" numa tabela com material_id/servico_id (vigências, preço padrão e sua trilha). */
+export const doItem = (
+  tabela: typeof materiaisPrecos | typeof precosPadrao | typeof precosPadraoEventos,
+  item: { tipo: TipoItemPreco; id: string },
+): SQL => eq(item.tipo === 'material' ? tabela.materialId : tabela.servicoId, item.id);
+
+/** Item de uma linha já gravada (vigência ou preço padrão). */
+export const itemDaLinha = (linha: { materialId: string | null; servicoId: string | null }) =>
+  linha.materialId
+    ? { tipo: 'material' as const, id: linha.materialId }
+    : { tipo: 'servico' as const, id: linha.servicoId! };
 
 /** Dia anterior de uma data AAAA-MM-DD (sem fuso: só a data). */
 export const diaAnterior = (data: string) =>
   new Date(Date.parse(`${data}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
 
-/** Vigência (não cancelada) que vale na data. A constraint EXCLUDE garante que é no máximo uma. */
-export const vigenteEm = (materialId: string, tabelaPrecoId: string, data: string): SQL =>
+/** Vigência (não cancelada) que vale na data. As constraints EXCLUDE garantem que é no máximo uma. */
+export const vigenteEm = (item: { tipo: TipoItemPreco; id: string }, tabelaPrecoId: string, data: string): SQL =>
   and(
-    eq(materiaisPrecos.materialId, materialId),
+    doItem(materiaisPrecos, item),
     eq(materiaisPrecos.tabelaPrecoId, tabelaPrecoId),
     not(materiaisPrecos.cancelado),
     lte(materiaisPrecos.dataInicio, data),
@@ -29,12 +51,12 @@ export const vigenteEm = (materialId: string, tabelaPrecoId: string, data: strin
   )!;
 
 /**
- * Serializa alterações de preço do mesmo material + tabela (trava liberada no fim da transação).
+ * Serializa alterações de preço do mesmo item (material ou serviço) + tabela (trava liberada no fim da transação).
  * A constraint EXCLUDE já impede sobreposição; a trava evita que duas inclusões simultâneas
- * leiam o mesmo "preço atual" e uma delas falhe no meio do encerramento automático.
+ * leiam o mesmo "preço atual" e uma delas falhe no meio do encerramento automático. O id (uuid) já é único.
  */
-export const travar = (tx: Tx, materialId: string, tabelaPrecoId: string) =>
-  tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`precos:${materialId}:${tabelaPrecoId}`}))`);
+export const travar = (tx: Tx, itemId: string, tabelaPrecoId: string) =>
+  tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`precos:${itemId}:${tabelaPrecoId}`}))`);
 
 type Evento = 'criado' | 'alterado' | 'encerrado' | 'cancelado' | 'reaberto';
 export const registrar = (
@@ -54,22 +76,43 @@ export const retrato = (p: { precoCentavos: number; dataInicio: string; dataFim:
 });
 
 /**
- * Material do preço, pelo id ou pelo SKU digitado. SKU inexistente: 400 apontando o campo `sku`
- * (a tela da tabela de preço mostra o erro no próprio campo, antes de gravar qualquer coisa).
+ * Item do preço: material pelo id ou pelo SKU digitado; serviço pelo id ou pelo código digitado. Código
+ * inexistente: 400 apontando o campo (a tela mostra o erro no próprio campo, antes de gravar qualquer coisa).
  */
-export async function resolverMaterial(tx: Tx, { materialId, sku }: { materialId?: string; sku?: string }) {
+export async function resolverItem(
+  tx: Tx,
+  {
+    materialId,
+    sku,
+    servicoId,
+    servicoCodigo,
+  }: { materialId?: string; sku?: string; servicoId?: string; servicoCodigo?: number },
+): Promise<ItemPreco> {
+  if (servicoId || servicoCodigo) {
+    const [servico] = await tx
+      .select({ id: servicos.id, ativo: servicos.ativo })
+      .from(servicos)
+      .where(servicoId ? eq(servicos.id, servicoId) : eq(servicos.codigo, servicoCodigo!));
+    if (servico) return { tipo: 'servico', ...servico };
+    if (servicoId) throw naoEncontrado('Serviço');
+    throw new ErroHttp(400, `Serviço ${servicoCodigo} não encontrado.`, { servicoCodigo: 'Serviço não encontrado' });
+  }
   const [material] = await tx
     .select({ id: materiais.id, ativo: materiais.ativo })
     .from(materiais)
     .where(materialId ? eq(materiais.id, materialId) : eq(materiais.sku, sku ?? ''));
-  if (material) return material;
+  if (material) return { tipo: 'material', ...material };
   if (materialId) throw naoEncontrado('Material');
   throw new ErroHttp(400, `SKU ${sku} não encontrado.`, { sku: 'SKU não encontrado' });
 }
 
-/** Material e tabela precisam estar ativos para receber preço novo. */
-async function exigirAtivos(tx: Tx, material: { ativo: boolean }, tabelaPrecoId: string) {
-  if (!material.ativo) throw new ErroHttp(400, 'Material inativo não recebe preço novo. Reative-o primeiro.');
+/** Item e tabela precisam estar ativos para receber preço novo. */
+async function exigirAtivos(tx: Tx, item: ItemPreco, tabelaPrecoId: string) {
+  if (!item.ativo)
+    throw new ErroHttp(
+      400,
+      `${item.tipo === 'material' ? 'Material inativo' : 'Serviço inativo'} não recebe preço novo. Reative-o primeiro.`,
+    );
   const [tabela] = await tx
     .select({ ativa: tabelasPreco.ativa })
     .from(tabelasPreco)
@@ -79,7 +122,7 @@ async function exigirAtivos(tx: Tx, material: { ativo: boolean }, tabelaPrecoId:
 }
 
 export type NovaVigencia = {
-  material: { id: string; ativo: boolean };
+  item: ItemPreco;
   tabelaPrecoId: string;
   precoCentavos: number;
   dataInicio: string;
@@ -95,18 +138,18 @@ export type NovaVigencia = {
  * Devolve o id da vigência criada.
  */
 export async function criarVigencia(tx: Tx, nova: NovaVigencia, usuarioId: string): Promise<string> {
-  const { material, tabelaPrecoId, precoCentavos, dataInicio } = nova;
+  const { item, tabelaPrecoId, precoCentavos, dataInicio } = nova;
   let { dataFim } = nova;
   if (dataInicio < hojeIso())
     throw new ErroHttp(400, 'A vigência não pode começar no passado: o histórico de preços não é reescrito.');
 
-  await travar(tx, material.id, tabelaPrecoId);
-  await exigirAtivos(tx, material, tabelaPrecoId);
+  await travar(tx, item.id, tabelaPrecoId);
+  await exigirAtivos(tx, item, tabelaPrecoId);
 
   const [atual] = await tx
     .select()
     .from(materiaisPrecos)
-    .where(vigenteEm(material.id, tabelaPrecoId, dataInicio));
+    .where(vigenteEm(item, tabelaPrecoId, dataInicio));
   if (atual?.dataInicio === dataInicio) {
     throw new ErroHttp(
       409,
@@ -118,7 +161,7 @@ export async function criarVigencia(tx: Tx, nova: NovaVigencia, usuarioId: strin
     .from(materiaisPrecos)
     .where(
       and(
-        eq(materiaisPrecos.materialId, material.id),
+        doItem(materiaisPrecos, item),
         eq(materiaisPrecos.tabelaPrecoId, tabelaPrecoId),
         not(materiaisPrecos.cancelado),
         gt(materiaisPrecos.dataInicio, dataInicio),
@@ -158,7 +201,7 @@ export async function criarVigencia(tx: Tx, nova: NovaVigencia, usuarioId: strin
   const [novo] = (await tx
     .insert(materiaisPrecos)
     .values({
-      materialId: material.id,
+      ...colunasDoItem(item),
       tabelaPrecoId,
       precoCentavos,
       dataInicio,
@@ -179,22 +222,22 @@ export async function criarVigencia(tx: Tx, nova: NovaVigencia, usuarioId: strin
   return novo.id;
 }
 
-const chavePadrao = (materialId: string, tabelaPrecoId: string) =>
-  and(eq(precosPadrao.materialId, materialId), eq(precosPadrao.tabelaPrecoId, tabelaPrecoId));
+const chavePadrao = (item: { tipo: TipoItemPreco; id: string }, tabelaPrecoId: string) =>
+  and(doItem(precosPadrao, item), eq(precosPadrao.tabelaPrecoId, tabelaPrecoId));
 
 /**
- * Define (ou altera) o preço padrão de um material numa tabela. Com `versao`, confere que ninguém alterou
+ * Define (ou altera) o preço padrão de um material ou serviço numa tabela. Com `versao`, confere que ninguém alterou
  * desde a leitura (409); sem ela (importação), o valor informado prevalece. Mesmo valor = nada a gravar.
  */
 export async function definirPrecoPadrao(
   tx: Tx,
-  dados: { material: { id: string; ativo: boolean }; tabelaPrecoId: string; precoCentavos: number; versao?: number },
+  dados: { item: ItemPreco; tabelaPrecoId: string; precoCentavos: number; versao?: number },
   usuarioId: string,
 ): Promise<'definido' | 'alterado' | 'sem_alteracao'> {
-  const { material, tabelaPrecoId, precoCentavos, versao } = dados;
-  await travar(tx, material.id, tabelaPrecoId);
-  await exigirAtivos(tx, material, tabelaPrecoId);
-  const [atual] = await tx.select().from(precosPadrao).where(chavePadrao(material.id, tabelaPrecoId)).for('update');
+  const { item, tabelaPrecoId, precoCentavos, versao } = dados;
+  await travar(tx, item.id, tabelaPrecoId);
+  await exigirAtivos(tx, item, tabelaPrecoId);
+  const [atual] = await tx.select().from(precosPadrao).where(chavePadrao(item, tabelaPrecoId)).for('update');
 
   if (atual && versao != null && versao !== atual.versao) {
     throw new ErroHttp(409, 'O preço padrão foi alterado por outra pessoa. Recarregue e refaça a alteração.');
@@ -208,7 +251,7 @@ export async function definirPrecoPadrao(
       .where(eq(precosPadrao.id, atual.id));
   } else {
     await tx.insert(precosPadrao).values({
-      materialId: material.id,
+      ...colunasDoItem(item),
       tabelaPrecoId,
       precoCentavos,
       criadoPor: usuarioId,
@@ -217,7 +260,7 @@ export async function definirPrecoPadrao(
   }
   const evento = atual ? 'alterado' : 'definido';
   await tx.insert(precosPadraoEventos).values({
-    materialId: material.id,
+    ...colunasDoItem(item),
     tabelaPrecoId,
     evento,
     precoAntes: atual?.precoCentavos ?? null,
@@ -227,16 +270,21 @@ export async function definirPrecoPadrao(
   return evento;
 }
 
-/** Remove o preço padrão (o material fica sem preço nos dias sem vigência). Fica registrado na trilha. */
-export async function removerPrecoPadrao(tx: Tx, materialId: string, tabelaPrecoId: string, usuarioId: string) {
-  await travar(tx, materialId, tabelaPrecoId);
+/** Remove o preço padrão (o item fica sem preço nos dias sem vigência). Fica registrado na trilha. */
+export async function removerPrecoPadrao(
+  tx: Tx,
+  item: { tipo: TipoItemPreco; id: string },
+  tabelaPrecoId: string,
+  usuarioId: string,
+) {
+  await travar(tx, item.id, tabelaPrecoId);
   const [removido] = await tx
     .delete(precosPadrao)
-    .where(chavePadrao(materialId, tabelaPrecoId))
+    .where(chavePadrao(item, tabelaPrecoId))
     .returning({ precoCentavos: precosPadrao.precoCentavos });
   if (!removido) throw naoEncontrado('Preço padrão');
   await tx.insert(precosPadraoEventos).values({
-    materialId,
+    ...colunasDoItem(item),
     tabelaPrecoId,
     evento: 'removido',
     precoAntes: removido.precoCentavos,

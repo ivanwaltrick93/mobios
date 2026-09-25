@@ -204,17 +204,39 @@ export const LISTAS_OPCOES = {
     modulo: 'materiais',
     uso: 'depósito(s)',
   },
+  classificacoesServico: {
+    titulo: 'Classificação de serviço',
+    descricao: 'Área do serviço, para filtros e relatórios.',
+    modulo: 'servicos',
+    uso: 'serviço(s)',
+  },
 } as const satisfies Record<string, { titulo: string; descricao: string; modulo: ModuloId; uso: string }>;
 export type ListaOpcoes = keyof typeof LISTAS_OPCOES;
-export const listaOpcoesSchema = z.enum(['origens', 'relacionamentos', 'cargos', 'tiposMaterial', 'tiposDeposito']);
+export const listaOpcoesSchema = z.enum([
+  'origens',
+  'relacionamentos',
+  'cargos',
+  'tiposMaterial',
+  'tiposDeposito',
+  'classificacoesServico',
+]);
 
-/** Itens criados em toda oficina nova (as migrações 0009, 0011 e 0012 aplicam o mesmo às que já existiam). */
+/** Itens criados em toda oficina nova (as migrações 0009, 0011, 0012 e 0023 aplicam o mesmo às que já existiam). */
 export const OPCOES_PADRAO: Record<ListaOpcoes, string[]> = {
   origens: ['Indicação', 'Site', 'Campanha', 'Loja', 'Concessionária'],
   relacionamentos: ['Consumidor final', 'Empresa', 'Frota', 'Seguradora'],
   cargos: ['Sócio / Proprietário', 'Gestor de frota', 'Financeiro', 'Compras', 'Motorista'],
   tiposMaterial: ['Peça', 'Acessório', 'Pneu', 'Lubrificante', 'Fluido', 'Insumo', 'Outro'],
   tiposDeposito: ['Loja', 'Oficina', 'Central', 'Garantia', 'Trânsito', 'Outro'],
+  classificacoesServico: [
+    'Mecânica',
+    'Elétrica',
+    'Funilaria e pintura',
+    'Alinhamento e balanceamento',
+    'Revisão',
+    'Diagnóstico',
+    'Outro',
+  ],
 };
 
 /**

@@ -3,7 +3,9 @@ import {
   formatarDataIso,
   formatarMoeda,
   SITUACOES_LINHA_PRECO,
+  TIPOS_ITEM_PRECO,
   type LinhaPreco,
+  type TipoItemPreco,
 } from '@mobios/shared';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
@@ -35,17 +37,20 @@ const tomDaSituacao: Record<Situacao, 'sucesso' | 'primario' | 'neutro' | 'alert
 };
 
 /**
- * Linhas de Preço de uma tabela: cada vigência numa linha (início, fim e situação) e o preço padrão em outra.
- * Só preço: nada de estoque nem de outros dados do material. Usada em Linhas de Preço e no detalhe da tabela;
+ * Linhas de Preço de uma tabela: cada vigência numa linha (início, fim e situação) e o preço padrão em outra,
+ * de materiais e serviços (filtro por tipo). Só preço: nada de estoque nem de outros dados do item. Usada em
+ * Linhas de Preço e no detalhe da tabela;
  * troque a `key` ao mudar de tabela para a busca e a página recomeçarem.
  */
 export function LinhasDePreco({ tabelaPrecoId, autoFocus = false }: { tabelaPrecoId: string; autoFocus?: boolean }) {
   const [busca, setBusca] = useState('');
   const [situacao, setSituacao] = useState<Filtro>('atuais');
+  const [tipo, setTipo] = useState<TipoItemPreco | ''>('');
   const [pagina, setPagina] = useState(1);
   const parametros = new URLSearchParams({
     tabelaPrecoId,
     q: busca,
+    tipo,
     situacao,
     pagina: String(pagina),
     porPagina: String(POR_PAGINA),
@@ -58,17 +63,32 @@ export function LinhasDePreco({ tabelaPrecoId, autoFocus = false }: { tabelaPrec
 
   return (
     <div className="space-y-3">
-      <div className="grid gap-3 md:grid-cols-[1fr_16rem] md:items-center">
+      <div className="grid gap-3 md:grid-cols-[1fr_10rem_16rem] md:items-center">
         <CampoBusca
           autoFocus={autoFocus}
           rotulo="Buscar nas linhas de preço"
-          placeholder="SKU, descrição, código do fabricante ou de barras"
+          placeholder="SKU, descrição, código do serviço ou nome"
           valor={busca}
           aoMudar={(valor) => {
             setBusca(valor);
             setPagina(1);
           }}
         />
+        <Select
+          aria-label="Tipo"
+          value={tipo}
+          onChange={(e) => {
+            setTipo(e.target.value as TipoItemPreco | '');
+            setPagina(1);
+          }}
+        >
+          <option value="">Materiais e serviços</option>
+          {Object.entries(TIPOS_ITEM_PRECO).map(([valor, rotulo]) => (
+            <option key={valor} value={valor}>
+              {rotulo}
+            </option>
+          ))}
+        </Select>
         <Select
           aria-label="Situação"
           value={situacao}
@@ -87,8 +107,9 @@ export function LinhasDePreco({ tabelaPrecoId, autoFocus = false }: { tabelaPrec
 
       <Tabela>
         <Cabecalho>
-          <Th>SKU</Th>
-          <Th>Material</Th>
+          <Th>Tipo</Th>
+          <Th>Código</Th>
+          <Th>Item</Th>
           <Th className="text-right">Preço</Th>
           <Th>Início</Th>
           <Th>Fim</Th>
@@ -98,9 +119,13 @@ export function LinhasDePreco({ tabelaPrecoId, autoFocus = false }: { tabelaPrec
         <tbody>
           {linhas.data?.itens.map((l) => (
             <Linha key={l.id} className="hover:bg-superficie-alt">
-              <Td className="whitespace-nowrap font-mono text-xs font-semibold">{l.sku}</Td>
+              <Td suave>{TIPOS_ITEM_PRECO[l.tipo]}</Td>
+              <Td className="whitespace-nowrap font-mono text-xs font-semibold">{l.codigo}</Td>
               <Td>{l.descricao}</Td>
-              <Td className="text-right font-semibold whitespace-nowrap">{formatarMoeda(l.precoCentavos)}</Td>
+              <Td className="text-right font-semibold whitespace-nowrap">
+                {formatarMoeda(l.precoCentavos)}
+                {l.formaPreco === 'hora' && <span className="text-xs font-normal text-texto-suave"> /hora</span>}
+              </Td>
               <Td suave className="whitespace-nowrap">
                 {l.dataInicio ? formatarDataIso(l.dataInicio) : '—'}
               </Td>
@@ -118,12 +143,12 @@ export function LinhasDePreco({ tabelaPrecoId, autoFocus = false }: { tabelaPrec
                 </Selo>
               </Td>
               <Td className="text-right">
-                <BotaoVisualizar para={`/materiais/${l.materialId}?aba=precos`} />
+                <BotaoVisualizar para={`/${l.tipo === 'material' ? 'materiais' : 'servicos'}/${l.itemId}?aba=precos`} />
               </Td>
             </Linha>
           ))}
           {linhas.data?.itens.length === 0 && (
-            <LinhaVazia colunas={7}>
+            <LinhaVazia colunas={8}>
               {busca ? 'Nenhuma linha de preço encontrada.' : 'Nenhuma linha de preço nesta situação.'}
             </LinhaVazia>
           )}

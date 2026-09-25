@@ -37,19 +37,19 @@ Definido pelo dono do produto: o admin configura em **Configurações → Funç�
 
 **Parâmetros da função** (além dos níveis): marcam o que a função habilita. Hoje há um, **Vendedor** (quem pode ser cadastrado como vendedor, CAD-18).
 
-**Módulos da matriz:** Clientes e veículos · Ordem de Serviço · **Peças na O.S.** · **Materiais** · **Preços** · Estoque · **Recebimentos** · Financeiro · Relatórios.
+**Módulos da matriz:** Clientes e veículos · Ordem de Serviço · **Peças na O.S.** · **Materiais** · **Serviços** · **Preços** · Estoque · **Recebimentos** · Financeiro · Relatórios.
 *Materiais* (materiais, categorias, marcas, depósitos) e *Preços* (tabelas e vigências) são separados para o almoxarife cadastrar peças sem mexer em preço (decisão de 23/09/2026).
 Os módulos *Peças na O.S.* e *Recebimentos* existem para separar ações que, dentro da O.S., não devem ir para todos os que editam a O.S.: o mecânico edita a O.S. (diagnóstico, solicitar peças, execução), mas **não adiciona peças nem registra pagamento**.
 
 **Funções iniciais** de toda oficina (editáveis; `FUNCOES_PADRAO` em `packages/shared/src/acessos.ts`):
 
-| Função | Clientes/veículos | O.S. | Peças na O.S. | Materiais | Preços | Estoque | Recebimentos | Financeiro | Relatórios |
-|---|---|---|---|---|---|---|---|---|---|
-| Administrador (fixo) | Editar | Editar | Editar | Editar | Editar | Editar | Editar | Editar | Consultar |
-| Atendente | Editar | Editar | Editar | Consultar | Consultar | Editar | Editar | — | — |
-| Mecânico | Consultar | Editar | — | Consultar | — | Consultar | — | — | — |
-| Almoxarife | Consultar | Consultar | Editar | Editar | Consultar | Consultar | — | — | — |
-| Financeiro | Consultar | Consultar | — | Consultar | Editar | — | Editar | Editar | Consultar |
+| Função | Clientes/veículos | O.S. | Peças na O.S. | Materiais | Serviços | Preços | Estoque | Recebimentos | Financeiro | Relatórios |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Administrador (fixo) | Editar | Editar | Editar | Editar | Editar | Editar | Editar | Editar | Editar | Consultar |
+| Atendente | Editar | Editar | Editar | Consultar | Consultar | Consultar | Editar | Editar | — | — |
+| Mecânico | Consultar | Editar | — | Consultar | Consultar | — | Consultar | — | — | — |
+| Almoxarife | Consultar | Consultar | Editar | Editar | Consultar | Consultar | Consultar | — | — | — |
+| Financeiro | Consultar | Consultar | — | Consultar | Editar | Editar | — | Editar | Editar | Consultar |
 
 **Decisões do dono do produto (registro):**
 - **Peças:** o **Almoxarife** adiciona a peça **na O.S. aberta**; o **Atendente** também pode. O Mecânico só solicita. Entradas de compra no estoque ficam com quem tem *Editar* no Estoque (Atendente).
@@ -110,7 +110,7 @@ flowchart LR
 | CAD-04 | Veículos: placa antiga/Mercosul, chassi/VIN (opcional, 17 caracteres) e Renavam validados quando informados, marca/modelo com sugestões da própria oficina, versão, ano fabricação/modelo, cor, combustível, km, veículo principal, status Ativo/Vendido/Inativo, data da última visita (preenchida pela O.S.) | ✅ |
 | CAD-05 | Marca e modelo por lista padronizada (tabela FIPE) em vez de texto livre | 🟡 |
 | CAD-06 | Histórico do veículo: todas as O.S., km a cada visita, peças trocadas | 🟢 (chega com OS) |
-| CAD-07 | **Catálogo de serviços** (mão de obra): descrição, tempo padrão, preço | 🟢 |
+| CAD-07 | **Catálogo de serviços** (mão de obra), em Ofertas → Serviços: código automático e imutável (exibido `000001`), nome (pode repetir), descrição, **forma de preço** (preço fechado ou **valor-hora**; no valor-hora as horas de referência são obrigatórias), horas de trabalho em horas:minutos, classificação (lista em Configurações), garantia em dias e km (só o campo, regras depois) e observação. **Preço nas mesmas Tabelas de Preço dos materiais** (vigências, preço padrão, trilha; no valor-hora o preço é o da hora). Lista com código, nome e situação; detalhe com abas Dados e Preços; importação por planilha; excluir só sem preço. Módulo de acesso **Serviços**; os preços seguem o módulo Preços | ✅ |
 | CAD-08 | **Catálogo de peças/produtos** (ver EST) | 🟢 |
 | CAD-09 | Fornecedores | 🟢 |
 | CAD-10 | Mecânicos: especialidade e % de comissão | 🟢 |
@@ -118,7 +118,7 @@ flowchart LR
 | CAD-12 | Transferir veículo de um cliente para outro (venda do carro), levando o histórico | ✅ |
 | CAD-13 | Importar **clientes** de planilha CSV (uma linha por cliente, com endereço principal e, na PJ, responsável principal; CPF/CNPJ já cadastrado atualiza). Veículos por planilha: 🟡 | ✅ |
 | CAD-14 | Listas editáveis por oficina: origem do cliente, tipo de relacionamento e função do responsável | ✅ |
-| CAD-20 | **Configurações em submenu** (Aparência e logo · Funções e permissões · Origem do cliente · Tipo de relacionamento · Função do responsável · Tipos de material · Tipos de depósito), uma página por item. Toda lista é **tabela parametrizável**: código automático e imutável, nome, descrição opcional e status; **excluir só o item sem nenhum registro associado**, senão apenas inativar | ✅ |
+| CAD-20 | **Configurações em submenu** (Aparência e logo · Funções e permissões · Origem do cliente · Tipo de relacionamento · Função do responsável · Tipos de material · Tipos de depósito · Classificação de serviço), uma página por item. Toda lista é **tabela parametrizável**: código automático e imutável, nome, descrição opcional e status; **excluir só o item sem nenhum registro associado**, senão apenas inativar | ✅ |
 | CAD-15 | Máscaras de digitação: CPF, CNPJ (inclusive alfanumérico), telefone, CEP, e-mail, placa, chassi, Renavam, anos e km | ✅ |
 | CAD-16 | Menu **Clientes** com submenu (Clientes · Veículos). Lista de clientes em tabela, 20 por página, com filtros: status, PF/PJ, período de "cliente desde", origem, tipo de relacionamento e aniversário; página **Veículos** com a frota inteira (busca por placa, marca, modelo ou dono) | ✅ |
 | CAD-17 | **Aniversário do cliente (PF)**: selo na lista (hoje e próximos 7 dias), faixa no perfil no dia, e bloco no Início com atalho de WhatsApp para dar parabéns. Nascidos em 29/02 são lembrados em 28/02 nos anos não bissextos | ✅ |
@@ -171,7 +171,7 @@ flowchart LR
 | EST-11 | Categorias hierárquicas e marcas | ✅ |
 | EST-12 | Cadastro de depósitos (local lógico; saldo por depósito vem com o estoque) | ✅ |
 | EST-13 | Tabelas de preço e preço por vigência, com histórico, preços programados, consulta do preço vigente e trilha de auditoria | ✅ |
-| EST-14 | Menu **Política Comercial** com submenu: **Linhas de Preço** (uma tabela por vez; uma linha por vigência com preço, início, fim e situação, e outra para o preço padrão; filtro de situação que começa em vigentes, futuras e padrão; só preço, sem estoque; **cadastro manual de preço por SKU** e importação por planilha usando a tabela da tela) e **Tabelas de Preço** (lista em tabela; abrir uma tabela mostra as mesmas linhas de preço e o cadastro por SKU). Listas com 20 por página | ✅ |
+| EST-14 | Menu **Política Comercial** com submenu: **Linhas de Preço** (uma tabela por vez, de **materiais e serviços** com coluna e filtro de tipo; uma linha por vigência com preço, início, fim e situação, e outra para o preço padrão; filtro de situação que começa em vigentes, futuras e padrão; só preço, sem estoque; **cadastro manual de preço por SKU** e importação por planilha usando a tabela da tela) e **Tabelas de Preço** (lista em tabela; abrir uma tabela mostra as mesmas linhas de preço e o cadastro por SKU). Listas com 20 por página | ✅ |
 | EST-16 | **Preço padrão** (sem vigência) por material e tabela: vale nos dias sem vigência; alterar ou remover fica na trilha | ✅ |
 | EST-17 | **Importação de preços por planilha CSV** (colunas tabela, sku, preco, inicio, fim; 1ª linha = cabeçalho): grava as linhas válidas e lista as com erro, com o número da linha | ✅ |
 | EST-15 | **Tabela de estoque** por SKU + depósito (20 por página): **disponível** (tudo o que há no depósito), **reservado** (parte dele, nunca maior) e **saldo = disponível − reservado** (livre; decisão de 24/09/2026, substitui o físico); ajuste manual com motivo e histórico, e **lançamento de saldo digitando SKU e depósito** (conferidos antes de gravar), até existir movimentação automática (EST-02, EST-04, EST-10) | ✅ |

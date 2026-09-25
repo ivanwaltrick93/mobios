@@ -1,7 +1,7 @@
 import { and, eq, ilike, or, sql, type SQL } from 'drizzle-orm';
 import type { AnyPgColumn, PgTable } from 'drizzle-orm/pg-core';
 import type { Tx } from '../db/client.js';
-import { categorias, materiais } from '../db/schema.js';
+import { categorias, materiais, servicos } from '../db/schema.js';
 import { ErroHttp, naoEncontrado } from './erros.js';
 import { comparavel } from './importacao.js';
 
@@ -128,6 +128,12 @@ export function buscaDeMaterial(q: string): SQL {
     eq(materiais.codigoBarras, q.replace(/\D/g, '') || q),
     ilike(materiais.descricao, `%${q}%`),
   )!;
+}
+
+/** Busca de serviço: código exato (com ou sem zeros à esquerda) ou trecho do nome (índice trigram). */
+export function buscaDeServico(q: string): SQL {
+  const codigo = /^\d{1,9}$/.test(q) ? Number(q) : null;
+  return or(ilike(servicos.nome, `%${q}%`), ...(codigo ? [eq(servicos.codigo, codigo)] : []))!;
 }
 
 // ---------- Categoria pela planilha (importações) ----------

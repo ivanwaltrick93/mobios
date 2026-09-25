@@ -11,6 +11,7 @@ import { depositosRoutes } from './modules/depositos/routes.js';
 import { marcasRoutes } from './modules/marcas/routes.js';
 import { materiaisRoutes } from './modules/materiais/routes.js';
 import { precosRoutes } from './modules/precos/routes.js';
+import { servicosRoutes } from './modules/servicos/routes.js';
 import { tabelasPrecoRoutes } from './modules/tabelas-preco/routes.js';
 import { clientesRoutes } from './modules/clientes/routes.js';
 import { configuracoesRoutes } from './modules/configuracoes/routes.js';
@@ -57,6 +58,7 @@ export async function criarApp() {
   await app.register(relatoriosRoutes, { prefix: '/api/relatorios' });
   await app.register(painelRoutes, { prefix: '/api/painel' });
   await app.register(vendedoresRoutes, { prefix: '/api/vendedores' });
+  await app.register(servicosRoutes, { prefix: '/api/servicos' });
 
   return app;
 }

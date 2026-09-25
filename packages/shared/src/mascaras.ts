@@ -120,3 +120,16 @@ export const quantidadeParaNumero = (v: string): number | null => {
   const limpo = v.replace(/\./g, '').replace(',', '.');
   return limpo === '' || Number.isNaN(Number(limpo)) ? null : Number(limpo);
 };
+
+/** Horas e minutos ("1:30"): até 3 dígitos de hora e 2 de minuto; o ":" entra sozinho a partir do 3º dígito. */
+export function mascaraHoras(v: string): string {
+  const d = v.replace(/\D/g, '').slice(0, 5);
+  return d.length <= 2 ? d : `${Number(d.slice(0, -2))}:${d.slice(-2)}`;
+}
+
+/** "1:30" → 90 minutos; "2" → 120 (só horas). Formato inválido ou minutos acima de 59 → NaN. */
+export function horasParaMinutos(v: string): number {
+  const m = /^(\d{1,3})(?::(\d{2}))?$/.exec(v.trim());
+  if (!m || Number(m[2] ?? 0) > 59) return NaN;
+  return Number(m[1]) * 60 + Number(m[2] ?? 0);
+}

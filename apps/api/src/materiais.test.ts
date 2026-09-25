@@ -589,7 +589,13 @@ describe('linhas de preço', () => {
 
     const linhas = async (filtro = '') =>
       (await o.chamar('GET', `/api/precos/linhas?tabelaPrecoId=${tabela.id}${filtro}`)).json();
-    const base = { materialId: material.id, sku: 'FIL-001', descricao: 'Filtro de óleo W712' };
+    const base = {
+      tipo: 'material',
+      itemId: material.id,
+      codigo: 'FIL-001',
+      descricao: 'Filtro de óleo W712',
+      formaPreco: null,
+    };
 
     // Padrão: vigentes, futuras e o padrão; o material sem preço não aparece; nada de estoque.
     expect(await linhas()).toEqual({
@@ -762,7 +768,7 @@ describe('importação de preços por planilha', () => {
 
     // Arquivo sem as colunas obrigatórias, formato errado e permissão.
     expect((await importar(planilha('codigo;valor', 'A;1'))).json().erro).toBe(
-      'Colunas obrigatórias ausentes no cabeçalho (1ª linha): tabela, sku, preco.',
+      'Colunas obrigatórias ausentes no cabeçalho (1ª linha): tabela, preco.',
     );
     expect((await o.chamar('POST', '/api/precos/importar', { a: 1 })).statusCode).toBe(415);
     const atendente = await o.pessoa('Atendente');
@@ -974,5 +980,255 @@ describe('importação de categorias e materiais por planilha', () => {
     expect((await importar(o, '/api/precos/importar', planilha('sku;preco', 'FIL-001;1'))).json().erro).toContain(
       'tabela',
     );
+  });
+});
+
+describe('serviços (menu Ofertas)', () => {
+  type ServicoCriado = { id: string; codigo: number; nome: string; tempoMinutos: number | null; versao: number };
+  const importarCsv = (o: Awaited<ReturnType<typeof novaOficina>>, url: string, texto: string) =>
+    o.chamar('POST', url, planilha(...texto.split('\n')), { 'content-type': 'text/csv' });
+
+  it('cadastro: código automático, preço fechado ou valor-hora (horas obrigatórias), nome repetível', async () => {
+    const o = await novaOficina('Oficina Serviços');
+    const classificacoes = (await o.chamar('GET', '/api/opcoes/classificacoesServico')).json() as {
+      id: string;
+      nome: string;
+    }[];
+    const mecanica = classificacoes.find((c) => c.nome === 'Mecânica')!;
+
+    const troca = await o.chamar('POST', '/api/servicos', {
+      nome: 'Troca de óleo',
+      classificacaoId: mecanica.id,
+      tempoMinutos: '0:45',
+      garantiaDias: '90',
+      garantiaKm: '',
+    });
+    expect(troca.statusCode).toBe(201);
+    expect(troca.json()).toMatchObject({
+      codigo: 1,
+      formaPreco: 'fechado',
+      tempoMinutos: 45,
+      classificacaoNome: 'Mecânica',
+      garantiaDias: 90,
+      garantiaKm: null,
+      criadoPor: 'Admin Teste',
+      versao: 1,
+    });
+    // Preço fechado sem horas é válido; valor-hora exige as horas.
+    const semHoras = (await o.chamar('POST', '/api/servicos', { nome: 'Troca de óleo' })).json() as ServicoCriado;
+    expect(semHoras).toMatchObject({ codigo: 2, nome: 'Troca de óleo', tempoMinutos: null }); // nome pode repetir
+    const horaSem = await o.chamar('POST', '/api/servicos', { nome: 'Mão de obra', formaPreco: 'hora' });
+    expect(horaSem.statusCode).toBe(400);
+    expect(horaSem.json().campos.tempoMinutos).toBe('No valor-hora, informe as horas de referência');
+    expect((await o.chamar('POST', '/api/servicos', { nome: 'Lavagem', tempoMinutos: '1:75' })).statusCode).toBe(400);
+    const hora = (
+      await o.chamar('POST', '/api/servicos', { nome: 'Mão de obra', formaPreco: 'hora', tempoMinutos: '1:30' })
+    ).json() as ServicoCriado;
+    expect(hora).toMatchObject({ codigo: 3, formaPreco: 'hora', tempoMinutos: 90 });
+
+    // Busca por código (com ou sem zeros) ou nome; paginação; edição com versão; código imutável.
+    const busca = async (q: string) =>
+      (await o.chamar('GET', `/api/servicos?${q}`)).json().itens.map((s: { codigo: number }) => s.codigo);
+    expect(await busca('q=000003')).toEqual([3]);
+    expect(await busca('q=óleo')).toEqual([1, 2]);
+    expect(await busca(`classificacaoId=${mecanica.id}`)).toEqual([1]);
+    const editado = await o.chamar('PUT', `/api/servicos/${hora.id}`, {
+      nome: 'Mão de obra mecânica',
+      formaPreco: 'hora',
+      tempoMinutos: 60,
+      versao: 1,
+    });
+    expect(editado.json()).toMatchObject({ nome: 'Mão de obra mecânica', tempoMinutos: 60, versao: 2 });
+    expect(
+      (
+        await o.chamar('PUT', `/api/servicos/${hora.id}`, {
+          nome: 'Outro nome',
+          tempoMinutos: 60,
+          formaPreco: 'hora',
+          versao: 1,
+        })
+      ).statusCode,
+    ).toBe(409);
+    await expect(
+      withTenant(o.tid, (tx) => tx.execute(sql`update servicos set codigo = 99 where id = ${hora.id}`)),
+    ).rejects.toMatchObject({ cause: { constraint_name: 'servicos_codigo_imutavel' } });
+
+    // Classificação inativa não entra em serviço novo.
+    await o.chamar('PUT', `/api/opcoes/classificacoesServico/${mecanica.id}`, { nome: 'Mecânica', ativa: false });
+    expect(
+      (await o.chamar('POST', '/api/servicos', { nome: 'Pintura', classificacaoId: mecanica.id })).statusCode,
+    ).toBe(400);
+
+    // Sem preço, exclui; inativar/reativar.
+    expect((await o.chamar('PATCH', `/api/servicos/${semHoras.id}/status`, { ativo: false })).json().ativo).toBe(false);
+    expect((await o.chamar('DELETE', `/api/servicos/${semHoras.id}`)).statusCode).toBe(204);
+
+    // Permissões: Financeiro edita; Mecânico só consulta; outra oficina não vê.
+    const mecanico = await o.pessoa('Mecânico');
+    expect((await mecanico('GET', '/api/servicos')).statusCode).toBe(200);
+    expect((await mecanico('POST', '/api/servicos', { nome: 'Nada' })).statusCode).toBe(403);
+    const financeiro = await o.pessoa('Financeiro');
+    expect((await financeiro('POST', '/api/servicos', { nome: 'Revisão' })).statusCode).toBe(201);
+    const outra = await novaOficina('Oficina Serviços B');
+    expect((await outra.chamar('GET', `/api/servicos/${hora.id}`)).statusCode).toBe(404);
+  });
+
+  it('preços: mesmas tabelas, vigências e padrão dos materiais; Linhas de Preço com tipo', async () => {
+    const o = await novaOficina('Oficina Preço Serviço');
+    const { material, tabela } = await catalogoBasico(o);
+    const servico = (
+      await o.chamar('POST', '/api/servicos', { nome: 'Alinhamento', formaPreco: 'hora', tempoMinutos: '1:00' })
+    ).json() as ServicoCriado;
+
+    // Serviço pelo código digitado (com zeros) e material pelo SKU, na mesma tabela.
+    const vigencia = await o.chamar('POST', '/api/precos', {
+      servicoCodigo: '000001',
+      tabelaPrecoId: tabela.id,
+      precoCentavos: 12000,
+      dataInicio: dia(0),
+    });
+    expect(vigencia.statusCode).toBe(201);
+    expect(vigencia.json()).toMatchObject({ servicoId: servico.id, materialId: null, situacao: 'vigente' });
+    await o.chamar('POST', '/api/precos', {
+      sku: 'fil-001',
+      tabelaPrecoId: tabela.id,
+      precoCentavos: 4990,
+      dataInicio: dia(0),
+    });
+    await o.chamar('PUT', '/api/precos/padrao', {
+      servicoId: servico.id,
+      tabelaPrecoId: tabela.id,
+      precoCentavos: 10000,
+    });
+    // Só um item por preço; código inexistente aponta o campo.
+    expect(
+      (
+        await o.chamar('POST', '/api/precos', {
+          sku: 'FIL-001',
+          servicoCodigo: 1,
+          tabelaPrecoId: tabela.id,
+          precoCentavos: 1,
+          dataInicio: dia(1),
+        })
+      ).statusCode,
+    ).toBe(400);
+    const naoExiste = await o.chamar('POST', '/api/precos', {
+      servicoCodigo: 99,
+      tabelaPrecoId: tabela.id,
+      precoCentavos: 1,
+      dataInicio: dia(1),
+    });
+    expect(naoExiste.json().campos).toEqual({ servicoCodigo: 'Serviço não encontrado' });
+
+    expect((await o.chamar('GET', `/api/precos?servicoId=${servico.id}`)).json()).toHaveLength(1);
+    expect((await o.chamar('GET', `/api/precos/padrao?servicoId=${servico.id}`)).json()).toMatchObject([
+      { servicoId: servico.id, precoCentavos: 10000 },
+    ]);
+    // O banco barra vigências sobrepostas do mesmo serviço, mesmo por fora da API.
+    await expect(
+      withTenant(o.tid, (tx) =>
+        tx.execute(sql`insert into materiais_precos (servico_id, tabela_preco_id, preco_centavos, data_inicio)
+          values (${servico.id}, ${tabela.id}, 1, ${dia(3)})`),
+      ),
+    ).rejects.toMatchObject({ cause: { constraint_name: 'materiais_precos_servico_sem_sobreposicao' } });
+
+    const linhas = async (filtro = '') =>
+      (await o.chamar('GET', `/api/precos/linhas?tabelaPrecoId=${tabela.id}${filtro}`)).json().itens as {
+        tipo: string;
+        codigo: string;
+        formaPreco: string | null;
+        situacao: string;
+      }[];
+    expect((await linhas()).map((l) => [l.tipo, l.codigo, l.situacao, l.formaPreco])).toEqual([
+      ['servico', '000001', 'vigente', 'hora'],
+      ['servico', '000001', 'padrao', 'hora'],
+      ['material', 'FIL-001', 'vigente', null],
+    ]);
+    expect((await linhas('&tipo=material')).map((l) => l.codigo)).toEqual(['FIL-001']);
+    // A contagem da tabela continua sendo só de materiais (serviço não conta como material).
+    expect((await o.chamar('GET', `/api/tabelas-preco/${tabela.id}`)).json().materiaisComPreco).toBe(1);
+    expect((await linhas('&tipo=servico&q=alinha')).map((l) => l.situacao)).toEqual(['vigente', 'padrao']);
+
+    // Com preço, o serviço não é excluído (só inativado); o material segue com a própria trilha.
+    expect((await o.chamar('DELETE', `/api/servicos/${servico.id}`)).statusCode).toBe(409);
+    expect((await o.chamar('GET', `/api/precos?materialId=${material.id}`)).json()).toHaveLength(1);
+  });
+
+  it('importação: serviços pelo código (vazio = novo) e preços com as colunas tipo e codigo', async () => {
+    const o = await novaOficina('Oficina Importa Serviços');
+    const { tabela } = await catalogoBasico(o);
+    const resultado = (
+      await importarCsv(
+        o,
+        '/api/servicos/importar',
+        [
+          'codigo;nome;forma_preco;horas;classificacao;garantia_dias;ativo',
+          ';Troca de óleo;fechado;0:30;mecânica;90;',
+          ';Mão de obra;hora;1:00;;;',
+          ';Hora sem tempo;hora;;;;',
+          ';Classe errada;;;Voo;;',
+          '99;Não existe;;;;;',
+          ';Inativo;;;;;não',
+        ].join('\n'),
+      )
+    ).json();
+    expect(resultado).toMatchObject({ linhas: 6, importadas: 3 });
+    expect(resultado.erros).toEqual([
+      { linha: 4, mensagem: 'horas: No valor-hora, informe as horas de referência' },
+      {
+        linha: 5,
+        mensagem: 'classificacao: "Voo" não está na lista (Configurações → Classificação de serviço).',
+      },
+      { linha: 6, mensagem: 'codigo: serviço 99 não encontrado. Deixe vazio para cadastrar um novo.' },
+    ]);
+    const lista = (await o.chamar('GET', '/api/servicos')).json().itens as {
+      codigo: number;
+      nome: string;
+      classificacaoNome: string | null;
+      ativo: boolean;
+    }[];
+    expect(lista.map((s) => [s.codigo, s.nome, s.classificacaoNome, s.ativo])).toEqual([
+      [1, 'Troca de óleo', 'Mecânica', true],
+      [2, 'Mão de obra', null, true],
+      [3, 'Inativo', null, false],
+    ]);
+
+    // Atualiza pelo código; coluna ausente mantém (classificação e horas continuam).
+    await importarCsv(o, '/api/servicos/importar', 'codigo;nome\n000001;Troca de óleo e filtro');
+    const [primeiro] = (await o.chamar('GET', '/api/servicos?q=1')).json().itens;
+    expect((await o.chamar('GET', `/api/servicos/${primeiro.id}`)).json()).toMatchObject({
+      nome: 'Troca de óleo e filtro',
+      tempoMinutos: 30,
+      classificacaoNome: 'Mecânica',
+      garantiaDias: 90,
+    });
+
+    // Preços: tipo + codigo (e a coluna antiga sku para material).
+    const precos = (
+      await importarCsv(
+        o,
+        '/api/precos/importar',
+        [
+          'tabela;tipo;codigo;sku;preco',
+          'VAREJO;servico;000002;;80,00',
+          'VAREJO;;;FIL-001;45,00',
+          'VAREJO;servico;123;;10,00',
+          'VAREJO;peça;X;;10,00',
+        ].join('\n'),
+      )
+    ).json();
+    expect(precos).toMatchObject({ linhas: 4, importadas: 2 });
+    expect(precos.erros).toEqual([
+      { linha: 4, mensagem: 'Serviço "123" não encontrado.' },
+      { linha: 5, mensagem: 'tipo: use "material" ou "servico" (recebido "peça").' },
+    ]);
+    const linhas = (await o.chamar('GET', `/api/precos/linhas?tabelaPrecoId=${tabela.id}`)).json().itens as {
+      codigo: string;
+      precoCentavos: number;
+    }[];
+    expect(linhas.map((l) => [l.codigo, l.precoCentavos])).toEqual([
+      ['FIL-001', 4500],
+      ['000002', 8000],
+    ]);
   });
 });

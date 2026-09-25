@@ -1,5 +1,12 @@
 import { sql } from 'drizzle-orm';
-import { MODULO_IDS, NIVEIS, UNIDADES, type Unidade } from '@mobios/shared';
+import {
+  FORMAS_PRECO_SERVICO,
+  MODULO_IDS,
+  NIVEIS,
+  UNIDADES,
+  type FormaPrecoServico,
+  type Unidade,
+} from '@mobios/shared';
 import {
   bigint,
   boolean,
@@ -497,6 +504,7 @@ export const eventoPreco = pgEnum('evento_preco', ['criado', 'alterado', 'encerr
 /** Tipos editáveis por oficina (Configurações → Tipos de material / de depósito), como as listas de clientes. */
 export const tiposMaterial = listaDeOpcoes('tipos_material');
 export const tiposDeposito = listaDeOpcoes('tipos_deposito');
+export const classificacoesServico = listaDeOpcoes('classificacoes_servico');
 
 /**
  * Categoria hierárquica (Peças › Motor › Filtros). O nome é único entre irmãs; o código, na oficina.
@@ -614,6 +622,52 @@ export const materiais = pgTable(
   ],
 );
 
+export const formaPrecoServico = pgEnum(
+  'forma_preco_servico',
+  Object.keys(FORMAS_PRECO_SERVICO) as [FormaPrecoServico, ...FormaPrecoServico[]],
+);
+
+/**
+ * Serviço (mão de obra), vendido como o material: preço nas mesmas tabelas de preço (vigências e padrão).
+ * `forma_preco`: o preço da tabela é o do serviço (fechado) ou o de uma hora (hora × tempo de referência).
+ * Código sequencial por oficina, imutável (exibido com 6 dígitos). O nome pode repetir: quem identifica é o código.
+ */
+export const servicos = pgTable(
+  'servicos',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: tenantId(),
+    codigo: codigoAutomatico('servicos'),
+    nome: text().notNull(),
+    descricao: text(),
+    formaPreco: formaPrecoServico().notNull().default('fechado'),
+    /** Horas de trabalho de referência, em minutos. Obrigatório no valor-hora. */
+    tempoMinutos: integer(),
+    observacao: text(),
+    classificacaoId: uuid(),
+    garantiaDias: integer(),
+    garantiaKm: integer(),
+    ativo: boolean().notNull().default(true),
+    ...autoria,
+    ...timestamps,
+  },
+  (t) => [
+    unique().on(t.tenantId, t.id),
+    uniqueIndex('servicos_codigo_unico').on(t.tenantId, t.codigo),
+    foreignKey({
+      columns: [t.tenantId, t.classificacaoId],
+      foreignColumns: [classificacoesServico.tenantId, classificacoesServico.id],
+    }),
+    check('servicos_tempo_positivo', sql`${t.tempoMinutos} is null or ${t.tempoMinutos} > 0`),
+    check('servicos_valor_hora_com_tempo', sql`${t.formaPreco} <> 'hora' or ${t.tempoMinutos} is not null`),
+    check('servicos_garantia_positiva', sql`coalesce(${t.garantiaDias}, 0) >= 0 and coalesce(${t.garantiaKm}, 0) >= 0`),
+    index().on(t.tenantId, t.ativo, t.codigo),
+    index().on(t.classificacaoId),
+    ...fksAutoria(t),
+    isolamentoPorTenant('servicos'),
+  ],
+);
+
 /** Depósito: só o cadastro do local lógico. Saldo por depósito será de outro módulo. */
 export const depositos = pgTable(
   'depositos',
@@ -666,9 +720,10 @@ export const tabelasPreco = pgTable(
 );
 
 /**
- * Preço de um material numa tabela durante uma vigência [data_inicio, data_fim] (fim inclusivo; NULL = aberta).
- * Nunca é apagado nem tem o valor alterado depois que começa: o histórico é esta própria tabela.
- * Sobreposição de vigências é barrada pela constraint EXCLUDE materiais_precos_sem_sobreposicao (migração 0012).
+ * Preço de um material ou serviço numa tabela durante uma vigência [data_inicio, data_fim] (fim inclusivo; NULL =
+ * aberta). O nome ficou da época em que só havia material. Nunca é apagado nem tem o valor alterado depois que
+ * começa: o histórico é esta própria tabela. Sobreposição de vigências é barrada pelas constraints EXCLUDE
+ * materiais_precos_sem_sobreposicao (0012, material) e materiais_precos_servico_sem_sobreposicao (0023, serviço).
  * `encerradoPeloPrecoId`/`dataFimAnterior`: se a vigência foi encerrada automaticamente por uma nova,
  * cancelar a nova devolve o fim anterior.
  */
@@ -677,7 +732,9 @@ export const materiaisPrecos = pgTable(
   {
     id: uuid().primaryKey().defaultRandom(),
     tenantId: tenantId(),
-    materialId: uuid().notNull(),
+    // Item do preço: material OU serviço (CHECK materiais_precos_um_item).
+    materialId: uuid(),
+    servicoId: uuid(),
     tabelaPrecoId: uuid().notNull(),
     precoCentavos: bigint({ mode: 'number' }).notNull(),
     dataInicio: date().notNull(),
@@ -695,8 +752,10 @@ export const materiaisPrecos = pgTable(
   (t) => [
     unique().on(t.tenantId, t.id),
     foreignKey({ columns: [t.tenantId, t.materialId], foreignColumns: [materiais.tenantId, materiais.id] }),
+    foreignKey({ columns: [t.tenantId, t.servicoId], foreignColumns: [servicos.tenantId, servicos.id] }),
     foreignKey({ columns: [t.tenantId, t.tabelaPrecoId], foreignColumns: [tabelasPreco.tenantId, tabelasPreco.id] }),
     foreignKey({ columns: [t.tenantId, t.encerradoPeloPrecoId], foreignColumns: [t.tenantId, t.id] }),
+    check('materiais_precos_um_item', sql`num_nonnulls(${t.materialId}, ${t.servicoId}) = 1`),
     foreignKey({ columns: [t.tenantId, t.canceladoPor], foreignColumns: [users.tenantId, users.id] }),
     ...fksAutoria(t),
     check('materiais_precos_valor_positivo', sql`${t.precoCentavos} >= 0`),
@@ -704,6 +763,7 @@ export const materiaisPrecos = pgTable(
     check('materiais_precos_cancelamento', sql`not ${t.cancelado} or ${t.motivoCancelamento} is not null`),
     // Consulta do preço vigente: material + tabela, a partir da vigência mais recente.
     index('materiais_precos_consulta').on(t.materialId, t.tabelaPrecoId, t.dataInicio.desc()),
+    index('materiais_precos_consulta_servico').on(t.servicoId, t.tabelaPrecoId, t.dataInicio.desc()),
     index().on(t.tabelaPrecoId),
     index().on(t.encerradoPeloPrecoId),
     isolamentoPorTenant('materiais_precos'),
@@ -732,15 +792,17 @@ export const precosEventos = pgTable(
 );
 
 /**
- * Preço padrão (sem vigência) de um material numa tabela: vale nos dias em que nenhuma vigência cobre a data.
- * Um por material + tabela; pode mudar a qualquer momento, com a trilha em precos_padrao_eventos.
+ * Preço padrão (sem vigência) de um material ou serviço numa tabela: vale nos dias em que nenhuma vigência cobre
+ * a data. Um por item + tabela; pode mudar a qualquer momento, com a trilha em precos_padrao_eventos.
  */
 export const precosPadrao = pgTable(
   'precos_padrao',
   {
     id: uuid().primaryKey().defaultRandom(),
     tenantId: tenantId(),
-    materialId: uuid().notNull(),
+    // Material OU serviço (CHECK precos_padrao_um_item).
+    materialId: uuid(),
+    servicoId: uuid(),
     tabelaPrecoId: uuid().notNull(),
     precoCentavos: bigint({ mode: 'number' }).notNull(),
     ...autoria,
@@ -748,9 +810,14 @@ export const precosPadrao = pgTable(
   },
   (t) => [
     foreignKey({ columns: [t.tenantId, t.materialId], foreignColumns: [materiais.tenantId, materiais.id] }),
+    foreignKey({ columns: [t.tenantId, t.servicoId], foreignColumns: [servicos.tenantId, servicos.id] }),
     foreignKey({ columns: [t.tenantId, t.tabelaPrecoId], foreignColumns: [tabelasPreco.tenantId, tabelasPreco.id] }),
     ...fksAutoria(t),
+    check('precos_padrao_um_item', sql`num_nonnulls(${t.materialId}, ${t.servicoId}) = 1`),
     uniqueIndex('precos_padrao_unico').on(t.tenantId, t.materialId, t.tabelaPrecoId),
+    uniqueIndex('precos_padrao_servico_unico')
+      .on(t.tenantId, t.servicoId, t.tabelaPrecoId)
+      .where(sql`${t.servicoId} is not null`),
     check('precos_padrao_valor_positivo', sql`${t.precoCentavos} >= 0`),
     index().on(t.tabelaPrecoId),
     isolamentoPorTenant('precos_padrao'),
@@ -763,7 +830,8 @@ export const precosPadraoEventos = pgTable(
   {
     id: uuid().primaryKey().defaultRandom(),
     tenantId: tenantId(),
-    materialId: uuid().notNull(),
+    materialId: uuid(),
+    servicoId: uuid(),
     tabelaPrecoId: uuid().notNull(),
     evento: text().notNull(),
     precoAntes: bigint({ mode: 'number' }),
@@ -774,9 +842,12 @@ export const precosPadraoEventos = pgTable(
   (t) => [
     foreignKey({ columns: [t.tenantId, t.materialId], foreignColumns: [materiais.tenantId, materiais.id] }),
     foreignKey({ columns: [t.tenantId, t.tabelaPrecoId], foreignColumns: [tabelasPreco.tenantId, tabelasPreco.id] }),
+    foreignKey({ columns: [t.tenantId, t.servicoId], foreignColumns: [servicos.tenantId, servicos.id] }),
     foreignKey({ columns: [t.tenantId, t.usuarioId], foreignColumns: [users.tenantId, users.id] }),
     check('precos_padrao_eventos_evento', sql`${t.evento} in ('definido', 'alterado', 'removido')`),
+    check('precos_padrao_eventos_um_item', sql`num_nonnulls(${t.materialId}, ${t.servicoId}) = 1`),
     index().on(t.materialId, t.tabelaPrecoId, t.criadoEm),
+    index().on(t.servicoId, t.tabelaPrecoId, t.criadoEm),
     index().on(t.tabelaPrecoId),
     isolamentoPorTenant('precos_padrao_eventos'),
   ],

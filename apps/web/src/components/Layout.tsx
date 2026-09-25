@@ -17,8 +17,8 @@ type ItemMenu = {
   rotulo: string;
   modulo?: ModuloId;
   somenteAdmin?: boolean;
-  /** Submenu que abre e fecha (collapse) no menu lateral. */
-  filhos?: { para: string; rotulo: string }[];
+  /** Submenu que abre e fecha (collapse) no menu lateral. Filho com `modulo` só aparece para quem o acessa. */
+  filhos?: { para: string; rotulo: string; modulo?: ModuloId }[];
 };
 
 const menu: ItemMenu[] = [
@@ -34,13 +34,13 @@ const menu: ItemMenu[] = [
   },
   {
     para: '/materiais',
-    rotulo: 'Materiais',
-    modulo: 'materiais',
+    rotulo: 'Ofertas',
     filhos: [
-      { para: '/materiais', rotulo: 'Materiais' },
-      { para: '/materiais/categorias', rotulo: 'Categorias' },
-      { para: '/materiais/marcas', rotulo: 'Marcas' },
-      { para: '/materiais/depositos', rotulo: 'Depósitos' },
+      { para: '/materiais', rotulo: 'Materiais', modulo: 'materiais' },
+      { para: '/servicos', rotulo: 'Serviços', modulo: 'servicos' },
+      { para: '/materiais/categorias', rotulo: 'Categorias', modulo: 'materiais' },
+      { para: '/materiais/marcas', rotulo: 'Marcas', modulo: 'materiais' },
+      { para: '/materiais/depositos', rotulo: 'Depósitos', modulo: 'materiais' },
     ],
   },
   {
@@ -99,6 +99,7 @@ export function Layout() {
   if (sessao.isPending) return <div className="p-8 text-texto-suave">Carregando…</div>;
   if (sessao.isError) return <Navigate to="/entrar" replace />;
   const { usuario, oficina } = sessao.data;
+  const visivel = (modulo?: ModuloId) => !modulo || temAcesso(sessao.data.acessos, modulo);
 
   return (
     <div className="flex min-h-screen flex-col md:flex-row">
@@ -117,9 +118,10 @@ export function Layout() {
         </div>
         <nav className="flex gap-1 overflow-x-auto px-3 pb-3 md:flex-col">
           {menu
-            .filter((item) =>
-              item.somenteAdmin ? usuario.admin : !item.modulo || temAcesso(sessao.data.acessos, item.modulo),
-            )
+            .filter((item) => (item.somenteAdmin ? usuario.admin : visivel(item.modulo)))
+            .map((item) => ({ ...item, filhos: item.filhos?.filter((f) => visivel(f.modulo)) }))
+            // Grupo sem nenhum filho acessível some do menu.
+            .filter((item) => !item.filhos || item.filhos.length > 0)
             .map((item) =>
               item.filhos ? (
                 <GrupoMenu key={item.para} rotulo={item.rotulo} filhos={item.filhos} />

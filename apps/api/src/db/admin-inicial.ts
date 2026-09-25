@@ -6,6 +6,7 @@ import { gravarAcessos, gravarFuncoesDoUsuario } from '../lib/acessos.js';
 import type { Tx } from './client.js';
 import {
   cargosResponsavel,
+  classificacoesServico,
   funcaoParametros,
   funcoes,
   origensCliente,
@@ -51,6 +52,7 @@ export async function criarOficinaComAdmin(
     await tx.insert(cargosResponsavel).values(OPCOES_PADRAO.cargos.map((nome) => ({ nome })));
     await tx.insert(tiposMaterial).values(OPCOES_PADRAO.tiposMaterial.map((nome) => ({ nome })));
     await tx.insert(tiposDeposito).values(OPCOES_PADRAO.tiposDeposito.map((nome) => ({ nome })));
+    await tx.insert(classificacoesServico).values(OPCOES_PADRAO.classificacoesServico.map((nome) => ({ nome })));
 
     const [user] = await tx.insert(users).values({ nome: admin.nome, email: admin.email, senhaHash }).returning();
     await gravarFuncoesDoUsuario(tx as unknown as Tx, user!.id, [funcaoAdmin!.id]);

@@ -13,6 +13,9 @@ import { Marcas } from './pages/Marcas';
 import { MaterialDetalhe } from './pages/MaterialDetalhe';
 import { Materiais } from './pages/Materiais';
 import { NovoMaterial } from './pages/NovoMaterial';
+import { ServicoDetalhe } from './pages/ServicoDetalhe';
+import { EditarServico, NovoServico } from './pages/ServicoForm';
+import { Servicos } from './pages/Servicos';
 import { TabelaPrecoDetalhe } from './pages/TabelaPrecoDetalhe';
 import { TabelasPreco } from './pages/TabelasPreco';
 import { ListaPrecos } from './pages/ListaPrecos';
@@ -78,6 +81,10 @@ const router = createBrowserRouter([
       { path: '/materiais/depositos', element: <Depositos /> },
       { path: '/materiais/:id', element: <MaterialDetalhe /> },
       { path: '/materiais/:id/editar', element: <EditarMaterial /> },
+      { path: '/servicos', element: <Servicos /> },
+      { path: '/servicos/novo', element: <NovoServico /> },
+      { path: '/servicos/:id', element: <ServicoDetalhe /> },
+      { path: '/servicos/:id/editar', element: <EditarServico /> },
       { path: '/tabelas-preco', element: <TabelasPreco /> },
       { path: '/tabelas-preco/:id', element: <TabelaPrecoDetalhe /> },
       { path: '/precos', element: <ListaPrecos /> },

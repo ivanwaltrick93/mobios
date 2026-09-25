@@ -13,6 +13,7 @@ import { z } from 'zod';
 import { withTenant } from '../../db/client.js';
 import {
   cargosResponsavel,
+  classificacoesServico,
   origensCliente,
   relacionamentosCliente,
   tiposDeposito,
@@ -39,6 +40,12 @@ const listas = {
   },
   tiposMaterial: { tabela: tiposMaterial, nomeTabela: 'tipos_material', uso: 'materiais', coluna: 'tipo_id' },
   tiposDeposito: { tabela: tiposDeposito, nomeTabela: 'tipos_deposito', uso: 'depositos', coluna: 'tipo_id' },
+  classificacoesServico: {
+    tabela: classificacoesServico,
+    nomeTabela: 'classificacoes_servico',
+    uso: 'servicos',
+    coluna: 'classificacao_id',
+  },
 } satisfies Record<ListaOpcoes, unknown>;
 
 /**

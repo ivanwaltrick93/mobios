@@ -540,3 +540,20 @@ Decisões do dono do produto (23/09/2026): a tela mostra **apenas preço** (sem 
 | `GET /api/precos/linhas?tabelaPrecoId&q&situacao&pagina` | Linhas da tabela: `{ id, materialId, sku, descricao, precoCentavos, dataInicio, dataFim, situacao }`; `situacao` do filtro: `atuais` (padrão), `vigente`, `futuro`, `encerrado`, `cancelado`, `padrao`, `todas`. A situação da vigência segue a regra de `situacaoPreco` |
 
 A antiga `GET /api/precos/lista` (uma linha por material, com próximo preço e disponível somado do estoque) foi removida: era usada só por esta tela.
+
+## 25. Serviços e preço de serviço (menu Ofertas)
+
+Decisões do dono do produto (24/09/2026): o serviço (mão de obra) é vendido como o material, com preço nas **mesmas Tabelas de Preço**; o grupo de menu "Materiais" passa a se chamar **Ofertas** (Materiais · Serviços · Categorias · Marcas · Depósitos).
+
+- **`servicos`**: código sequencial por oficina, automático e imutável (exibido com 6 dígitos, `000001`); nome obrigatório e repetível (quem identifica é o código); descrição; `forma_preco` = `fechado` (o preço da tabela é o do serviço) ou `hora` (o preço da tabela é o de uma hora; o valor do serviço é esse preço × as horas); `tempo_minutos` (horas de trabalho, digitadas como horas:minutos; obrigatório no valor-hora, CHECK `servicos_valor_hora_com_tempo`); classificação (`classificacoes_servico`, lista de Configurações, opcional); garantia em dias e km (só registro); observação; status, autoria e `versao` (409). Excluir só o serviço sem preço (FK RESTRICT); senão, inativar.
+- **Preço de material ou serviço**: `materiais_precos`, `precos_padrao` e `precos_padrao_eventos` ganharam `servico_id`; `material_id` ficou opcional e o CHECK `*_um_item` exige **exatamente um** dos dois. As vigências de serviço têm a própria constraint EXCLUDE (`materiais_precos_servico_sem_sobreposicao`), o preço padrão o próprio índice único parcial (`precos_padrao_servico_unico`), e a trava consultiva usa o id do item. Todas as regras de vigência (seções 9 a 11) valem igual para serviço.
+- **API de preços**: onde havia `materialId`/`sku`, o item pode ser `servicoId` ou `servicoCodigo` (ex.: `000012`), exatamente um. `GET /api/precos/linhas` devolve `{ tipo, itemId, codigo, descricao, formaPreco, … }` e aceita `tipo=material|servico`. A importação de preços aceita as colunas `tipo` (material/servico, vazio = material) e `codigo` (SKU ou código do serviço); a coluna antiga `sku` continua valendo. `materiaisComPreco` das tabelas conta só materiais.
+- **Permissões**: módulo **Serviços** (Admin e Financeiro editam; Atendente, Mecânico e Almoxarife consultam); os preços de serviço seguem o módulo **Preços**.
+
+| Endpoint | Uso |
+|---|---|
+| `GET /api/servicos?q&classificacaoId&ativo&pagina` | Lista (código exato ou trecho do nome), ordenada pelo código |
+| `GET/POST /api/servicos`, `GET/PUT /api/servicos/:id`, `PATCH /api/servicos/:id/status`, `DELETE /api/servicos/:id` | Cadastro |
+| `POST /api/servicos/importar` (text/csv) | Colunas em `COLUNAS_IMPORTACAO_SERVICOS`: sem código = novo; código existente = atualiza |
+
+Telas: **Serviços** (tabela com código, nome e situação; busca, filtros de classificação e situação; importar; novo), **detalhe** com abas Dados e Preços (a mesma aba Preços do material, com "/hora" no valor-hora) e formulário de cadastro/edição. Linhas de Preço e "Cadastrar preço" passam a ter o tipo (material ou serviço).

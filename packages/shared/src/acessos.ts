@@ -46,6 +46,13 @@ export const MODULOS = [
     descricao: 'Editar = cadastrar materiais, categorias, marcas e depósitos.',
   },
   {
+    id: 'servicos',
+    nome: 'Serviços',
+    niveis: ['consultar', 'editar'],
+    disponivel: true,
+    descricao: 'Editar = cadastrar serviços (mão de obra). Os preços dos serviços seguem o módulo Preços.',
+  },
+  {
     id: 'precos',
     nome: 'Preços',
     niveis: ['consultar', 'editar'],
@@ -147,12 +154,22 @@ export const FUNCOES_PADRAO: { nome: string; acessos: Partial<Acessos>; parametr
       os: 'editar',
       pecas_os: 'editar',
       materiais: 'consultar',
+      servicos: 'consultar',
       precos: 'consultar',
       estoque: 'editar',
       recebimentos: 'editar',
     },
   },
-  { nome: 'Mecânico', acessos: { clientes: 'consultar', os: 'editar', materiais: 'consultar', estoque: 'consultar' } },
+  {
+    nome: 'Mecânico',
+    acessos: {
+      clientes: 'consultar',
+      os: 'editar',
+      materiais: 'consultar',
+      servicos: 'consultar',
+      estoque: 'consultar',
+    },
+  },
   {
     nome: 'Almoxarife',
     acessos: {
@@ -160,6 +177,7 @@ export const FUNCOES_PADRAO: { nome: string; acessos: Partial<Acessos>; parametr
       os: 'consultar',
       pecas_os: 'editar',
       materiais: 'editar',
+      servicos: 'consultar',
       precos: 'consultar',
       estoque: 'consultar',
     },
@@ -170,6 +188,7 @@ export const FUNCOES_PADRAO: { nome: string; acessos: Partial<Acessos>; parametr
       clientes: 'consultar',
       os: 'consultar',
       materiais: 'consultar',
+      servicos: 'editar',
       precos: 'editar',
       recebimentos: 'editar',
       financeiro: 'editar',

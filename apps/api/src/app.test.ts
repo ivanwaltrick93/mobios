@@ -952,6 +952,7 @@ describe('funções e permissões configuráveis', () => {
     os: null,
     pecas_os: null,
     materiais: null,
+    servicos: null,
     precos: null,
     estoque: null,
     recebimentos: null,
@@ -977,6 +978,7 @@ describe('funções e permissões configuráveis', () => {
         os: 'editar',
         pecas_os: 'editar',
         materiais: 'editar',
+        servicos: 'editar',
         precos: 'editar',
         estoque: 'editar',
         recebimentos: 'editar',
@@ -990,13 +992,20 @@ describe('funções e permissões configuráveis', () => {
         os: 'editar',
         pecas_os: 'editar',
         materiais: 'consultar',
+        servicos: 'consultar',
         precos: 'consultar',
         estoque: 'editar',
         recebimentos: 'editar',
       }),
     );
     expect(porNome['Mecânico'].acessos).toEqual(
-      acessos({ clientes: 'consultar', os: 'editar', materiais: 'consultar', estoque: 'consultar' }),
+      acessos({
+        clientes: 'consultar',
+        os: 'editar',
+        materiais: 'consultar',
+        servicos: 'consultar',
+        estoque: 'consultar',
+      }),
     );
     // Almoxarife: adiciona peças pela O.S. aberta; só consulta clientes, veículos, O.S. e estoque.
     expect(porNome.Almoxarife.acessos).toEqual(
@@ -1005,6 +1014,7 @@ describe('funções e permissões configuráveis', () => {
         os: 'consultar',
         pecas_os: 'editar',
         materiais: 'editar',
+        servicos: 'consultar',
         precos: 'consultar',
         estoque: 'consultar',
       }),
@@ -1015,6 +1025,7 @@ describe('funções e permissões configuráveis', () => {
         clientes: 'consultar',
         os: 'consultar',
         materiais: 'consultar',
+        servicos: 'editar',
         precos: 'editar',
         recebimentos: 'editar',
         financeiro: 'editar',
@@ -1094,6 +1105,7 @@ describe('funções e permissões configuráveis', () => {
         clientes: 'consultar',
         os: 'editar',
         materiais: 'consultar',
+        servicos: 'editar', // Mecânico consulta, Financeiro edita: vale o maior
         precos: 'editar',
         estoque: 'consultar',
         recebimentos: 'editar',

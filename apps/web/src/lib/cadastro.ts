@@ -12,6 +12,7 @@ export const PAGINAS_LISTAS: { lista: ListaOpcoes; para: string; rotulo: string 
     ['cargos', '/configuracoes/cargos'],
     ['tiposMaterial', '/configuracoes/tipos-material'],
     ['tiposDeposito', '/configuracoes/tipos-deposito'],
+    ['classificacoesServico', '/configuracoes/classificacoes-servico'],
   ] as const
 ).map(([lista, para]) => ({ lista, para, rotulo: LISTAS_OPCOES[lista].titulo }));
 

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { gtinValido } from './documentos.js';
-import { mascaraMoeda, mascaraNcm, moedaParaCentavos } from './mascaras.js';
-import { materialInputSchema, precoInputSchema, situacaoPreco } from './materiais.js';
+import { formatarCodigoServico, formatarHoras } from './formatos.js';
+import { horasParaMinutos, mascaraHoras, mascaraMoeda, mascaraNcm, moedaParaCentavos } from './mascaras.js';
+import { materialInputSchema, precoInputSchema, servicoInputSchema, situacaoPreco } from './materiais.js';
 
 describe('materiais e preços', () => {
   it('valida código de barras GTIN', () => {
@@ -98,5 +99,44 @@ describe('estoque', async () => {
     );
     expect(estoqueAjusteSchema.safeParse({ disponivel: 1.5, reservado: 2, motivo: 'Inventário' }).success).toBe(false);
     expect(estoqueAjusteSchema.safeParse({ disponivel: 1.5, reservado: 1.5, motivo: 'Inventário' }).success).toBe(true);
+  });
+});
+
+describe('serviços', () => {
+  it('horas e minutos: máscara, conversão e exibição; código com 6 dígitos', () => {
+    expect(mascaraHoras('130')).toBe('1:30');
+    expect(mascaraHoras('1030')).toBe('10:30');
+    expect(mascaraHoras('2')).toBe('2');
+    expect(horasParaMinutos('1:30')).toBe(90);
+    expect(horasParaMinutos('2')).toBe(120);
+    expect(horasParaMinutos('0:45')).toBe(45);
+    expect(horasParaMinutos('1:75')).toBeNaN();
+    expect(horasParaMinutos('abc')).toBeNaN();
+    expect(formatarHoras(90)).toBe('1:30');
+    expect(formatarHoras(5)).toBe('0:05');
+    expect(formatarCodigoServico(12)).toBe('000012');
+    expect(formatarCodigoServico(1234567)).toBe('1234567');
+  });
+  it('valor-hora exige horas; preço fechado não; vazios viram null', () => {
+    expect(servicoInputSchema.parse({ nome: 'Troca de óleo', tempoMinutos: '', garantiaDias: '' })).toMatchObject({
+      formaPreco: 'fechado',
+      tempoMinutos: null,
+      garantiaDias: null,
+      descricao: null,
+    });
+    expect(servicoInputSchema.safeParse({ nome: 'Hora', formaPreco: 'hora' }).success).toBe(false);
+    expect(servicoInputSchema.parse({ nome: 'Hora', formaPreco: 'hora', tempoMinutos: '1:00' }).tempoMinutos).toBe(60);
+    expect(servicoInputSchema.parse({ nome: 'Hora', formaPreco: 'hora', tempoMinutos: 60 }).tempoMinutos).toBe(60);
+    expect(servicoInputSchema.safeParse({ nome: 'X', garantiaKm: '-1' }).success).toBe(false);
+  });
+  it('preço: um item só (material ou serviço)', () => {
+    const base = {
+      tabelaPrecoId: '4d3c1a2b-9f8e-4d7c-8b6a-5f4e3d2c1b0a',
+      precoCentavos: 100,
+      dataInicio: '2030-01-01',
+    };
+    expect(precoInputSchema.safeParse({ ...base, servicoCodigo: '000007' }).data?.servicoCodigo).toBe(7);
+    expect(precoInputSchema.safeParse({ ...base }).success).toBe(false);
+    expect(precoInputSchema.safeParse({ ...base, sku: 'A', servicoCodigo: 1 }).success).toBe(false);
   });
 });

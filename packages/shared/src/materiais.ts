@@ -1,10 +1,11 @@
 import { z } from 'zod';
 import { cestValido, gtinValido, ncmValido, somenteDigitos } from './documentos.js';
 import { hojeIso } from './formatos.js';
+import { horasParaMinutos } from './mascaras.js';
 
 /*
  * Módulo Materiais e Preços (docs/modulos/MATERIAIS_E_PRECOS.md).
- * Escopo: material, categoria, marca, depósito, tabela de preço e preço por vigência.
+ * Escopo: material, serviço, categoria, marca, depósito, tabela de preço e preço por vigência (de material ou serviço).
  * Estoque, compras, vendas e O.S. usarão estes cadastros, mas não estão aqui.
  */
 
@@ -225,6 +226,78 @@ export const materialFiltroSchema = z.object({
   porPagina: z.coerce.number().int().min(1).max(100).default(30),
 });
 
+// ---------- Serviço (mão de obra; menu Ofertas) ----------
+
+/** Como o preço do serviço é formado: o valor da tabela é o do serviço inteiro ou o de uma hora. */
+export const FORMAS_PRECO_SERVICO = { fechado: 'Preço fechado', hora: 'Valor-hora' } as const;
+export type FormaPrecoServico = keyof typeof FORMAS_PRECO_SERVICO;
+
+/** Inteiro opcional de formulário ou planilha: vazio = sem valor (null). */
+const inteiroOpcional = (max: number, mensagem: string) =>
+  z.preprocess(
+    (v) => (v === '' || v == null ? null : Number(v)),
+    z.number({ error: mensagem }).int(mensagem).min(0, mensagem).max(max, mensagem).nullable(),
+  );
+
+export const servicoInputSchema = z
+  .object({
+    nome: z.string({ error: 'Informe o nome' }).trim().min(2, 'Informe o nome').max(120, 'Máximo de 120 caracteres'),
+    descricao: textoOpcional(500),
+    formaPreco: z.enum(chaves(FORMAS_PRECO_SERVICO), 'Escolha a forma de preço').default('fechado'),
+    /** Horas de trabalho de referência, em minutos. Aceita "1:30" (formulário e planilha) ou o número de minutos. */
+    tempoMinutos: z.preprocess(
+      (v) => (v === '' || v == null ? null : typeof v === 'string' ? horasParaMinutos(v) : v),
+      z
+        .number({ error: 'Use horas e minutos, ex.: 1:30' })
+        .int('Use horas e minutos, ex.: 1:30')
+        .min(1, 'As horas devem ser maiores que zero')
+        .max(999 * 60 + 59, 'Máximo de 999:59')
+        .nullable(),
+    ),
+    observacao: textoOpcional(1000),
+    classificacaoId: z.preprocess(vazioComoNulo, z.uuid().nullable()),
+    garantiaDias: inteiroOpcional(3650, 'Garantia em dias: inteiro de 0 a 3.650'),
+    garantiaKm: inteiroOpcional(1_000_000, 'Garantia em km: inteiro de 0 a 1.000.000'),
+    versao,
+  })
+  .refine((s) => s.formaPreco !== 'hora' || s.tempoMinutos != null, {
+    message: 'No valor-hora, informe as horas de referência',
+    path: ['tempoMinutos'],
+  });
+export type ServicoInput = z.input<typeof servicoInputSchema>;
+export type ServicoDados = z.output<typeof servicoInputSchema>;
+
+export const servicoResumoSchema = z.object({
+  id: z.uuid(),
+  /** Sequencial por oficina, imutável; exibido com 6 dígitos (formatarCodigoServico). */
+  codigo: z.number().int(),
+  nome: z.string(),
+  formaPreco: z.enum(chaves(FORMAS_PRECO_SERVICO)),
+  classificacaoNome: z.string().nullable(),
+  ativo: z.boolean(),
+});
+export type ServicoResumo = z.infer<typeof servicoResumoSchema>;
+
+export const servicoSchema = servicoResumoSchema.extend({
+  descricao: z.string().nullable(),
+  tempoMinutos: z.number().nullable(),
+  observacao: z.string().nullable(),
+  classificacaoId: z.uuid().nullable(),
+  garantiaDias: z.number().nullable(),
+  garantiaKm: z.number().nullable(),
+  ...auditoria,
+});
+export type Servico = z.infer<typeof servicoSchema>;
+
+export const servicoFiltroSchema = z.object({
+  /** Código ou nome. */
+  q: z.string().trim().optional(),
+  classificacaoId: z.uuid().optional(),
+  ativo: z.enum(['true', 'false']).optional(),
+  pagina: z.coerce.number().int().min(1).default(1),
+  porPagina: z.coerce.number().int().min(1).max(100).default(20),
+});
+
 // ---------- Depósito (só o cadastro mestre; saldo e movimentação ficam no módulo de estoque) ----------
 
 export const depositoInputSchema = z.object({
@@ -305,23 +378,52 @@ const vigenciaValida = <T extends { dataInicio: string; dataFim: string | null }
  * - a vigência que estiver valendo na data de início é encerrada no dia anterior;
  * - fim vazio = vigência aberta; se houver preço futuro depois, a nova termina na véspera dele.
  */
-/** Material do preço: pelo id (tela do material) ou pelo SKU digitado (tela da tabela de preço). */
-const materialDoPreco = {
+/**
+ * Item do preço: um material (pelo id ou pelo SKU digitado) ou um serviço (pelo id ou pelo código digitado).
+ * Exatamente um dos dois.
+ */
+const itemDoPreco = {
   materialId: z.uuid('Informe o material').optional(),
   sku: z.string().trim().toUpperCase().max(40, 'Máximo de 40 caracteres').optional(),
+  servicoId: z.uuid('Informe o serviço').optional(),
+  /** Código do serviço ("000012" ou 12). */
+  servicoCodigo: z.coerce
+    .number({ error: 'Código do serviço inválido' })
+    .int('Código do serviço inválido')
+    .positive('Código do serviço inválido')
+    .optional(),
 };
-const temMaterial = (v: { materialId?: string; sku?: string }) => !!(v.materialId || v.sku);
-const erroSemMaterial = { message: 'Informe o SKU', path: ['sku'] };
+type ItemInformado = { materialId?: string; sku?: string; servicoId?: string; servicoCodigo?: number };
+const umItem = (v: ItemInformado) =>
+  Number(!!(v.materialId || v.sku)) + Number(!!(v.servicoId || v.servicoCodigo)) === 1;
+const erroItem = { message: 'Informe o SKU do material ou o código do serviço (só um dos dois)', path: ['sku'] };
+
+export const TIPOS_ITEM_PRECO = { material: 'Material', servico: 'Serviço' } as const;
+export type TipoItemPreco = keyof typeof TIPOS_ITEM_PRECO;
+
+/** Consultas de preço de um item: `materialId` ou `servicoId` (só um). */
+const itemConsultado = { materialId: z.uuid().optional(), servicoId: z.uuid().optional() };
+const umItemConsultado = (q: { materialId?: string; servicoId?: string }) => !!q.materialId !== !!q.servicoId;
+const erroItemConsultado = { message: 'Informe materialId ou servicoId', path: ['materialId'] };
+
+/** Vigências ou preços padrão de um item (todas as tabelas ou uma). */
+export const itemPrecoQuerySchema = z
+  .object({ ...itemConsultado, tabelaPrecoId: z.uuid().optional() })
+  .refine(umItemConsultado, erroItemConsultado);
+/** Preço padrão de um item numa tabela (remover, trilha). */
+export const itemTabelaQuerySchema = z
+  .object({ ...itemConsultado, tabelaPrecoId: z.uuid() })
+  .refine(umItemConsultado, erroItemConsultado);
 
 export const precoInputSchema = z
   .object({
-    ...materialDoPreco,
+    ...itemDoPreco,
     tabelaPrecoId: z.uuid('Escolha a tabela de preço'),
     precoCentavos: centavos,
     dataInicio: dataIso('Informe o início da vigência'),
     dataFim: dataFimOpcional,
   })
-  .refine(temMaterial, erroSemMaterial)
+  .refine(umItem, erroItem)
   .superRefine(vigenciaValida);
 export type PrecoInput = z.input<typeof precoInputSchema>;
 
@@ -361,7 +463,9 @@ export function situacaoPreco(
 
 export const precoSchema = z.object({
   id: z.uuid(),
-  materialId: z.uuid(),
+  /** Um dos dois: a vigência é de um material ou de um serviço. */
+  materialId: z.uuid().nullable(),
+  servicoId: z.uuid().nullable(),
   tabelaPrecoId: z.uuid(),
   tabelaCodigo: z.string(),
   tabelaNome: z.string(),
@@ -386,16 +490,17 @@ export type Preco = z.infer<typeof precoSchema>;
  */
 export const precoPadraoInputSchema = z
   .object({
-    ...materialDoPreco,
+    ...itemDoPreco,
     tabelaPrecoId: z.uuid('Escolha a tabela de preço'),
     precoCentavos: centavos,
     versao: z.number().int().optional(),
   })
-  .refine(temMaterial, erroSemMaterial);
+  .refine(umItem, erroItem);
 export type PrecoPadraoInput = z.input<typeof precoPadraoInputSchema>;
 
 export const precoPadraoSchema = z.object({
-  materialId: z.uuid(),
+  materialId: z.uuid().nullable(),
+  servicoId: z.uuid().nullable(),
   tabelaPrecoId: z.uuid(),
   tabelaCodigo: z.string(),
   tabelaNome: z.string(),
@@ -436,18 +541,26 @@ export const FILTROS_LINHAS_PRECO = {
 export const linhasPrecoQuerySchema = z.object({
   tabelaPrecoId: z.uuid('Escolha a tabela de preço'),
   q: z.string().trim().optional(),
+  /** Vazio = materiais e serviços. */
+  tipo: z.union([z.literal(''), z.enum(chaves(TIPOS_ITEM_PRECO))]).optional(),
   situacao: z.enum(chaves(FILTROS_LINHAS_PRECO)).default('atuais'),
   pagina: z.coerce.number().int().min(1).default(1),
   porPagina: z.coerce.number().int().min(1).max(100).default(20),
 });
 
-/** Uma linha de preço de uma tabela: cada vigência do material é uma linha; o preço padrão é outra. */
+/** Uma linha de preço de uma tabela: cada vigência do item é uma linha; o preço padrão é outra. */
 export const linhaPrecoSchema = z.object({
-  /** Id da vigência, ou "padrao:<materialId>" na linha do preço padrão. */
+  /** Id da vigência, ou "padrao:<id do item>" na linha do preço padrão. */
   id: z.string(),
-  materialId: z.uuid(),
-  sku: z.string(),
+  tipo: z.enum(chaves(TIPOS_ITEM_PRECO)),
+  /** Id do material ou do serviço. */
+  itemId: z.uuid(),
+  /** SKU do material ou código do serviço com 6 dígitos. */
+  codigo: z.string(),
+  /** Descrição do material ou nome do serviço. */
   descricao: z.string(),
+  /** Só serviço: no valor-hora, o preço é o de uma hora. */
+  formaPreco: z.enum(chaves(FORMAS_PRECO_SERVICO)).nullable(),
   precoCentavos: z.number(),
   /** Vazios no preço padrão. */
   dataInicio: z.string().nullable(),

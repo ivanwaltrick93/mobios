@@ -35,3 +35,10 @@ export const formatarDataIso = (data: string | null) => (data ? data.split('-').
 
 /** Quantidade em estoque: até 3 casas, sem zeros sobrando (12 · 20,5 · 0,25). */
 export const formatarQuantidade = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 3 });
+
+/** 90 minutos → "1:30". */
+export const formatarHoras = (minutos: number) =>
+  `${Math.floor(minutos / 60)}:${String(minutos % 60).padStart(2, '0')}`;
+
+/** Código do serviço com 6 dígitos: 1 → "000001" (acima de 999999, sem corte). */
+export const formatarCodigoServico = (codigo: number) => String(codigo).padStart(6, '0');

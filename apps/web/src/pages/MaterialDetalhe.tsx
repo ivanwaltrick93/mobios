@@ -6,7 +6,7 @@ import { Link, useParams, useSearchParams } from 'react-router';
 import { Abas, Alerta, Botao, Cartao, classesBotao, Selo, TextoSuave } from '../components/ui';
 import { api } from '../lib/api';
 import { usePode } from '../lib/sessao';
-import { PrecosMaterial } from './PrecosMaterial';
+import { PrecosItem } from './PrecosItem';
 import { EstoqueMaterial } from './EstoqueMaterial';
 
 const Dado = ({ rotulo, children }: { rotulo: string; children: ReactNode }) => (
@@ -90,7 +90,7 @@ export function MaterialDetalhe() {
       )}
 
       {aba === 'precos' ? (
-        <PrecosMaterial material={m} />
+        <PrecosItem item={{ tipo: 'material', id: m.id, ativo: m.ativo }} />
       ) : aba === 'estoque' ? (
         <EstoqueMaterial material={m} />
       ) : (

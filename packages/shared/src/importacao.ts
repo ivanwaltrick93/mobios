@@ -17,13 +17,28 @@ export type ColunaImportacao = {
 export const IMPORTACAO_TAMANHO_MAXIMO = 1024 * 1024;
 export const IMPORTACAO_LINHAS_MAXIMAS = 5000;
 
+/**
+ * Preços de materiais e serviços: `tipo` diz de qual é a linha e `codigo` traz o SKU do material ou o código do
+ * serviço. A coluna antiga `sku` continua aceita no lugar de `codigo` (linha de material).
+ */
 export const COLUNAS_IMPORTACAO_PRECOS: ColunaImportacao[] = [
   { nome: 'tabela', obrigatoria: true, descricao: 'Código da tabela de preço', exemplo: 'VAREJO' },
-  { nome: 'sku', obrigatoria: true, descricao: 'SKU do material (precisa estar cadastrado)', exemplo: 'FIL-001' },
+  {
+    nome: 'tipo',
+    obrigatoria: false,
+    descricao: 'material ou servico. Vazio = material',
+    exemplo: 'material',
+  },
+  {
+    nome: 'codigo',
+    obrigatoria: false,
+    descricao: 'SKU do material ou código do serviço (precisa estar cadastrado). A coluna "sku" também é aceita',
+    exemplo: 'FIL-001',
+  },
   {
     nome: 'preco',
     obrigatoria: true,
-    descricao: 'Valor em reais, com vírgula decimal e sem separador de milhar',
+    descricao: 'Valor em reais, com vírgula decimal e sem separador de milhar. Serviço no valor-hora: valor da hora',
     exemplo: '150,00',
   },
   {
@@ -237,6 +252,45 @@ export const COLUNAS_IMPORTACAO_VENDEDORES: ColunaImportacao[] = [
     exemplo: 'M-0042',
   },
   { nome: 'funcionario_desde', obrigatoria: false, descricao: 'dd/mm/aaaa', exemplo: '01/03/2024' },
+  {
+    nome: 'ativo',
+    obrigatoria: false,
+    descricao: `${SIM_NAO}. Vazio = sim no cadastro; mantém na atualização`,
+    exemplo: '',
+  },
+];
+
+/** Serviços: sem código = cadastra (o código é gerado); código já cadastrado = atualiza. */
+export const COLUNAS_IMPORTACAO_SERVICOS: ColunaImportacao[] = [
+  {
+    nome: 'codigo',
+    obrigatoria: false,
+    descricao: 'Código do serviço. Vazio = novo serviço; já cadastrado = atualiza',
+    exemplo: '',
+  },
+  { nome: 'nome', obrigatoria: true, descricao: 'Nome do serviço', exemplo: 'Troca de óleo e filtro' },
+  { nome: 'descricao', obrigatoria: false, descricao: 'Descrição', exemplo: '' },
+  {
+    nome: 'forma_preco',
+    obrigatoria: false,
+    descricao: 'fechado (preço do serviço) ou hora (valor-hora). Vazio = fechado',
+    exemplo: 'fechado',
+  },
+  {
+    nome: 'horas',
+    obrigatoria: false,
+    descricao: 'Horas de trabalho em horas:minutos (ex.: 1:30). Obrigatória no valor-hora',
+    exemplo: '0:45',
+  },
+  {
+    nome: 'classificacao',
+    obrigatoria: false,
+    descricao: 'Nome da classificação, como em Configurações → Classificação de serviço',
+    exemplo: 'Mecânica',
+  },
+  { nome: 'garantia_dias', obrigatoria: false, descricao: 'Garantia em dias, inteiro', exemplo: '90' },
+  { nome: 'garantia_km', obrigatoria: false, descricao: 'Garantia em km, inteiro', exemplo: '5000' },
+  { nome: 'observacao', obrigatoria: false, descricao: 'Texto livre', exemplo: '' },
   {
     nome: 'ativo',
     obrigatoria: false,

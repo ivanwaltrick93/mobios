@@ -47,6 +47,7 @@ const mensagensUnicidade: Record<string, string> = {
   tabelas_preco_nome_unico: 'Já existe uma tabela de preço com este nome',
   // Duas pessoas criando o primeiro saldo do mesmo material no mesmo depósito ao mesmo tempo.
   precos_padrao_unico: 'O preço padrão foi alterado por outra pessoa. Recarregue e refaça a alteração.',
+  precos_padrao_servico_unico: 'O preço padrão foi alterado por outra pessoa. Recarregue e refaça a alteração.',
   estoques_material_id_deposito_id_pk:
     'O saldo foi alterado por outra pessoa enquanto você editava. Recarregue e refaça o ajuste.',
   veiculos_tenant_id_chassi_index: 'Já existe um veículo com este chassi',
@@ -63,6 +64,9 @@ const mensagensCheck: Record<string, string> = {
   precos_padrao_valor_positivo: 'O preço não pode ser negativo.',
   estoques_disponivel_positivo: 'O disponível não pode ser negativo.',
   estoques_reservado_positivo: 'O reservado não pode ser negativo.',
+  servicos_valor_hora_com_tempo: 'No valor-hora, informe as horas de referência.',
+  servicos_tempo_positivo: 'As horas devem ser maiores que zero.',
+  servicos_garantia_positiva: 'A garantia não pode ser negativa.',
   materiais_multiplo_positivo: 'O múltiplo deve ser um inteiro maior que zero.',
   materiais_leadtime_positivo: 'O leadtime não pode ser negativo.',
   estoques_reservado_ate_disponivel: 'O reservado não pode ser maior que o disponível.',
@@ -88,7 +92,7 @@ export function traduzirErro(
       return { status: 400, erro: mensagensCheck[pg.constraint_name ?? ''] ?? 'Dados inválidos' };
     // Constraint EXCLUDE: duas vigências do mesmo material e tabela no mesmo período.
     case '23P01':
-      return { status: 409, erro: 'Já existe preço deste material nesta tabela em parte do período informado.' };
+      return { status: 409, erro: 'Já existe preço deste item nesta tabela em parte do período informado.' };
     case '23503':
       return { status: 409, erro: 'Registro vinculado a outros dados ou referência inexistente' };
     default:
