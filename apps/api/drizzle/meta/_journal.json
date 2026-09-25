@@ -169,6 +169,13 @@
       "when": 1790299472830,
       "tag": "0023_servicos",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1790303027242,
+      "tag": "0024_orcamentos",
+      "breakpoints": true
     }
   ]
 }

@@ -1,14 +1,15 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { hojeIso, mascaraMoeda, moedaParaCentavos, TIPOS_ITEM_PRECO, type TabelaPreco } from '@mobios/shared';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useForm, type UseFormSetError } from 'react-hook-form';
+import { useForm } from 'react-hook-form';
 import { z } from 'zod';
-import { api, ErroApi } from '../lib/api';
+import { api } from '../lib/api';
 import { aplicarErrosDaApi } from '../lib/formulario';
 import { Alerta, Botao, Campo, Cartao, Input, InputMascara, Select, TextoSuave } from './ui';
 
 const novoPrecoSchema = z
   .object({
+    tabelaPrecoId: z.string().min(1, 'Escolha a tabela de preço'),
     item: z.enum(['material', 'servico']),
     /** SKU do material ou código do serviço. */
     codigo: z.string().trim().min(1, 'Informe o código'),
@@ -37,33 +38,51 @@ const EXPLICACAO: Record<NovoPrecoForm['tipo'], string> = {
 /**
  * Preço digitando o SKU do material ou o código do serviço. A API confere se o item existe antes de gravar
  * (erro no próprio campo). Padrão = sem vigência (substitui o padrão atual da tabela); vigência = mesmas regras
- * da aba Preços do material ou do serviço.
+ * da aba Preços do material ou do serviço. Com `tabelas` (Linhas de Preço), a tabela é escolhida no formulário,
+ * começando pela `tabela` da tela; sem elas (detalhe da tabela), vale a `tabela`. `aoConcluir` recebe a tabela
+ * em que o preço foi salvo (nada, ao cancelar).
  */
-export function NovoPreco({ tabela, aoConcluir }: { tabela: TabelaPreco; aoConcluir: () => void }) {
+export function NovoPreco({
+  tabela,
+  tabelas,
+  aoConcluir,
+}: {
+  tabela: TabelaPreco;
+  tabelas?: TabelaPreco[];
+  aoConcluir: (tabelaPrecoId?: string) => void;
+}) {
   const queryClient = useQueryClient();
   const form = useForm<NovoPrecoForm>({
     resolver: zodResolver(novoPrecoSchema),
-    defaultValues: { item: 'material', codigo: '', tipo: 'vigencia', preco: '', dataInicio: hojeIso(), dataFim: '' },
+    defaultValues: {
+      tabelaPrecoId: tabela.id,
+      item: 'material',
+      codigo: '',
+      tipo: 'vigencia',
+      preco: '',
+      dataInicio: hojeIso(),
+      dataFim: '',
+    },
     mode: 'onTouched',
   });
   const tipo = form.watch('tipo');
   const item = form.watch('item');
   const salvar = useMutation({
-    mutationFn: ({ item, codigo, tipo, preco, dataInicio, dataFim }: NovoPrecoForm) => {
+    mutationFn: ({ tabelaPrecoId, item, codigo, tipo, preco, dataInicio, dataFim }: NovoPrecoForm) => {
       const base = {
         ...(item === 'material' ? { sku: codigo } : { servicoCodigo: codigo }),
-        tabelaPrecoId: tabela.id,
+        tabelaPrecoId,
         precoCentavos: moedaParaCentavos(preco),
       };
       return tipo === 'padrao'
         ? api('/precos/padrao', { method: 'PUT', body: base })
         : api('/precos', { method: 'POST', body: { ...base, dataInicio, dataFim: dataFim || null } });
     },
-    onSuccess: () => {
+    onSuccess: (_resposta, { tabelaPrecoId }) => {
       queryClient.invalidateQueries({ queryKey: ['linhas-preco'] });
       queryClient.invalidateQueries({ queryKey: ['tabelas-preco'] });
       queryClient.invalidateQueries({ queryKey: ['precos'] });
-      aoConcluir();
+      aoConcluir(tabelaPrecoId);
     },
   });
   const erros = form.formState.errors;
@@ -80,7 +99,23 @@ export function NovoPreco({ tabela, aoConcluir }: { tabela: TabelaPreco; aoConcl
           </label>
         </div>
         <TextoSuave className="text-xs">{EXPLICACAO[tipo]}</TextoSuave>
-        <Alerta>{salvar.isError && mostrarErro(salvar.error, form.setError)}</Alerta>
+        <Alerta>
+          {salvar.isError && aplicarErrosDaApi(salvar.error, form.setError, { sku: 'codigo', servicoCodigo: 'codigo' })}
+        </Alerta>
+        {tabelas && (
+          <div className="md:w-80">
+            <Campo rotulo="Tabela de preço *" erro={erros.tabelaPrecoId}>
+              <Select {...form.register('tabelaPrecoId')}>
+                {tabelas.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.nome}
+                    {t.padrao ? ' (padrão)' : ''}
+                  </option>
+                ))}
+              </Select>
+            </Campo>
+          </div>
+        )}
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           <Campo rotulo="Tipo *">
             <Select {...form.register('item')}>
@@ -121,20 +156,11 @@ export function NovoPreco({ tabela, aoConcluir }: { tabela: TabelaPreco; aoConcl
           <Botao type="submit" disabled={salvar.isPending}>
             {salvar.isPending ? 'Salvando…' : 'Salvar preço'}
           </Botao>
-          <Botao type="button" variante="secundario" onClick={aoConcluir}>
+          <Botao type="button" variante="secundario" onClick={() => aoConcluir()}>
             Cancelar
           </Botao>
         </div>
       </form>
     </Cartao>
   );
-}
-
-/** Erro da API: o código não encontrado (campo `sku` ou `servicoCodigo`) aparece no campo Código. */
-function mostrarErro(erro: unknown, setError: UseFormSetError<NovoPrecoForm>) {
-  if (erro instanceof ErroApi) {
-    const codigo = erro.campos?.sku ?? erro.campos?.servicoCodigo;
-    if (codigo) setError('codigo', { message: codigo });
-  }
-  return aplicarErrosDaApi(erro, setError);
 }

@@ -949,6 +949,8 @@ describe('personas e permissões', () => {
 describe('funções e permissões configuráveis', () => {
   const acessos = (a: Partial<Record<string, string | null>> = {}) => ({
     clientes: null,
+    orcamentos: null,
+    aprovar_orcamentos: null,
     os: null,
     pecas_os: null,
     materiais: null,
@@ -975,6 +977,8 @@ describe('funções e permissões configuráveis', () => {
     expect(porNome.Administrador.acessos).toEqual(
       acessos({
         clientes: 'editar',
+        orcamentos: 'editar',
+        aprovar_orcamentos: 'editar',
         os: 'editar',
         pecas_os: 'editar',
         materiais: 'editar',
@@ -989,6 +993,8 @@ describe('funções e permissões configuráveis', () => {
     expect(porNome.Atendente.acessos).toEqual(
       acessos({
         clientes: 'editar',
+        orcamentos: 'editar',
+        aprovar_orcamentos: 'editar',
         os: 'editar',
         pecas_os: 'editar',
         materiais: 'consultar',
@@ -1001,6 +1007,7 @@ describe('funções e permissões configuráveis', () => {
     expect(porNome['Mecânico'].acessos).toEqual(
       acessos({
         clientes: 'consultar',
+        orcamentos: 'consultar',
         os: 'editar',
         materiais: 'consultar',
         servicos: 'consultar',
@@ -1011,6 +1018,7 @@ describe('funções e permissões configuráveis', () => {
     expect(porNome.Almoxarife.acessos).toEqual(
       acessos({
         clientes: 'consultar',
+        orcamentos: 'consultar',
         os: 'consultar',
         pecas_os: 'editar',
         materiais: 'editar',
@@ -1023,6 +1031,8 @@ describe('funções e permissões configuráveis', () => {
     expect(porNome.Financeiro.acessos).toEqual(
       acessos({
         clientes: 'consultar',
+        orcamentos: 'editar',
+        aprovar_orcamentos: 'editar',
         os: 'consultar',
         materiais: 'consultar',
         servicos: 'editar',
@@ -1103,6 +1113,8 @@ describe('funções e permissões configuráveis', () => {
     expect(dupla.res.json().acessos).toEqual(
       acessos({
         clientes: 'consultar',
+        orcamentos: 'editar', // Mecânico consulta, Financeiro edita: vale o maior
+        aprovar_orcamentos: 'editar',
         os: 'editar',
         materiais: 'consultar',
         servicos: 'editar', // Mecânico consulta, Financeiro edita: vale o maior
@@ -1566,6 +1578,11 @@ describe('isolamento entre oficinas (RLS)', () => {
       'estoque_ajustes',
       'precos_padrao',
       'precos_padrao_eventos',
+      'servicos',
+      'classificacoes_servico',
+      'orcamentos',
+      'orcamento_itens',
+      'orcamentos_eventos',
     ]) {
       const linhas = await db.execute(sql`select count(*)::int as n from ${sql.identifier(tabela)}`);
       expect(linhas[0]!.n, tabela).toBe(0);

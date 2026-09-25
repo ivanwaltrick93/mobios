@@ -42,10 +42,12 @@ export function TabelasPreco() {
   const [pagina, setPagina] = useState(1);
   const queryClient = useQueryClient();
   const acao = useMutation({
-    mutationFn: ({ t, tipo }: { t: TabelaPreco; tipo: 'status' | 'excluir' }) =>
+    mutationFn: ({ t, tipo }: { t: TabelaPreco; tipo: 'status' | 'excluir' | 'padrao' }) =>
       tipo === 'excluir'
         ? api(`/tabelas-preco/${t.id}`, { method: 'DELETE' })
-        : api(`/tabelas-preco/${t.id}/status`, { method: 'PATCH', body: { ativo: !t.ativa } }),
+        : tipo === 'padrao'
+          ? api(`/tabelas-preco/${t.id}/padrao`, { method: 'PATCH' })
+          : api(`/tabelas-preco/${t.id}/status`, { method: 'PATCH', body: { ativo: !t.ativa } }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tabelas-preco'] }),
   });
   const todas = tabelas.data ?? [];
@@ -74,7 +76,7 @@ export function TabelasPreco() {
       </Titulo>
       <TextoSuave>
         Abra uma tabela para ver e cadastrar os preços dela (com vigência ou padrão). Para muitos preços de uma vez, use
-        a importação por planilha.
+        a importação por planilha. A tabela padrão é a que o orçamento usa quando nenhuma outra é escolhida.
       </TextoSuave>
 
       {importando && (
@@ -132,23 +134,36 @@ export function TabelasPreco() {
                   <Td suave>{t.descricao ?? '—'}</Td>
                   <Td suave>{t.moeda}</Td>
                   <Td className="text-right font-semibold">{t.materiaisComPreco.toLocaleString('pt-BR')}</Td>
-                  <Td>{t.ativa ? <Selo tom="sucesso">Ativa</Selo> : <Selo>Inativa</Selo>}</Td>
+                  <Td>
+                    <span className="flex flex-wrap gap-1">
+                      {t.ativa ? <Selo tom="sucesso">Ativa</Selo> : <Selo>Inativa</Selo>}
+                      {t.padrao && <Selo tom="primario">Padrão</Selo>}
+                    </span>
+                  </Td>
                   {editar && (
                     <Td className="whitespace-nowrap text-right">
                       {!edicao && (
                         <span className="flex justify-end gap-3">
                           <BotaoLink onClick={() => setEdicao(t)}>Editar</BotaoLink>
-                          <BotaoLink onClick={() => acao.mutate({ t, tipo: 'status' })}>
-                            {t.ativa ? 'Inativar' : 'Reativar'}
-                          </BotaoLink>
-                          <BotaoLink
-                            perigo
-                            onClick={() =>
-                              confirm(`Excluir a tabela ${t.nome}?`) && acao.mutate({ t, tipo: 'excluir' })
-                            }
-                          >
-                            Excluir
-                          </BotaoLink>
+                          {/* A padrão não é inativada nem excluída: antes, outra vira a padrão. */}
+                          {!t.padrao && t.ativa && (
+                            <BotaoLink onClick={() => acao.mutate({ t, tipo: 'padrao' })}>Tornar padrão</BotaoLink>
+                          )}
+                          {!t.padrao && (
+                            <>
+                              <BotaoLink onClick={() => acao.mutate({ t, tipo: 'status' })}>
+                                {t.ativa ? 'Inativar' : 'Reativar'}
+                              </BotaoLink>
+                              <BotaoLink
+                                perigo
+                                onClick={() =>
+                                  confirm(`Excluir a tabela ${t.nome}?`) && acao.mutate({ t, tipo: 'excluir' })
+                                }
+                              >
+                                Excluir
+                              </BotaoLink>
+                            </>
+                          )}
                         </span>
                       )}
                     </Td>

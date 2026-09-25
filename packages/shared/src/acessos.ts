@@ -25,6 +25,20 @@ export const MODULOS = [
     descricao: 'Editar = cadastrar e alterar clientes e veículos.',
   },
   {
+    id: 'orcamentos',
+    nome: 'Orçamentos',
+    niveis: ['consultar', 'editar'],
+    disponivel: true,
+    descricao: 'Editar = montar, negociar, emitir, marcar como enviado, gerar nova versão e cancelar orçamentos.',
+  },
+  {
+    id: 'aprovar_orcamentos',
+    nome: 'Aprovar orçamentos',
+    niveis: ['editar'],
+    disponivel: true,
+    descricao: 'Editar = registrar a aprovação ou a recusa do cliente em orçamentos emitidos.',
+  },
+  {
     id: 'os',
     nome: 'Ordem de Serviço',
     niveis: ['consultar', 'editar'],
@@ -151,6 +165,8 @@ export const FUNCOES_PADRAO: { nome: string; acessos: Partial<Acessos>; parametr
     parametros: [PARAMETRO_VENDEDOR],
     acessos: {
       clientes: 'editar',
+      orcamentos: 'editar',
+      aprovar_orcamentos: 'editar',
       os: 'editar',
       pecas_os: 'editar',
       materiais: 'consultar',
@@ -164,6 +180,7 @@ export const FUNCOES_PADRAO: { nome: string; acessos: Partial<Acessos>; parametr
     nome: 'Mecânico',
     acessos: {
       clientes: 'consultar',
+      orcamentos: 'consultar',
       os: 'editar',
       materiais: 'consultar',
       servicos: 'consultar',
@@ -174,6 +191,7 @@ export const FUNCOES_PADRAO: { nome: string; acessos: Partial<Acessos>; parametr
     nome: 'Almoxarife',
     acessos: {
       clientes: 'consultar',
+      orcamentos: 'consultar',
       os: 'consultar',
       pecas_os: 'editar',
       materiais: 'editar',
@@ -186,6 +204,8 @@ export const FUNCOES_PADRAO: { nome: string; acessos: Partial<Acessos>; parametr
     nome: 'Financeiro',
     acessos: {
       clientes: 'consultar',
+      orcamentos: 'editar',
+      aprovar_orcamentos: 'editar',
       os: 'consultar',
       materiais: 'consultar',
       servicos: 'editar',

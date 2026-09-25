@@ -27,6 +27,9 @@ import { Funcoes } from './pages/Funcoes';
 import { Inicio } from './pages/Inicio';
 import { NovoCliente } from './pages/NovoCliente';
 import { NovoVeiculo } from './pages/NovoVeiculo';
+import { OrcamentoDetalhe } from './pages/OrcamentoDetalhe';
+import { EditarOrcamento, NovoOrcamento } from './pages/OrcamentoForm';
+import { Orcamentos } from './pages/Orcamentos';
 import { Perfil } from './pages/Perfil';
 import { Entrar } from './pages/Entrar';
 import { Configuracoes } from './pages/Configuracoes';
@@ -74,6 +77,10 @@ const router = createBrowserRouter([
       { path: '/clientes/:id', element: <ClienteDetalhe /> },
       { path: '/clientes/:id/editar', element: <EditarCliente /> },
       { path: '/veiculos/:id/editar', element: <EditarVeiculo /> },
+      { path: '/orcamentos', element: <Orcamentos /> },
+      { path: '/orcamentos/novo', element: <NovoOrcamento /> },
+      { path: '/orcamentos/:id', element: <OrcamentoDetalhe /> },
+      { path: '/orcamentos/:id/editar', element: <EditarOrcamento /> },
       { path: '/materiais', element: <Materiais /> },
       { path: '/materiais/novo', element: <NovoMaterial /> },
       { path: '/materiais/categorias', element: <Categorias /> },

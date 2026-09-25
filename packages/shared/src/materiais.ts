@@ -348,6 +348,8 @@ export const tabelaPrecoSchema = z.object({
   descricao: z.string().nullable(),
   moeda: z.enum(chaves(MOEDAS)),
   ativa: z.boolean(),
+  /** Tabela padrão da oficina: usada no orçamento quando nenhuma é escolhida (uma por oficina, sempre ativa). */
+  padrao: z.boolean(),
   /** Materiais com preço hoje nesta tabela (vigência ou preço padrão). */
   materiaisComPreco: z.number(),
   ...auditoria,

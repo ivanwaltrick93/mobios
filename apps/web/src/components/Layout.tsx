@@ -32,6 +32,7 @@ const menu: ItemMenu[] = [
       { para: '/veiculos', rotulo: 'Veículos' },
     ],
   },
+  { para: '/orcamentos', rotulo: 'Orçamentos', modulo: 'orcamentos' },
   {
     para: '/materiais',
     rotulo: 'Ofertas',

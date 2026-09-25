@@ -12,7 +12,7 @@ import { z } from 'zod';
 import { withTenant, type Tx } from '../../db/client.js';
 import { tabelasPreco } from '../../db/schema.js';
 import { alterarAtivo, atualizarVersionado, excluirSeNaoUsado, exigirVersao, nomeUsuario } from '../../lib/cadastro.js';
-import { naoEncontrado } from '../../lib/erros.js';
+import { ErroHttp, naoEncontrado } from '../../lib/erros.js';
 
 const colunas = () => ({
   id: tabelasPreco.id,
@@ -21,6 +21,7 @@ const colunas = () => ({
   descricao: tabelasPreco.descricao,
   moeda: sql<'BRL'>`${tabelasPreco.moeda}`,
   ativa: tabelasPreco.ativa,
+  padrao: tabelasPreco.padrao,
   // Materiais com preço hoje (Brasília): vigência que cobre o dia ou preço padrão. Linhas de serviço (material_id
   // nulo) ficam fora. Correlação escrita à mão.
   materiaisComPreco: sql<number>`(select count(*) from (
@@ -62,9 +63,14 @@ export const tabelasPrecoRoutes: FastifyPluginAsyncZod = async (app) => {
     async (req, reply) => {
       const { versao: _v, ...dados } = req.body;
       const tabela = await withTenant(req.user.tid, async (tx) => {
+        // A primeira tabela da oficina (nenhuma marcada como padrão) já nasce padrão.
+        const [padrao] = await tx
+          .select({ id: tabelasPreco.id })
+          .from(tabelasPreco)
+          .where(eq(tabelasPreco.padrao, true));
         const [{ id }] = (await tx
           .insert(tabelasPreco)
-          .values({ ...dados, criadoPor: req.user.sub, atualizadoPor: req.user.sub })
+          .values({ ...dados, padrao: !padrao, criadoPor: req.user.sub, atualizadoPor: req.user.sub })
           .returning({ id: tabelasPreco.id })) as [{ id: string }];
         return carregar(tx, id);
       });
@@ -112,16 +118,42 @@ export const tabelasPrecoRoutes: FastifyPluginAsyncZod = async (app) => {
       }),
   );
 
+  /**
+   * Marca a tabela como padrão da oficina (tira a marca da anterior na mesma transação). Só tabela ativa.
+   * O índice tabelas_preco_padrao_unico barra duas marcações simultâneas.
+   */
+  app.patch(
+    '/:id/padrao',
+    { ...editar, schema: { params: idParamSchema, response: { 200: tabelaPrecoSchema } } },
+    async (req) =>
+      withTenant(req.user.tid, async (tx) => {
+        const alvo = await carregar(tx, req.params.id);
+        if (!alvo.ativa) throw new ErroHttp(400, 'Reative a tabela antes de marcá-la como padrão.');
+        if (alvo.padrao) return alvo;
+        await tx
+          .update(tabelasPreco)
+          .set({ padrao: false, atualizadoPor: req.user.sub, versao: sql`${tabelasPreco.versao} + 1` })
+          .where(eq(tabelasPreco.padrao, true));
+        await tx
+          .update(tabelasPreco)
+          .set({ padrao: true, atualizadoPor: req.user.sub, versao: sql`${tabelasPreco.versao} + 1` })
+          .where(eq(tabelasPreco.id, alvo.id));
+        return carregar(tx, alvo.id);
+      }),
+  );
+
   app.delete('/:id', { ...editar, schema: { params: idParamSchema } }, async (req, reply) => {
-    await withTenant(req.user.tid, (tx) =>
-      excluirSeNaoUsado(
+    await withTenant(req.user.tid, async (tx) => {
+      if ((await carregar(tx, req.params.id)).padrao)
+        throw new ErroHttp(409, 'A tabela padrão não pode ser excluída. Marque outra tabela como padrão antes.');
+      await excluirSeNaoUsado(
         tx,
         tabelasPreco,
         req.params.id,
         'Tabela de preço',
-        'Esta tabela tem preços cadastrados e não pode ser excluída (o histórico é mantido). Inative-a.',
-      ),
-    );
+        'Esta tabela tem preços ou orçamentos e não pode ser excluída (o histórico é mantido). Inative-a.',
+      );
+    });
     return reply.code(204).send();
   });
 };

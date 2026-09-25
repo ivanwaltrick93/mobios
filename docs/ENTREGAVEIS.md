@@ -37,19 +37,20 @@ Definido pelo dono do produto: o admin configura em **Configurações → Funç�
 
 **Parâmetros da função** (além dos níveis): marcam o que a função habilita. Hoje há um, **Vendedor** (quem pode ser cadastrado como vendedor, CAD-18).
 
-**Módulos da matriz:** Clientes e veículos · Ordem de Serviço · **Peças na O.S.** · **Materiais** · **Serviços** · **Preços** · Estoque · **Recebimentos** · Financeiro · Relatórios.
+**Módulos da matriz:** Clientes e veículos · **Orçamentos** · **Aprovar orçamentos** · Ordem de Serviço · **Peças na O.S.** · **Materiais** · **Serviços** · **Preços** · Estoque · **Recebimentos** · Financeiro · Relatórios.
+*Aprovar orçamentos* é separado de *Orçamentos* para escolher quem registra a resposta do cliente (aprovação ou recusa). Ser vendedor não dá permissão: vale só a matriz (decisão de 24/09/2026).
 *Materiais* (materiais, categorias, marcas, depósitos) e *Preços* (tabelas e vigências) são separados para o almoxarife cadastrar peças sem mexer em preço (decisão de 23/09/2026).
 Os módulos *Peças na O.S.* e *Recebimentos* existem para separar ações que, dentro da O.S., não devem ir para todos os que editam a O.S.: o mecânico edita a O.S. (diagnóstico, solicitar peças, execução), mas **não adiciona peças nem registra pagamento**.
 
 **Funções iniciais** de toda oficina (editáveis; `FUNCOES_PADRAO` em `packages/shared/src/acessos.ts`):
 
-| Função | Clientes/veículos | O.S. | Peças na O.S. | Materiais | Serviços | Preços | Estoque | Recebimentos | Financeiro | Relatórios |
-|---|---|---|---|---|---|---|---|---|---|---|
-| Administrador (fixo) | Editar | Editar | Editar | Editar | Editar | Editar | Editar | Editar | Editar | Consultar |
-| Atendente | Editar | Editar | Editar | Consultar | Consultar | Consultar | Editar | Editar | — | — |
-| Mecânico | Consultar | Editar | — | Consultar | Consultar | — | Consultar | — | — | — |
-| Almoxarife | Consultar | Consultar | Editar | Editar | Consultar | Consultar | Consultar | — | — | — |
-| Financeiro | Consultar | Consultar | — | Consultar | Editar | Editar | — | Editar | Editar | Consultar |
+| Função | Clientes/veículos | Orçamentos | Aprovar orç. | O.S. | Peças na O.S. | Materiais | Serviços | Preços | Estoque | Recebimentos | Financeiro | Relatórios |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Administrador (fixo) | Editar | Editar | Editar | Editar | Editar | Editar | Editar | Editar | Editar | Editar | Editar | Consultar |
+| Atendente | Editar | Editar | Editar | Editar | Editar | Consultar | Consultar | Consultar | Editar | Editar | — | — |
+| Mecânico | Consultar | Consultar | — | Editar | — | Consultar | Consultar | — | Consultar | — | — | — |
+| Almoxarife | Consultar | Consultar | — | Consultar | Editar | Editar | Consultar | Consultar | Consultar | — | — | — |
+| Financeiro | Consultar | Editar | Editar | Consultar | — | Consultar | Editar | Editar | — | Editar | Editar | Consultar |
 
 **Decisões do dono do produto (registro):**
 - **Peças:** o **Almoxarife** adiciona a peça **na O.S. aberta**; o **Atendente** também pode. O Mecânico só solicita. Entradas de compra no estoque ficam com quem tem *Editar* no Estoque (Atendente).
@@ -245,7 +246,7 @@ Planejado, **sem desenvolvimento iniciado**, sobre o cadastro de vendedores (CAD
 | Código | Entregável | Proposta |
 |---|---|---|
 | VEN-01 | Cadastro de oportunidades: cliente, veículo (opcional), origem, vendedor responsável, valor estimado e etapa | ⚪ |
-| VEN-02 | Cadastro de orçamentos fora da O.S., ligados à oportunidade, com conversão em O.S. quando aprovados | ⚪ |
+| VEN-02 | **Orçamentos** (menu Orçamentos; regras em `docs/modulos/ORCAMENTOS.md`): número ORC-0000000001 por oficina e **versões** (nova versão = mesmo número, cancela a anterior; só a última aprova); cliente obrigatório (inativo ou incompleto aceito, com alerta), veículo opcional do cliente, vendedor ativo obrigatório e tabela de preço (a **padrão** já vem escolhida). Materiais ativos com "Permite venda" e serviços ativos, **só com preço na tabela no dia**; quantidade arredondada para cima ao múltiplo de venda (valor-hora: múltiplos das horas do serviço). **Negociação só de material**, por percentual (até 2 casas, desconto arredondado a favor do cliente) ou preço digitado, nunca acima da tabela, com o preço cheio riscado. Troca de tabela recalcula ao preço cheio (com confirmação) e remove itens sem preço; rascunho aberto em outro dia é recalculado (o cliente mantém o valor se o preço subiu). Ciclo rascunho → emitido → enviado → aprovado / recusado / vencido / cancelado; validade de 7 dias por padrão, no máximo 30, **vencido automático** no dia seguinte ao último dia para aprovar (validade + 1). Aprovação com data, hora e usuário; recusa e cancelamento com motivo opcional; histórico. Sem PDF, link público, reserva de estoque, alçada de desconto, oportunidade e conversão em O.S. ou pedido de venda (virão depois) | ✅ orçamento · ⚪ oportunidade e conversão |
 | VEN-03 | Gestão de metas de vendedores: meta por vendedor e período | ⚪ |
 | VEN-04 | Acompanhamento das metas: realizado × meta por vendedor | ⚪ |
 

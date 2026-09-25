@@ -115,6 +115,14 @@ export const BotaoLink = ({
 export const Alerta = ({ children }: { children: ReactNode }) =>
   children ? <div className="rounded-md bg-perigo-suave px-3 py-2 text-sm text-perigo">{children}</div> : null;
 
+/** Aviso que não é erro (ex.: itens recalculados ou removidos ao salvar). */
+export const Aviso = ({ children }: { children: ReactNode }) =>
+  children ? (
+    <div role="status" className="rounded-md bg-alerta-suave px-3 py-2 text-sm text-alerta">
+      {children}
+    </div>
+  ) : null;
+
 /** `className` substitui o padding padrão (p-6), evitando classes de padding conflitantes. */
 export const Cartao = ({ children, className = 'p-6' }: { children: ReactNode; className?: string }) => (
   <div className={`rounded-lg border border-borda bg-superficie shadow-sm ${className}`}>{children}</div>

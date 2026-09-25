@@ -328,7 +328,10 @@ describe('preços por vigência', () => {
     expect(eventos).toEqual(['criado', 'encerrado', 'encerrado', 'reaberto', 'encerrado']);
     expect((await o.chamar('GET', `/api/tabelas-preco/${tabela.id}`)).json().materiaisComPreco).toBe(1);
 
-    // Material/tabela inativos: não recebem preço novo, mas o histórico e a consulta continuam.
+    // Material/tabela inativos: não recebem preço novo, mas o histórico e a consulta continuam. A tabela padrão
+    // não pode ser inativada: outra passa a ser a padrão antes.
+    const outra = (await o.chamar('POST', '/api/tabelas-preco', { codigo: 'outra', nome: 'Outra' })).json();
+    await o.chamar('PATCH', `/api/tabelas-preco/${outra.id}/padrao`);
     await o.chamar('PATCH', `/api/tabelas-preco/${tabela.id}/status`, { ativo: false });
     expect((await novo(1, dia(20))).json().erro).toMatch(/inativa/);
     const consulta = (

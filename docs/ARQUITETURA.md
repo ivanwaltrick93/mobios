@@ -126,6 +126,12 @@ vendedores (id, tenant_id, codigo [seq. por oficina, imutável], usuario_id [ún
 vendedores_eventos (id, tenant_id, vendedor_id, evento, origem, motivo, alteracoes jsonb, usuario_id, criado_em)
 servicos (id, tenant_id, codigo [seq. por oficina, imutável], nome, descricao, forma_preco fechado|hora, tempo_minutos,
           observacao, classificacao_id?, garantia_dias?, garantia_km?, ativo)   -- preço em materiais_precos/precos_padrao
+orcamentos (id, tenant_id, numero [seq. por oficina], versao_orcamento, orcamento_origem_id?, status, cliente_id,
+            veiculo_id?, vendedor_id, tabela_preco_id, validade_ate, precos_em, subtotal/desconto/total_centavos,
+            emitido/enviado/aprovado/recusado/cancelado em+por, observacoes)   -- "vencido" é calculado pela validade
+orcamento_itens (id, tenant_id, orcamento_id, ordem, tipo material|servico, material_id?|servico_id?, codigo, descricao,
+                 unidade, multiplo, quantidade|tempo_minutos, preco_tabela, preco_unitario, desconto_percentual?, totais)
+orcamentos_eventos (id, tenant_id, orcamento_id, evento, detalhe, usuario_id, criado_em)   -- histórico
 
 clientes (id, tenant_id, tipo PF|PJ, nome, cpf_cnpj, telefone, email, endereco jsonb, observacoes)
 veiculos (id, tenant_id, cliente_id, placa, marca, modelo, ano, cor, chassi, km_atual)

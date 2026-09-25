@@ -53,6 +53,10 @@ const mensagensUnicidade: Record<string, string> = {
   veiculos_tenant_id_chassi_index: 'Já existe um veículo com este chassi',
   vendedores_usuario_unico: 'Este usuário já está vinculado a outro vendedor',
   vendedores_matricula_unico: 'Já existe um vendedor com esta matrícula',
+  tabelas_preco_padrao_unico: 'Outra tabela foi marcada como padrão ao mesmo tempo. Recarregue a página.',
+  // Duas pessoas gerando a nova versão do mesmo orçamento ao mesmo tempo.
+  orcamentos_uma_versao_viva: 'Este orçamento já tem uma versão em aberto. Recarregue a página.',
+  orcamentos_numero_versao_unico: 'Este orçamento já tem uma versão em aberto. Recarregue a página.',
 };
 
 /** Violações de CHECK/trigger com mensagem própria (as demais caem em "Dados inválidos"). */
@@ -73,6 +77,11 @@ const mensagensCheck: Record<string, string> = {
   users_codigo_imutavel: 'O código do usuário não pode ser alterado.',
   funcoes_codigo_imutavel: 'O código da função não pode ser alterado.',
   vendedores_codigo_imutavel: 'O código do vendedor não pode ser alterado.',
+  tabelas_preco_padrao_ativa: 'A tabela padrão não pode ser inativada. Marque outra tabela como padrão antes.',
+  orcamentos_numero_imutavel: 'O número e a versão do orçamento não podem ser alterados.',
+  orcamento_itens_so_no_rascunho: 'Só o rascunho pode ter os itens alterados. Gere uma nova versão.',
+  orcamento_itens_preco_negociado: 'O preço negociado não pode ficar acima do preço da tabela.',
+  orcamento_itens_servico_sem_negociacao: 'Serviço não aceita negociação de preço.',
 };
 
 /**

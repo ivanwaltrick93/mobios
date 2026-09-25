@@ -133,3 +133,15 @@ export function horasParaMinutos(v: string): number {
   if (!m || Number(m[2] ?? 0) > 59) return NaN;
   return Number(m[1]) * 60 + Number(m[2] ?? 0);
 }
+
+/** Percentual com até 2 casas ("7,5"; "10,25"), limitado a 100. */
+export function mascaraPercentual(v: string): string {
+  const [inteira = '', ...resto] = v.replace(/[^\d,]/g, '').split(',');
+  const i = inteira.replace(/^0+(?=\d)/, '').slice(0, 3);
+  const texto = resto.length ? `${i || '0'},${resto.join('').slice(0, 2)}` : i;
+  return Number(texto.replace(',', '.')) > 100 ? '100' : texto;
+}
+
+/** "7,5" → 7.5. Vazio → null. */
+export const percentualParaNumero = (v: string): number | null =>
+  v.trim() === '' ? null : Number(v.replace(',', '.'));

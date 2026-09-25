@@ -62,7 +62,17 @@ export function ListaPrecos() {
         Linhas de Preço
       </Titulo>
 
-      {painel === 'cadastro' && tabela && <NovoPreco tabela={tabela} aoConcluir={() => setPainel(null)} />}
+      {painel === 'cadastro' && tabela && (
+        <NovoPreco
+          tabela={tabela}
+          tabelas={ativas}
+          aoConcluir={(salvoEm) => {
+            setPainel(null);
+            // A lista passa a mostrar a tabela em que o preço foi salvo.
+            if (salvoEm) setTabelaId(salvoEm);
+          }}
+        />
+      )}
       {painel === 'importacao' && tabela && (
         <ImportarCsv
           titulo={`Importar linhas de preço — ${tabela.nome}`}

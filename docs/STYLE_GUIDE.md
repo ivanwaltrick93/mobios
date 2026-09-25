@@ -75,6 +75,8 @@ Em [`components/ui.tsx`](../apps/web/src/components/ui.tsx). Use-os em vez de re
 | `InputMascara` + `mascara*` (`packages/shared/src/mascaras.ts`) | Campo com máscara ao digitar (CPF/CNPJ, telefone, CEP, placa, e-mail...). Só formata: a validação e a limpeza da pontuação ficam no schema |
 | `Secao` | Bloco de formulário com título (Identificação, Contato, Endereços...) e ação opcional |
 | `Alerta` | Mensagem de erro |
+| `Aviso` | Aviso que não é erro (ex.: itens recalculados ou removidos ao salvar o orçamento) |
+| `SeloSituacao`, `ClienteDoOrcamento`, `PrecoNegociado`, `Totais` (`components/Orcamento.tsx`) | Orçamento: situação, cliente com ícone de alerta (inativo/incompleto), preço negociado com o de tabela riscado e o percentual, e subtotal/descontos/total |
 | `Selo` (`sucesso` / `neutro` / `primario` / `alerta`) | Status curtos; `alerta` para pendências (ex.: "Cadastro incompleto") |
 | `Tabela`, `Cabecalho`, `Th`, `Linha`, `Td`, `LinhaVazia` | Listagens |
 | `TextoSuave` | Texto secundário |
@@ -95,7 +97,7 @@ Em [`components/ui.tsx`](../apps/web/src/components/ui.tsx). Use-os em vez de re
 - **Listas de cadastro** em tabela (decisão do dono do produto: mais analítico, menos rolagem): filtros acima, nome do registro como link para o detalhe, status em `Selo`, **20 por página** com `Paginacao`.
 - **Toda tabela de cadastro** tem na última coluna a ação `BotaoVisualizar` (olho, dica "Visualizar"), antes das demais ações da linha.
 - **Filtros extras** de uma listagem ficam recolhidos por padrão (botão "Mostrar filtros", com a contagem dos que estão diferentes do padrão); a busca fica sempre visível.
-- **Menu lateral** com submenu que abre e fecha quando a área tem mais de uma página (Clientes → Clientes · Veículos; Ofertas → Materiais · Serviços · Categorias · Marcas · Depósitos (cada item segue o próprio módulo de acesso); Política Comercial → Linhas de Preço · Tabelas de Preço; Equipe → Usuários · Vendedores; Configurações → Aparência e logo · Funções e permissões · uma página por lista parametrizável). Com o submenu, as páginas não repetem abas de navegação.
+- **Menu lateral** com submenu que abre e fecha quando a área tem mais de uma página (Clientes → Clientes · Veículos; Orçamentos (item único); Ofertas → Materiais · Serviços · Categorias · Marcas · Depósitos (cada item segue o próprio módulo de acesso); Política Comercial → Linhas de Preço · Tabelas de Preço; Equipe → Usuários · Vendedores; Configurações → Aparência e logo · Funções e permissões · uma página por lista parametrizável). Com o submenu, as páginas não repetem abas de navegação.
 - **Importação por planilha** sempre com `ImportarCsv`: mostra as colunas aceitas, avisa que a 1ª linha é o cabeçalho, oferece o modelo e lista as linhas com erro.
 - **Voltar** fica no topo, à esquerda, em todas as páginas menos o Início (componente `Voltar`, no `Layout`). Páginas raiz do menu voltam ao Início; as demais, à página anterior. Não crie links de voltar dentro das páginas.
 - **Detalhe** como perfil: cabeçalho com ações rápidas (WhatsApp, Editar) e abas.

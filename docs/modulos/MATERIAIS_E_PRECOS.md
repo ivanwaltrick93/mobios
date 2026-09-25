@@ -557,3 +557,12 @@ Decisões do dono do produto (24/09/2026): o serviço (mão de obra) é vendido 
 | `POST /api/servicos/importar` (text/csv) | Colunas em `COLUNAS_IMPORTACAO_SERVICOS`: sem código = novo; código existente = atualiza |
 
 Telas: **Serviços** (tabela com código, nome e situação; busca, filtros de classificação e situação; importar; novo), **detalhe** com abas Dados e Preços (a mesma aba Preços do material, com "/hora" no valor-hora) e formulário de cadastro/edição. Linhas de Preço e "Cadastrar preço" passam a ter o tipo (material ou serviço).
+
+## 26. Tabela de preço padrão
+
+- Cada oficina tem **uma** tabela marcada como **padrão** (`tabelas_preco.padrao`, índice único parcial `tabelas_preco_padrao_unico`). É a que o orçamento usa quando nenhuma outra é escolhida (e já vem selecionada no formulário).
+- A primeira tabela cadastrada nasce padrão; na migração 0024, a tabela ativa mais antiga de cada oficina virou a padrão.
+- **Tornar padrão** (`PATCH /api/tabelas-preco/:id/padrao`, quem edita Preços): tira a marca da anterior na mesma transação. Só tabela ativa.
+- A padrão **não pode ser inativada** (CHECK `tabelas_preco_padrao_ativa`) **nem excluída**: antes, outra tabela precisa virar a padrão.
+- Nenhum preço existe fora de uma tabela: sem tabela nenhuma, a oficina não faz orçamento.
+- Em **Linhas de Preço**, o "Cadastrar preço" tem o campo **Tabela de preço** (começa pela tabela da tela; lista as ativas, com a padrão indicada). Salvo numa tabela diferente, a lista passa a mostrar essa tabela. No detalhe de uma tabela, o cadastro continua sem o campo: vale a tabela da página.

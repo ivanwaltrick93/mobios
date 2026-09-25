@@ -6,8 +6,10 @@ import {
   mascaraCpf,
   mascaraEmail,
   mascaraKm,
+  mascaraPercentual,
   mascaraPlaca,
   mascaraTelefone,
+  percentualParaNumero,
 } from './mascaras.js';
 
 describe('máscaras', () => {
@@ -32,5 +34,15 @@ describe('máscaras', () => {
     expect(mascaraChassi('9bw zzz377vt004251xx')).toBe('9BWZZZ377VT004251');
     expect(mascaraKm('125000')).toBe('125.000');
     expect(mascaraEmail(' Joao@Email.COM ')).toBe('joao@email.com');
+  });
+});
+
+describe('percentual', () => {
+  it('aceita até 2 casas e no máximo 100', () => {
+    expect(mascaraPercentual('7,555')).toBe('7,55');
+    expect(mascaraPercentual('150')).toBe('100');
+    expect(mascaraPercentual(',5')).toBe('0,5');
+    expect(percentualParaNumero('7,5')).toBe(7.5);
+    expect(percentualParaNumero('')).toBeNull();
   });
 });
