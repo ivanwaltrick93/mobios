@@ -492,6 +492,15 @@ describe('orçamento: emissão, aprovação e versões', () => {
     // O banco não aceita duas versões vivas do mesmo número.
     await expect(c.banco(sql`update orcamentos set status = 'rascunho' where id = ${o.id}`)).rejects.toThrow();
 
+    // A partir da versão 2 o cliente não muda.
+    const outroCliente = await clienteComVeiculo(c, 'Outro Cliente');
+    const trocaCliente = await c.chamar('PUT', `/api/orcamentos/${v2.id}`, {
+      ...orcamento(c, reenviar(v2), { clienteId: outroCliente.id, veiculoId: null }),
+      versao: v2.versao,
+    });
+    expect(trocaCliente.statusCode).toBe(400);
+    expect(trocaCliente.json().campos).toEqual({ clienteId: 'O cliente não muda a partir da versão 2' });
+
     const v2Emitida = (await transicao(c.chamar, v2.id, 'emitir', v2.versao)).json();
     const recusada = (await transicao(c.atendente.chamar, v2.id, 'recusar', v2Emitida.versao, 'Achou caro')).json();
     expect(recusada).toMatchObject({ situacao: 'recusado', motivoRecusa: 'Achou caro' });

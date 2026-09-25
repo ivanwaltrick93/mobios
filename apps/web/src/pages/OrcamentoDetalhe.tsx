@@ -11,8 +11,8 @@ import {
 } from '@mobios/shared';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, Copy, Pencil, Send, XCircle } from 'lucide-react';
-import { useState, type ReactNode } from 'react';
-import { Link, useNavigate, useParams } from 'react-router';
+import { useEffect, useState, type ReactNode } from 'react';
+import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import { ClienteDoOrcamento, PrecoNegociado, SeloSituacao, Totais } from '../components/Orcamento';
 import {
   Alerta,
@@ -30,6 +30,7 @@ import {
   Td,
   TextoSuave,
   Th,
+  Titulo,
 } from '../components/ui';
 import { api } from '../lib/api';
 import { useOrcamento } from '../lib/orcamentos';
@@ -81,6 +82,14 @@ export function OrcamentoDetalhe() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { orcamento, recalculando, erroRecalculo, avisos } = useOrcamento(id);
+  // Vindo de "Salvar orçamento": confirma e mostra o que a gravação ajustou. O aviso é guardado na tela e sai do
+  // histórico do navegador, para não reaparecer ao recarregar ou voltar.
+  const location = useLocation();
+  const [avisosAoSalvar] = useState(() => (location.state as { avisosAoSalvar?: string[] } | null)?.avisosAoSalvar);
+  const temEstado = location.state != null;
+  useEffect(() => {
+    if (temEstado) navigate(location.pathname, { replace: true });
+  }, [temEstado, navigate, location.pathname]);
   const [confirmando, setConfirmando] = useState<Acao | null>(null);
   const [motivo, setMotivo] = useState('');
   const acao = useMutation({
@@ -102,9 +111,16 @@ export function OrcamentoDetalhe() {
   const editar = pode('orcamentos', 'editar');
   const aprovar = pode('aprovar_orcamentos', 'editar');
   const aberto = o.situacao === 'emitido' || o.situacao === 'enviado';
-  const botoes: { tipo: Acao; rotulo: string; icone: ReactNode; variante?: 'secundario' | 'perigo' }[] = [
+  const botoes: { tipo: Acao; rotulo: string; icone: ReactNode; variante?: 'secundario' | 'perigo' | 'sucesso' }[] = [
     ...(editar && o.situacao === 'rascunho'
-      ? [{ tipo: 'emitir' as const, rotulo: 'Emitir', icone: <Send className="mr-1.5 size-4" aria-hidden /> }]
+      ? [
+          {
+            tipo: 'emitir' as const,
+            rotulo: 'Emitir',
+            icone: <Send className="mr-1.5 size-4" aria-hidden />,
+            variante: 'sucesso' as const,
+          },
+        ]
       : []),
     ...(aprovar && aberto
       ? [
@@ -142,6 +158,19 @@ export function OrcamentoDetalhe() {
 
   return (
     <div className="space-y-6">
+      <Titulo>Resumo do Orçamento</Titulo>
+      {avisosAoSalvar && (
+        <Aviso>
+          Orçamento salvo.
+          {avisosAoSalvar.length > 0 && (
+            <ul className="mt-1 list-inside list-disc space-y-0.5">
+              {avisosAoSalvar.map((a) => (
+                <li key={a}>{a}</li>
+              ))}
+            </ul>
+          )}
+        </Aviso>
+      )}
       <Cartao>
         <div className="flex flex-wrap items-start gap-4">
           <div className="min-w-0 flex-1 space-y-1.5">
@@ -297,7 +326,13 @@ export function OrcamentoDetalhe() {
             <Alerta>{acao.isError && acao.error.message}</Alerta>
             <div className="flex gap-2">
               <Botao
-                variante={confirmando === 'cancelar' || confirmando === 'recusar' ? 'perigo' : 'primario'}
+                variante={
+                  confirmando === 'cancelar' || confirmando === 'recusar'
+                    ? 'perigo'
+                    : confirmando === 'emitir'
+                      ? 'sucesso'
+                      : 'primario'
+                }
                 disabled={acao.isPending}
                 onClick={() => acao.mutate({ tipo: confirmando, o })}
               >

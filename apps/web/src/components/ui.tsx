@@ -85,13 +85,15 @@ export const Secao = ({ titulo, acao, children }: { titulo: string; acao?: React
   </section>
 );
 
-type Variante = 'primario' | 'secundario' | 'perigo';
+type Variante = 'primario' | 'secundario' | 'perigo' | 'sucesso';
 
 const coresBotao: Record<Variante, string> = {
   primario: 'bg-botao-primario text-botao-primario-texto hover:bg-botao-primario-hover',
   secundario:
     'border border-botao-secundario-borda bg-botao-secundario text-botao-secundario-texto hover:bg-botao-secundario-hover',
   perigo: 'bg-perigo text-sobre-perigo hover:bg-perigo-hover',
+  // Verde fixo (não segue o tema da oficina): ações de conclusão, como emitir o orçamento.
+  sucesso: 'bg-sucesso text-sobre-sucesso hover:bg-sucesso-hover',
 };
 
 export const classesBotao = (variante: Variante = 'primario', className = '') =>

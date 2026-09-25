@@ -33,6 +33,7 @@
 
   /* Estados */
   --cor-sucesso: #15803d;
+  --cor-sobre-sucesso: #ffffff;
   --cor-perigo: #dc2626;
   --cor-sobre-perigo: #ffffff;
   --cor-alerta: #b45309;
@@ -56,6 +57,7 @@
   --cor-alerta-suave: color-mix(in oklab, var(--cor-alerta) 12%, var(--cor-superficie));
   --cor-perigo-suave: color-mix(in oklab, var(--cor-perigo) 10%, var(--cor-superficie));
   --cor-perigo-hover: color-mix(in oklab, var(--cor-perigo), black 15%);
+  --cor-sucesso-hover: color-mix(in oklab, var(--cor-sucesso), black 15%);
 }
 
 /* Expõe os tokens como utilitários do Tailwind: bg-primaria, text-texto-suave, border-borda... */
@@ -84,6 +86,8 @@
   --color-texto-suave: var(--cor-texto-suave);
   --color-sucesso: var(--cor-sucesso);
   --color-sucesso-suave: var(--cor-sucesso-suave);
+  --color-sucesso-hover: var(--cor-sucesso-hover);
+  --color-sobre-sucesso: var(--cor-sobre-sucesso);
   --color-perigo: var(--cor-perigo);
   --color-perigo-suave: var(--cor-perigo-suave);
   --color-perigo-hover: var(--cor-perigo-hover);

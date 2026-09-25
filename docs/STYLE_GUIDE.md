@@ -43,7 +43,7 @@ Calculadas com `color-mix()` a partir das parametrizáveis, então acompanham a 
 | `--cor-superficie-alt` | `bg-superficie-alt` | Cabeçalho de tabela, hover de linha, áreas de formulário |
 | `--cor-borda` / `--cor-borda-forte` | `border-borda` / `border-borda-forte` | Divisórias / bordas de campo e botão secundário |
 | `--cor-texto` / `--cor-texto-suave` | `text-texto` / `text-texto-suave` | Texto principal / secundário |
-| `--cor-sucesso` (+ `-suave`) | `text-sucesso`, `bg-sucesso-suave` | Confirmações, status "Ativo" |
+| `--cor-sucesso` (+ `-suave`, `-hover`, `sobre-sucesso`) | `text-sucesso`, `bg-sucesso-suave`, `bg-sucesso` | Confirmações, status "Ativo", botão `sucesso` |
 | `--cor-perigo` (+ `-suave`, `-hover`, `sobre-perigo`) | `bg-perigo`, `text-perigo`, `bg-perigo-suave` | Erros, exclusão |
 | `--cor-alerta` (+ `-suave`) | `text-alerta`, `bg-alerta-suave` | Avisos, "cadastro incompleto" |
 | `--cor-placa-*` (fundo, texto, borda, faixa, faixa-texto) | `bg-placa-faixa`... | Desenho da placa Mercosul (componente `Placa`); fixas, não seguem o tema |
@@ -69,7 +69,7 @@ Em [`components/ui.tsx`](../apps/web/src/components/ui.tsx). Use-os em vez de re
 |---|---|
 | `Titulo` | Título da página, com ação opcional à direita |
 | `Cartao` | Bloco de conteúdo (`className` substitui o padding padrão) |
-| `Botao` (`primario` = confirmar / `secundario` = cancelar, voltar / `perigo` = excluir), `BotaoLink` | Ações. Use sempre a variante pela função do botão, para o tema da oficina valer |
+| `Botao` (`primario` = confirmar / `secundario` = cancelar, voltar / `perigo` = excluir / `sucesso` = concluir, sempre verde, fora do tema: ex.: Emitir orçamento), `BotaoLink` | Ações. Use sempre a variante pela função do botão, para o tema da oficina valer |
 | `Campo` + `Input` / `Select` / `AreaTexto` | Formulários, com rótulo, dica e erro |
 | `Marcador` | Caixa de seleção com rótulo ao lado |
 | `InputMascara` + `mascara*` (`packages/shared/src/mascaras.ts`) | Campo com máscara ao digitar (CPF/CNPJ, telefone, CEP, placa, e-mail...). Só formata: a validação e a limpeza da pontuação ficam no schema |

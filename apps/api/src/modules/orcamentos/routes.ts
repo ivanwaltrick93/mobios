@@ -521,6 +521,11 @@ export const orcamentosRoutes: FastifyPluginAsyncZod = async (app) => {
         exigirVersaoLida(atual, req.body.versao);
         exigirSituacao(atual, ['rascunho'], 'alterar');
         exigirPrecosDoDia(atual);
+        // O cliente é o do orçamento original: a partir da versão 2 (já foi emitido) não muda.
+        if (atual.versaoOrcamento > 1 && req.body.clienteId !== atual.clienteId)
+          throw new ErroHttp(400, 'O cliente não pode ser trocado numa nova versão do orçamento.', {
+            clienteId: 'O cliente não muda a partir da versão 2',
+          });
         const tabelaPrecoId = await validarCabecalho(tx, req.body, atual);
         const trocouTabela = tabelaPrecoId !== atual.tabelaPrecoId;
         const gravados = await itensDoOrcamento(tx, atual.id);

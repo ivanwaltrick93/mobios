@@ -9,7 +9,7 @@ Menu **Orçamentos**. Regras definidas com o dono do produto em 24/09/2026. Cód
 |---|---|
 | Número | `ORC-0000000001`: sequencial por oficina (contador `orcamentos`, na mesma transação; falhou, não consome). Imutável (trigger). |
 | Versão | 1, 2, 3… Cada versão é um registro com o mesmo número (ver §4). |
-| Cliente | Obrigatório. **Inativo ou com cadastro incompleto é aceito** (só no orçamento), com ícone de alerta ao lado do nome. |
+| Cliente | Obrigatório. **Inativo ou com cadastro incompleto é aceito** (só no orçamento), com ícone de alerta ao lado do nome. A partir da **versão 2** o cliente não pode ser trocado (é o do orçamento original). |
 | Veículo | Opcional (venda de peça no balcão). Se informado, precisa ser do cliente. |
 | Vendedor | Obrigatório e **ativo** (manter o que o rascunho já tinha é permitido, mas a emissão exige ativo). |
 | Tabela de preço | Obrigatória; vazia = a **tabela padrão** da oficina (já vem escolhida). Sem tabela padrão, não há orçamento. |
@@ -27,6 +27,8 @@ A oportunidade (Fase 2) e a conversão em O.S. ou pedido de venda ainda não exi
   - material: até o **múltiplo de venda** (caixa master); unidade inteira (UN, PC…) é sempre inteira; unidade fracionada (L, KG, M) com múltiplo 1 aceita a fração digitada (até 3 casas);
   - serviço de **preço fechado**: número inteiro;
   - serviço de **valor-hora**: horas:minutos em múltiplos das horas do serviço (serviço de 1:30 → 1:30, 3:00, 4:30…); o preço da tabela é o da hora.
+  - na tela, botões **− e +** ao lado do campo sobem e descem de um múltiplo em um múltiplo (nunca abaixo de um; para tirar, a lixeira); o campo também aceita digitação, arredondada ao sair;
+  - incluir um item que **já está** no orçamento soma um múltiplo à linha existente, em vez de criar outra.
 - **Negociação só de material** (serviço não aceita):
   - por **percentual** (até 2 casas, até 100%): o desconto em centavos é arredondado **para cima** (a favor do cliente). Ex.: 10% de R$ 123,45 = R$ 12,35 → R$ 111,10;
   - ou digitando o **preço**, que só pode ficar **abaixo** do preço de tabela (ou igual);

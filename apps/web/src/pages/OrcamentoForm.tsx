@@ -34,10 +34,10 @@ import {
   type VeiculoParaOrcamento,
 } from '@mobios/shared';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Search, Trash2 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { Minus, Plus, Search, Trash2 } from 'lucide-react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useForm } from 'react-hook-form';
-import { Link, useNavigate, useParams } from 'react-router';
+import { useNavigate, useParams } from 'react-router';
 import type { z } from 'zod';
 import { ClienteDoOrcamento, Totais } from '../components/Orcamento';
 import {
@@ -49,7 +49,6 @@ import {
   Cabecalho,
   Campo,
   Cartao,
-  classesBotao,
   Input,
   Janela,
   Linha,
@@ -124,12 +123,15 @@ function CamposCabecalho({
   aoTrocarCliente,
   aoMudarTabela,
   vendedorAtualId,
+  clienteFixo = false,
 }: {
   form: ReturnType<typeof useForm<Entrada, unknown, Saida>>;
   cliente: ClienteParaOrcamento | null;
   aoTrocarCliente: (c: ClienteParaOrcamento | null) => void;
   aoMudarTabela: (id: string) => void;
   vendedorAtualId?: string;
+  /** Nova versão (2 em diante): o cliente é o do orçamento original. */
+  clienteFixo?: boolean;
 }) {
   const vendedores = useVendedoresOrcamento();
   const tabelas = useTabelasOrcamento();
@@ -145,7 +147,14 @@ function CamposCabecalho({
     <div className="space-y-5">
       <Secao
         titulo="Cliente"
-        acao={cliente && <BotaoLink onClick={() => aoTrocarCliente(null)}>Trocar cliente</BotaoLink>}
+        acao={
+          cliente &&
+          (clienteFixo ? (
+            <span className="text-xs text-texto-suave">O cliente não muda a partir da versão 2</span>
+          ) : (
+            <BotaoLink onClick={() => aoTrocarCliente(null)}>Trocar cliente</BotaoLink>
+          ))
+        }
       >
         {cliente ? (
           <ClienteDoOrcamento cliente={cliente} />
@@ -395,6 +404,47 @@ function itemParaApi(l: LinhaTela): ItemOrcamentoInput {
   };
 }
 
+/**
+ * Passo do seletor: o múltiplo de venda do material, as horas do serviço (valor-hora) ou 1 (preço fechado).
+ * Sobe ou desce para o próximo múltiplo; nunca abaixo de um múltiplo (para tirar o item, use a lixeira).
+ */
+function darPasso(l: LinhaTela, direcao: 1 | -1): LinhaTela {
+  const proximo = (atual: number, passo: number) =>
+    direcao > 0 ? (Math.floor(atual / passo) + 1) * passo : Math.max(passo, (Math.ceil(atual / passo) - 1) * passo);
+  if (l.formaPreco === 'hora')
+    return { ...l, horas: formatarHoras(proximo(horasParaMinutos(l.horas) || 0, l.multiplo)), nota: undefined };
+  const atual = paraMilesimos(quantidadeParaNumero(l.quantidade) ?? 0);
+  return { ...l, quantidade: formatarQuantidade(proximo(atual, l.multiplo * 1000) / 1000), nota: undefined };
+}
+
+const podeDiminuir = (l: LinhaTela) =>
+  l.formaPreco === 'hora'
+    ? (horasParaMinutos(l.horas) || 0) > l.multiplo
+    : paraMilesimos(quantidadeParaNumero(l.quantidade) ?? 0) > l.multiplo * 1000;
+
+const BotaoPasso = ({
+  rotulo,
+  aoClicar,
+  disabled,
+  children,
+}: {
+  rotulo: string;
+  aoClicar: () => void;
+  disabled?: boolean;
+  children: ReactNode;
+}) => (
+  <button
+    type="button"
+    title={rotulo}
+    aria-label={rotulo}
+    disabled={disabled}
+    onClick={aoClicar}
+    className="rounded-md border border-borda-forte p-2 text-texto-suave hover:bg-superficie-alt hover:text-texto disabled:opacity-40"
+  >
+    {children}
+  </button>
+);
+
 /** Arredonda ao sair do campo e explica por quê (a API faz o mesmo ao salvar). */
 function arredondar(l: LinhaTela): LinhaTela {
   if (l.formaPreco === 'hora') {
@@ -511,19 +561,28 @@ function TabelaItens({
                 <div className="font-medium">{l.descricao}</div>
               </Td>
               <Td className="min-w-32">
-                {l.formaPreco === 'hora' ? (
-                  <Input
-                    aria-label={`Horas de ${l.descricao}`}
-                    inputMode="numeric"
-                    placeholder="0:00"
-                    value={l.horas}
-                    onChange={(e) => mudar({ horas: mascaraHoras(e.target.value), nota: undefined })}
-                    onBlur={() => aoMudar(l.chave, arredondar)}
-                  />
-                ) : (
-                  <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1">
+                  <BotaoPasso
+                    rotulo={`Diminuir ${l.descricao}`}
+                    disabled={!podeDiminuir(l)}
+                    aoClicar={() => aoMudar(l.chave, (x) => darPasso(x, -1))}
+                  >
+                    <Minus className="size-4" aria-hidden />
+                  </BotaoPasso>
+                  {l.formaPreco === 'hora' ? (
+                    <Input
+                      aria-label={`Horas de ${l.descricao}`}
+                      className="w-20 text-center"
+                      inputMode="numeric"
+                      placeholder="0:00"
+                      value={l.horas}
+                      onChange={(e) => mudar({ horas: mascaraHoras(e.target.value), nota: undefined })}
+                      onBlur={() => aoMudar(l.chave, arredondar)}
+                    />
+                  ) : (
                     <Input
                       aria-label={`Quantidade de ${l.descricao}`}
+                      className="w-20 text-center"
                       inputMode="decimal"
                       value={l.quantidade}
                       onChange={(e) =>
@@ -531,8 +590,20 @@ function TabelaItens({
                       }
                       onBlur={() => aoMudar(l.chave, arredondar)}
                     />
-                    <span className="text-xs text-texto-suave">{l.unidade}</span>
-                  </div>
+                  )}
+                  <BotaoPasso
+                    rotulo={`Aumentar ${l.descricao}`}
+                    aoClicar={() => aoMudar(l.chave, (x) => darPasso(x, 1))}
+                  >
+                    <Plus className="size-4" aria-hidden />
+                  </BotaoPasso>
+                  <span className="text-xs text-texto-suave">{l.formaPreco === 'hora' ? 'h' : l.unidade}</span>
+                </div>
+                {l.multiplo > 1 && l.formaPreco !== 'hora' && (
+                  <span className="mt-1 block text-xs text-texto-suave">Múltiplo de {l.multiplo}</span>
+                )}
+                {l.formaPreco === 'hora' && (
+                  <span className="mt-1 block text-xs text-texto-suave">Múltiplo de {formatarHoras(l.multiplo)}</span>
                 )}
                 {l.nota && <span className="mt-1 block text-xs text-alerta">{l.nota}</span>}
               </Td>
@@ -612,8 +683,17 @@ function TabelaItens({
 
 // ---------- Edição do rascunho ----------
 
-/** Edição do rascunho: cabeçalho e itens. Trocar a tabela com itens pede confirmação e recalcula na hora. */
-function EdicaoRascunho({ orcamento, aoSalvar }: { orcamento: Orcamento; aoSalvar: (o: Orcamento) => void }) {
+/**
+ * Edição do rascunho: cabeçalho e itens. "Salvar orçamento" grava e vai ao resumo (`sair`); trocar a tabela com
+ * itens pede confirmação, recalcula e grava, mas continua na edição para a pessoa ver os novos preços.
+ */
+function EdicaoRascunho({
+  orcamento,
+  aoSalvar,
+}: {
+  orcamento: Orcamento;
+  aoSalvar: (o: Orcamento, sair: boolean) => void;
+}) {
   const [cliente, setCliente] = useState<ClienteParaOrcamento | null>({ cpfCnpj: null, ...orcamento.cliente });
   const [linhas, setLinhas] = useState<LinhaTela[]>(orcamento.itens.map(linhaDoItem));
   const [tabelaPendente, setTabelaPendente] = useState<string | null>(null);
@@ -623,17 +703,17 @@ function EdicaoRascunho({ orcamento, aoSalvar }: { orcamento: Orcamento; aoSalva
     mode: 'onTouched',
   });
   const salvar = useMutation({
-    mutationFn: (dados: Saida) =>
+    mutationFn: ({ dados }: { dados: Saida; sair: boolean }) =>
       api<Orcamento>(`/orcamentos/${orcamento.id}`, {
         method: 'PUT',
         body: { ...dados, itens: linhas.map(itemParaApi), versao: orcamento.versao },
       }),
-    onSuccess: aoSalvar,
+    onSuccess: (salvo, { sair }) => aoSalvar(salvo, sair),
   });
   const tabelaPrecoId = String(form.watch('tabelaPrecoId') ?? '');
   const totais = somarItens(linhas.map(calculoDaLinha));
   const temErro = linhas.some((l) => precoDaLinha(l).erro);
-  const enviar = form.handleSubmit((d) => salvar.mutate(d));
+  const enviar = form.handleSubmit((dados) => salvar.mutate({ dados, sair: true }));
 
   const trocarCliente = (c: ClienteParaOrcamento | null) => {
     setCliente(c);
@@ -647,7 +727,7 @@ function EdicaoRascunho({ orcamento, aoSalvar }: { orcamento: Orcamento; aoSalva
   const confirmarTabela = () => {
     form.setValue('tabelaPrecoId', tabelaPendente!);
     setTabelaPendente(null);
-    void enviar();
+    void form.handleSubmit((dados) => salvar.mutate({ dados, sair: false }))();
   };
 
   return (
@@ -659,6 +739,7 @@ function EdicaoRascunho({ orcamento, aoSalvar }: { orcamento: Orcamento; aoSalva
           cliente={cliente}
           aoTrocarCliente={trocarCliente}
           aoMudarTabela={mudarTabela}
+          clienteFixo={orcamento.versaoOrcamento > 1}
           vendedorAtualId={orcamento.vendedor.id}
         />
       </Cartao>
@@ -667,7 +748,14 @@ function EdicaoRascunho({ orcamento, aoSalvar }: { orcamento: Orcamento; aoSalva
         <Secao titulo="Itens">
           <BuscaItem
             tabelaPrecoId={tabelaPrecoId}
-            aoEscolher={(i) => setLinhas((atuais) => [...atuais, linhaNova(i)])}
+            aoEscolher={(i) =>
+              setLinhas((atuais) =>
+                // Item já incluído: soma um múltiplo na linha existente em vez de criar outra.
+                atuais.some((l) => l.tipo === i.tipo && l.itemId === i.id)
+                  ? atuais.map((l) => (l.tipo === i.tipo && l.itemId === i.id ? darPasso(l, 1) : l))
+                  : [...atuais, linhaNova(i)],
+              )
+            }
           />
           <TabelaItens
             linhas={linhas}
@@ -678,13 +766,10 @@ function EdicaoRascunho({ orcamento, aoSalvar }: { orcamento: Orcamento; aoSalva
         </Secao>
       </Cartao>
 
-      <div className="flex flex-wrap gap-2">
-        <Botao type="submit" disabled={salvar.isPending || temErro}>
-          {salvar.isPending ? 'Salvando…' : 'Salvar rascunho'}
+      <div className="flex justify-center">
+        <Botao type="submit" variante="sucesso" disabled={salvar.isPending || temErro}>
+          {salvar.isPending ? 'Salvando…' : 'Salvar orçamento'}
         </Botao>
-        <Link to={`/orcamentos/${orcamento.id}`} className={classesBotao('secundario')}>
-          Voltar ao orçamento
-        </Link>
       </div>
 
       {tabelaPendente && (
@@ -711,6 +796,7 @@ function EdicaoRascunho({ orcamento, aoSalvar }: { orcamento: Orcamento; aoSalva
 
 export function EditarOrcamento() {
   const { id } = useParams() as { id: string };
+  const navigate = useNavigate();
   const pode = usePode();
   const queryClient = useQueryClient();
   const { orcamento, recalculando, erroRecalculo, avisos, setAvisos } = useOrcamento(id);
@@ -747,10 +833,12 @@ export function EditarOrcamento() {
             // Remonta com os dados da API a cada gravação (itens com os ids e preços oficiais).
             key={o.versao}
             orcamento={o}
-            aoSalvar={(salvo) => {
+            aoSalvar={(salvo, sair) => {
               queryClient.setQueryData(['orcamentos', id], salvo);
               queryClient.invalidateQueries({ queryKey: ['orcamentos', 'lista'] });
-              setAvisos(salvo.avisos.length ? salvo.avisos : ['Rascunho salvo.']);
+              // Os avisos da gravação (arredondamentos, itens removidos) seguem para o resumo.
+              if (sair) navigate(`/orcamentos/${id}`, { state: { avisosAoSalvar: salvo.avisos } });
+              else setAvisos(salvo.avisos.length ? salvo.avisos : ['Rascunho salvo.']);
             }}
           />
         </>
