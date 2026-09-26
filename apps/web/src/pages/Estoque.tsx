@@ -60,7 +60,7 @@ export function Estoque() {
     };
   const saldos = useQuery({
     queryKey: ['estoque', parametros.toString()],
-    queryFn: () => api<{ itens: Saldo[]; total: number }>(`/estoque?${parametros}`),
+    queryFn: ({ signal }) => api<{ itens: Saldo[]; total: number }>(`/estoque?${parametros}`, { signal }),
     placeholderData: keepPreviousData,
   });
 

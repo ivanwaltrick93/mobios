@@ -57,7 +57,7 @@ export function LinhasDePreco({ tabelaPrecoId, autoFocus = false }: { tabelaPrec
   });
   const linhas = useQuery({
     queryKey: ['linhas-preco', parametros.toString()],
-    queryFn: () => api<{ itens: LinhaPreco[]; total: number }>(`/precos/linhas?${parametros}`),
+    queryFn: ({ signal }) => api<{ itens: LinhaPreco[]; total: number }>(`/precos/linhas?${parametros}`, { signal }),
     placeholderData: keepPreviousData,
   });
 

@@ -1,14 +1,15 @@
 import {
+  type AlertaPainel,
   DIAS_ANIVERSARIO_SEMANA,
   hojeIso,
+  type Indicador,
+  janelaDeAniversarios,
+  type Painel,
   painelQuerySchema,
   painelSchema,
+  type PeriodoPainel,
   somarDias,
   temAcesso,
-  type AlertaPainel,
-  type Indicador,
-  type Painel,
-  type PeriodoPainel,
 } from '@mobios/shared';
 import { and, asc, count, desc, eq, sql, type SQL } from 'drizzle-orm';
 import type { PgColumn } from 'drizzle-orm/pg-core';
@@ -16,15 +17,18 @@ import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { withTenant } from '../../db/client.js';
 import { clientes, orcamentos, users, veiculos, vendedores } from '../../db/schema.js';
 import { contarPendentes } from '../aprovacoes-comerciais/routes.js';
-import { diasAteAniversario } from '../clientes/routes.js';
-import { situacaoSql } from '../orcamentos/routes.js';
+import { aniversarioNaJanela, diasNaJanela } from '../clientes/routes.js';
+import { situacaoSql } from '../orcamentos/consulta.js';
 
 const FUSO = 'America/Sao_Paulo';
 
-/** Dia (Brasília) de um instante, para comparar com as datas do período. */
-const diaDe = (coluna: PgColumn) => sql`(${coluna} at time zone ${FUSO})::date`;
+/**
+ * Instante dentro das datas do período (inclusivas, dia de Brasília). Comparado como intervalo de instantes, sem
+ * converter a coluna: assim o filtro usa o índice de criado_em (docs/performance/DATABASE.md §Painel).
+ */
 const noPeriodo = (coluna: PgColumn, p: { inicio: string; fim: string }): SQL =>
-  sql`${diaDe(coluna)} between ${p.inicio}::date and ${p.fim}::date`;
+  sql`${coluna} >= ${p.inicio}::date::timestamp at time zone ${FUSO}
+    and ${coluna} < (${p.fim}::date + 1)::timestamp at time zone ${FUSO}`;
 
 /**
  * Período pedido e o anterior, de mesmo tamanho (datas inclusivas, Brasília). "Este mês" vai do dia 1 até hoje e
@@ -76,17 +80,25 @@ export const painelRoutes: FastifyPluginAsyncZod = async (app) => {
             total: count(),
             novos: contar(noPeriodo(clientes.criadoEm, atual)),
             novosAntes: contar(noPeriodo(clientes.criadoEm, anterior)),
-            // Faltando campo obrigatório (cadastros antigos): não poderão abrir O.S. até serem completados.
-            incompletos: contar(
-              sql`${clientes.cpfCnpj} is null or ${clientes.telefone} is null or ${clientes.whatsapp} is null
-              or not exists (select 1 from cliente_enderecos e where e.cliente_id = "clientes"."id")
-              or (${clientes.tipo} = 'PJ' and not exists (select 1 from cliente_responsaveis r where r.cliente_id = "clientes"."id"))`,
-            ),
-            // Correlação escrita à mão: dentro da subconsulta o Drizzle não qualifica as colunas
-            // e "id" seria o do veículo, não o do cliente.
-            semVeiculo: contar(sql`not exists (select 1 from veiculos v where v.cliente_id = "clientes"."id")`),
           })
           .from(clientes);
+        // "not exists" fora do count(*) filter: assim o Postgres faz uma junção anti (uma passada em cada tabela) em
+        // vez de uma subconsulta por cliente. Correlação escrita à mão: dentro da subconsulta o Drizzle não qualifica
+        // as colunas e "id" seria o do veículo, não o do cliente.
+        const [{ semVeiculo }] = (await tx
+          .select({ semVeiculo: count() })
+          .from(clientes)
+          .where(sql`not exists (select 1 from veiculos v where v.cliente_id = "clientes"."id")`)) as [
+          { semVeiculo: number },
+        ];
+        // Faltando campo obrigatório (cadastros antigos): não poderão abrir O.S. até serem completados.
+        const [{ incompletos }] = (await tx.execute(sql`select count(*)::int as incompletos from (
+            select id from clientes where cpf_cnpj is null or telefone is null or whatsapp is null
+            union select c.id from clientes c
+              where not exists (select 1 from cliente_enderecos e where e.cliente_id = c.id)
+            union select c.id from clientes c
+              where c.tipo = 'PJ' and not exists (select 1 from cliente_responsaveis r where r.cliente_id = c.id)
+          ) x`)) as unknown as [{ incompletos: number }];
         const [v] = await tx
           .select({
             total: count(),
@@ -240,10 +252,10 @@ export const painelRoutes: FastifyPluginAsyncZod = async (app) => {
             link: '/aprovacoes-comerciais',
           });
         }
-        if (c!.incompletos > 0) {
+        if (incompletos > 0) {
           alertas.push({
             nivel: 'aviso',
-            mensagem: `${c!.incompletos} cliente(s) com cadastro incompleto: complete antes de abrir O.S.`,
+            mensagem: `${incompletos} cliente(s) com cadastro incompleto: complete antes de abrir O.S.`,
             link: '/clientes',
           });
         }
@@ -254,21 +266,22 @@ export const painelRoutes: FastifyPluginAsyncZod = async (app) => {
             link: '/clientes',
           });
         }
-        if (c!.semVeiculo > 0) {
+        if (semVeiculo > 0) {
           alertas.push({
             nivel: 'info',
-            mensagem: `${c!.semVeiculo} cliente(s) sem veículo cadastrado.`,
+            mensagem: `${semVeiculo} cliente(s) sem veículo cadastrado.`,
             link: '/clientes',
           });
         }
 
         // Aniversariantes (PF ativos) de hoje e da semana: relacionamento mais pessoal no atendimento.
-        const dias = diasAteAniversario();
+        const janela = janelaDeAniversarios(hojeIso(), DIAS_ANIVERSARIO_SEMANA);
+        const dias = diasNaJanela(janela);
         const aniversariantes = acessa('clientes')
           ? await tx
-              .select({ id: clientes.id, nome: clientes.nome, whatsapp: clientes.whatsapp, dias: dias.mapWith(Number) })
+              .select({ id: clientes.id, nome: clientes.nome, whatsapp: clientes.whatsapp, dias })
               .from(clientes)
-              .where(and(eq(clientes.tipo, 'PF'), eq(clientes.ativo, true), sql`${dias} <= ${DIAS_ANIVERSARIO_SEMANA}`))
+              .where(and(eq(clientes.tipo, 'PF'), eq(clientes.ativo, true), aniversarioNaJanela(janela)))
               .orderBy(asc(dias), asc(clientes.nome))
               .limit(30)
           : [];

@@ -79,7 +79,7 @@ export function Clientes() {
   );
   const clientes = useQuery({
     queryKey: ['clientes', parametros.toString()],
-    queryFn: () => api<{ itens: ClienteResumo[]; total: number }>(`/clientes?${parametros}`),
+    queryFn: ({ signal }) => api<{ itens: ClienteResumo[]; total: number }>(`/clientes?${parametros}`, { signal }),
     placeholderData: keepPreviousData,
   });
   const dados = clientes.data;

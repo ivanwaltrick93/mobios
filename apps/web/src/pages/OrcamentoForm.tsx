@@ -5,219 +5,51 @@ import {
   formatarNumeroOrcamento,
   formatarPlaca,
   hojeIso,
-  orcamentoInputSchema,
-  somarDias,
-  VALIDADE_MAXIMA_DIAS,
   VALIDADE_PADRAO_DIAS,
   type Orcamento,
-  type VeiculoParaOrcamento,
 } from '@mobios/shared';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, ArrowRight, CheckCircle2, Loader2, RotateCw, Search, TriangleAlert } from 'lucide-react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { ArrowLeft, ArrowRight, CheckCircle2, Loader2, RotateCw, TriangleAlert } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useForm } from 'react-hook-form';
 import { useBlocker, useNavigate, useParams } from 'react-router';
-import type { z } from 'zod';
-import { CardCliente } from '../components/ContextoCliente';
-import { JanelaEscolhaCliente } from '../components/EscolhaCliente';
+import {
+  cabecalhoSchema,
+  CamposCabecalho,
+  useVeiculosCliente,
+  valoresDoOrcamento,
+  type ClienteEscolhido,
+  type EntradaCabecalho as Entrada,
+  type SaidaCabecalho as Saida,
+} from '../components/CabecalhoOrcamento';
 import { Etapas } from '../components/Etapas';
+import { ItensOrcamento } from '../components/ItensOrcamento';
+import { atributosDoOrcamento, SeloSituacao } from '../components/Orcamento';
+import { FaixaResumo, RevisaoOrcamento, totaisDasLinhas } from '../components/ResumoOrcamento';
+import {
+  Alerta,
+  Aviso,
+  Botao,
+  CabecalhoObjeto,
+  CabecalhoPagina,
+  Cartao,
+  Confirmacao,
+  Janela,
+  TextoSuave,
+} from '../components/ui';
+import { api } from '../lib/api';
 import {
   contarItens,
   itemParaApi,
-  ItensOrcamento,
   linhaDoItem,
   linhaValida,
   precoDaLinha,
   type FiltroTipoItem,
   type LinhaTela,
-} from '../components/ItensOrcamento';
-import { atributosDoOrcamento, SeloSituacao } from '../components/Orcamento';
-import { FaixaResumo, RevisaoOrcamento, totaisDasLinhas } from '../components/ResumoOrcamento';
-import {
-  Alerta,
-  AreaTexto,
-  Aviso,
-  Botao,
-  CabecalhoObjeto,
-  CabecalhoPagina,
-  Campo,
-  Cartao,
-  Confirmacao,
-  Input,
-  Janela,
-  Secao,
-  Select,
-  TextoSuave,
-} from '../components/ui';
-import { api } from '../lib/api';
+} from '../lib/linhasOrcamento';
 import { aplicarErrosDaApi } from '../lib/formulario';
 import { useOrcamento, useTabelasOrcamento, useVendedoresOrcamento } from '../lib/orcamentos';
 import { usePerfilOrcamento } from '../lib/sessao';
-
-const cabecalhoSchema = orcamentoInputSchema.omit({ itens: true, versao: true, automatico: true });
-type Entrada = z.input<typeof cabecalhoSchema>;
-type Saida = z.output<typeof cabecalhoSchema>;
-
-// ---------- Cabeçalho (cliente, veículo, vendedor, tabela, validade, observações) ----------
-
-const useVeiculosCliente = (clienteId: string | undefined) =>
-  useQuery({
-    queryKey: ['orcamentos', 'apoio', 'veiculos', clienteId],
-    queryFn: () => api<VeiculoParaOrcamento[]>(`/orcamentos/apoio/clientes/${clienteId}/veiculos`),
-    enabled: !!clienteId,
-  });
-
-/** Cliente escolhido: o suficiente para mostrar o nome com o alerta; o resto vem do contexto (CardCliente). */
-type ClienteEscolhido = { id: string; nome: string; ativo: boolean; pendencias: string[] };
-
-function CamposCabecalho({
-  form,
-  cliente,
-  aoTrocarCliente,
-  aoMudarTabela,
-  vendedorAtualId,
-  clienteFixo = false,
-}: {
-  form: ReturnType<typeof useForm<Entrada, unknown, Saida>>;
-  cliente: ClienteEscolhido | null;
-  aoTrocarCliente: (c: ClienteEscolhido) => void;
-  aoMudarTabela: (id: string) => void;
-  vendedorAtualId?: string;
-  /** Nova versão (2 em diante): o cliente é o do orçamento original. */
-  clienteFixo?: boolean;
-}) {
-  const vendedores = useVendedoresOrcamento();
-  const tabelas = useTabelasOrcamento();
-  // Vendedor logado: o orçamento fica no nome dele (a API garante); só o Administrador escolhe.
-  const { vendedorId: vendedorFixo } = usePerfilOrcamento();
-  const [escolhendo, setEscolhendo] = useState(false);
-  const veiculos = useVeiculosCliente(cliente?.id);
-  const erros = form.formState.errors;
-  const hoje = hojeIso();
-
-  const semVeiculo = !form.watch('veiculoId');
-
-  return (
-    <div className="space-y-4">
-      <Secao titulo="Cliente">
-        {cliente ? (
-          <CardCliente
-            cliente={cliente}
-            acao={
-              clienteFixo ? (
-                <span className="text-xs text-texto-suave">O cliente não muda a partir da versão 2</span>
-              ) : (
-                <Botao type="button" variante="secundario" onClick={() => setEscolhendo(true)}>
-                  Alterar
-                </Botao>
-              )
-            }
-          />
-        ) : (
-          <div className="space-y-1">
-            <Botao type="button" variante="secundario" onClick={() => setEscolhendo(true)}>
-              <Search className="mr-1.5 size-4" aria-hidden /> Selecionar cliente
-            </Botao>
-            {erros.clienteId && <span className="block text-xs text-perigo">Escolha o cliente</span>}
-          </div>
-        )}
-        {escolhendo && (
-          <JanelaEscolhaCliente
-            aoFechar={() => setEscolhendo(false)}
-            aoEscolher={(c) => {
-              setEscolhendo(false);
-              aoTrocarCliente(c);
-            }}
-          />
-        )}
-        {cliente && (
-          <div className="max-w-md">
-            <Campo
-              rotulo="Veículo"
-              dica={semVeiculo ? 'Venda de peça sem aplicação em veículo' : undefined}
-              erro={erros.veiculoId}
-            >
-              <Select {...form.register('veiculoId')}>
-                <option value="">Sem veículo</option>
-                {veiculos.data?.map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {formatarPlaca(v.placa)} — {v.marca} {v.modelo}
-                  </option>
-                ))}
-              </Select>
-            </Campo>
-          </div>
-        )}
-      </Secao>
-      <Secao titulo="Dados comerciais">
-        <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
-          <Campo rotulo="Vendedor *" erro={erros.vendedorId}>
-            {vendedorFixo ? (
-              <Input
-                disabled
-                aria-label="Vendedor"
-                value={vendedores.data?.find((v) => v.id === vendedorFixo)?.nome ?? ''}
-              />
-            ) : (
-              <Select {...form.register('vendedorId')}>
-                <option value="">Escolha…</option>
-                {vendedores.data
-                  ?.filter((v) => v.ativo || v.id === vendedorAtualId)
-                  .map((v) => (
-                    <option key={v.id} value={v.id}>
-                      {v.nome}
-                      {v.ativo ? '' : ' (inativo)'}
-                    </option>
-                  ))}
-              </Select>
-            )}
-          </Campo>
-          <Campo rotulo="Tabela de preço *" erro={erros.tabelaPrecoId}>
-            <Select value={String(form.watch('tabelaPrecoId') ?? '')} onChange={(e) => aoMudarTabela(e.target.value)}>
-              {tabelas.data?.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.nome}
-                  {t.padrao ? ' (padrão)' : ''}
-                </option>
-              ))}
-            </Select>
-          </Campo>
-          <Campo
-            rotulo="Validade"
-            dica={`Vazio = ${VALIDADE_PADRAO_DIAS} dias a partir da emissão · máximo ${VALIDADE_MAXIMA_DIAS} dias`}
-            erro={erros.validadeAte}
-          >
-            <Input
-              type="date"
-              min={hoje}
-              max={somarDias(hoje, VALIDADE_MAXIMA_DIAS)}
-              {...form.register('validadeAte')}
-            />
-          </Campo>
-        </div>
-      </Secao>
-      <Secao titulo="Observações">
-        <AreaTexto
-          rows={2}
-          maxLength={2000}
-          aria-label="Observações"
-          placeholder="Adicione uma observação comercial…"
-          {...form.register('observacoes')}
-        />
-        {erros.observacoes?.message && <span className="text-xs text-perigo">{erros.observacoes.message}</span>}
-      </Secao>
-    </div>
-  );
-}
-
-const valoresDoOrcamento = (o?: Orcamento): Entrada => ({
-  clienteId: o?.cliente.id ?? '',
-  veiculoId: o?.veiculo?.id ?? '',
-  vendedorId: o?.vendedor.id ?? '',
-  tabelaPrecoId: o?.tabela.id ?? '',
-  validadeAte: o?.validadeAte ?? '',
-  observacoes: o?.observacoes ?? '',
-});
 
 // ---------- Jornada: Cliente → Produtos e serviços → Revisão → Finalizar ----------
 

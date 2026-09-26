@@ -12,7 +12,7 @@ import {
   vendedorSchema,
   type Vendedor,
 } from '@mobios/shared';
-import { and, asc, count, desc, eq, ilike, inArray, ne, notInArray, or, type SQL } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, ne, notInArray, type SQL, sql } from 'drizzle-orm';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { withTenant, type Tx } from '../../db/client.js';
@@ -171,13 +171,8 @@ export const vendedoresRoutes: FastifyPluginAsyncZod = async (app) => {
       if (situacao !== 'todos') filtros.push(eq(vendedores.ativo, situacao === 'ativos'));
       if (q) {
         const codigo = /^\d{1,9}$/.test(q) ? Number(q) : null;
-        filtros.push(
-          or(
-            ilike(users.nome, `%${q}%`),
-            ilike(vendedores.matricula, `%${q}%`),
-            ...(codigo ? [eq(vendedores.codigo, codigo)] : []),
-          )!,
-        );
+        // Nome, matrícula ou código, pela função busca_vendedores (migração 0028).
+        filtros.push(sql`${vendedores.id} in (select busca_vendedores(${`%${q}%`}::text, ${codigo}::integer))`);
       }
       const onde = and(...filtros);
       return withTenant(req.user.tid, async (tx) => {

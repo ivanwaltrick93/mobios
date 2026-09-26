@@ -12,7 +12,9 @@
     "typecheck": "tsc",
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "tsx --env-file=../../.env src/db/migrate.ts"
+    "db:migrate": "tsx --env-file=../../.env src/db/migrate.ts",
+    "bench": "tsx bench/medir.ts",
+    "bench:carga": "tsx bench/carga.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.2",

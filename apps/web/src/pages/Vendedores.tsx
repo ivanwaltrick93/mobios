@@ -73,7 +73,7 @@ export function Vendedores() {
   });
   const lista = useQuery({
     queryKey: ['vendedores', 'lista', parametros.toString()],
-    queryFn: () => api<{ itens: VendedorResumo[]; total: number }>(`/vendedores?${parametros}`),
+    queryFn: ({ signal }) => api<{ itens: VendedorResumo[]; total: number }>(`/vendedores?${parametros}`, { signal }),
     placeholderData: keepPreviousData,
     enabled: admin,
   });

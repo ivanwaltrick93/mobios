@@ -48,7 +48,8 @@ export function AprovacoesComerciais() {
   const parametros = new URLSearchParams({ ...filtro, pagina: String(pagina), porPagina: String(POR_PAGINA) });
   const lista = useQuery({
     queryKey: ['aprovacoes-comerciais', 'lista', parametros.toString()],
-    queryFn: () => api<{ itens: AprovacaoComercialResumo[]; total: number }>(`/aprovacoes-comerciais?${parametros}`),
+    queryFn: ({ signal }) =>
+      api<{ itens: AprovacaoComercialResumo[]; total: number }>(`/aprovacoes-comerciais?${parametros}`, { signal }),
     placeholderData: keepPreviousData,
     enabled: pode('aprovacao_comercial'),
   });

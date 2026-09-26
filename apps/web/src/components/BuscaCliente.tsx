@@ -3,16 +3,21 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Search } from 'lucide-react';
 import { useState } from 'react';
 import { api } from '../lib/api';
+import { useValorAdiado } from '../lib/busca';
 import { Input, Selo, TextoSuave } from './ui';
 
 /** Busca de cliente por nome, CPF/CNPJ ou telefone. `ignorar`: cliente que não deve aparecer (ex.: o dono atual). */
 export function BuscaCliente({ aoEscolher, ignorar }: { aoEscolher: (c: ClienteResumo) => void; ignorar?: string }) {
   const [busca, setBusca] = useState('');
+  // A lista acompanha o que foi digitado depois de uma pausa (uma requisição por busca, não por tecla).
+  const termo = useValorAdiado(busca);
   const resultados = useQuery({
-    queryKey: ['clientes', 'busca', busca],
-    queryFn: () =>
-      api<{ itens: ClienteResumo[]; total: number }>(`/clientes?${new URLSearchParams({ q: busca, porPagina: '8' })}`),
-    enabled: busca.trim().length >= 2,
+    queryKey: ['clientes', 'busca', termo],
+    queryFn: ({ signal }) =>
+      api<{ itens: ClienteResumo[]; total: number }>(`/clientes?${new URLSearchParams({ q: termo, porPagina: '8' })}`, {
+        signal,
+      }),
+    enabled: termo.trim().length >= 2,
     placeholderData: keepPreviousData,
   });
   const itens = resultados.data?.itens.filter((c) => c.id !== ignorar);

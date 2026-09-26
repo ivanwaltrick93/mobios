@@ -1,4 +1,4 @@
-import { and, eq, ilike, or, sql, type SQL } from 'drizzle-orm';
+import { and, eq, sql, type SQL } from 'drizzle-orm';
 import type { AnyPgColumn, PgTable } from 'drizzle-orm/pg-core';
 import type { Tx } from '../db/client.js';
 import { categorias, materiais, servicos } from '../db/schema.js';
@@ -118,22 +118,19 @@ export const naCategoriaOuAbaixo = (coluna: AnyPgColumn, categoriaId: string): S
 /**
  * Busca de material usada em todas as listagens (materiais, estoque, lista de preços):
  * SKU e código do fabricante por prefixo, código de barras exato (só os dígitos) e descrição por trecho.
- * Usa as colunas de `materiais` sem apelido: a consulta precisa ter a tabela com esse nome no FROM.
+ * Pela função `busca_materiais` (migração 0028): ILIKE direto na consulta não usa índice sob o RLS.
+ * Usa `materiais.id` sem apelido: a consulta precisa ter a tabela com esse nome no FROM.
  */
 export function buscaDeMaterial(q: string): SQL {
   const prefixo = `${q.toUpperCase()}%`;
-  return or(
-    ilike(materiais.sku, prefixo),
-    ilike(materiais.codigoFabricante, prefixo),
-    eq(materiais.codigoBarras, q.replace(/\D/g, '') || q),
-    ilike(materiais.descricao, `%${q}%`),
-  )!;
+  const codigoBarras = q.replace(/\D/g, '') || q;
+  return sql`${materiais.id} in (select busca_materiais(${prefixo}::text, ${codigoBarras}::text, ${`%${q}%`}::text))`;
 }
 
-/** Busca de serviço: código exato (com ou sem zeros à esquerda) ou trecho do nome (índice trigram). */
+/** Busca de serviço: código exato (com ou sem zeros à esquerda) ou trecho do nome (função `busca_servicos`). */
 export function buscaDeServico(q: string): SQL {
   const codigo = /^\d{1,9}$/.test(q) ? Number(q) : null;
-  return or(ilike(servicos.nome, `%${q}%`), ...(codigo ? [eq(servicos.codigo, codigo)] : []))!;
+  return sql`${servicos.id} in (select busca_servicos(${`%${q}%`}::text, ${codigo}::integer))`;
 }
 
 // ---------- Categoria pela planilha (importações) ----------

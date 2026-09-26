@@ -190,6 +190,27 @@
       "when": 1790386481327,
       "tag": "0026_pmc_e_margem",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1790427908503,
+      "tag": "0027_observabilidade",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1790428476615,
+      "tag": "0028_busca_por_trecho",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1790428951611,
+      "tag": "0029_indices_lista_e_aniversario",
+      "breakpoints": true
     }
   ]
 }

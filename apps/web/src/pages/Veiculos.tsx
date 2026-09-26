@@ -37,7 +37,7 @@ export function Veiculos() {
   );
   const veiculos = useQuery({
     queryKey: ['veiculos', 'lista', parametros.toString()],
-    queryFn: () => api<{ itens: VeiculoLista[]; total: number }>(`/veiculos/lista?${parametros}`),
+    queryFn: ({ signal }) => api<{ itens: VeiculoLista[]; total: number }>(`/veiculos/lista?${parametros}`, { signal }),
     placeholderData: keepPreviousData,
     enabled: pode('clientes'),
   });

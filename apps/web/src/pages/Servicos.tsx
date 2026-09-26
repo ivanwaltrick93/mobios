@@ -39,7 +39,7 @@ export function Servicos() {
   );
   const servicos = useQuery({
     queryKey: ['servicos', parametros.toString()],
-    queryFn: () => api<{ itens: ServicoResumo[]; total: number }>(`/servicos?${parametros}`),
+    queryFn: ({ signal }) => api<{ itens: ServicoResumo[]; total: number }>(`/servicos?${parametros}`, { signal }),
     placeholderData: keepPreviousData,
   });
   const mudar = (campo: keyof typeof filtro, valor: string) => {

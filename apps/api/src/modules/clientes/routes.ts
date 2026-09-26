@@ -1,24 +1,26 @@
 import {
+  type Cliente,
+  type ClienteDados,
+  clienteFiltroSchema,
+  type ClienteInput,
   clienteInputSchema,
+  type ClienteResumo,
   clienteResumoSchema,
   clienteSchema,
-  idParamSchema,
-  normalizarDocumento,
-  normalizarPlaca,
-  clienteFiltroSchema,
   COLUNAS_IMPORTACAO_CLIENTES,
   DIAS_ANIVERSARIO_SEMANA,
   hojeIso,
+  idParamSchema,
+  janelaDeAniversarios,
+  type JanelaDeAniversarios,
   LISTAS_OPCOES,
+  normalizarDocumento,
+  normalizarPlaca,
   pendenciasCliente,
   resultadoImportacaoSchema,
-  type Cliente,
-  type ClienteDados,
-  type ClienteInput,
-  type ClienteResumo,
   type TipoEndereco,
 } from '@mobios/shared';
-import { and, asc, count, desc, eq, gte, ilike, lte, or, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { withTenant, type Tx } from '../../db/client.js';
@@ -45,8 +47,13 @@ import {
 } from '../../lib/importacao.js';
 
 // Correlação escrita à mão: dentro da subconsulta o Drizzle não qualifica as colunas.
-const temEndereco = sql<boolean>`exists (select 1 from cliente_enderecos e where e.cliente_id = "clientes"."id")`;
-const temResponsavel = sql<boolean>`exists (select 1 from cliente_responsaveis r where r.cliente_id = "clientes"."id")`;
+// Subconsulta escalar com "limit 1", não exists(): um exists na lista de colunas pode virar uma tabela hash com os
+// endereços (ou responsáveis) da oficina inteira, para responder só as 20 linhas da página; e o Postgres descarta
+// o "limit" de dentro do exists (docs/performance/DATABASE.md §Listas).
+export const temEndereco = sql<boolean>`coalesce((select true from cliente_enderecos e
+  where e.cliente_id = "clientes"."id" limit 1), false)`;
+export const temResponsavel = sql<boolean>`coalesce((select true from cliente_responsaveis r
+  where r.cliente_id = "clientes"."id" limit 1), false)`;
 
 type VeiculoResumo = ClienteResumo['veiculos'][number];
 
@@ -60,26 +67,35 @@ const totalVeiculos = sql<number>`(select count(*) from veiculos v where v.clien
 
 /**
  * Busca de cliente por nome, CPF/CNPJ, telefone/WhatsApp ou placa de um veículo dele (lista de clientes e janela de
- * escolha do orçamento). Usa as colunas de `clientes` sem apelido.
+ * escolha do orçamento), pela função `busca_clientes` (migração 0028). Usa `clientes.id` sem apelido.
  */
 export function buscaDeCliente(q: string) {
   const digitos = q.replace(/\D/g, '');
+  // Documento guardado sem pontuação e em maiúsculas (o CNPJ pode ter letras).
   const documento = normalizarDocumento(q);
   // Placa sem hífen e em maiúsculas: no balcão o cliente chega com o carro, e a placa leva ao dono.
   const placa = normalizarPlaca(q);
-  return or(
-    ilike(clientes.nome, `%${q}%`),
-    // Documento guardado sem pontuação e em maiúsculas (o CNPJ pode ter letras).
-    ...(documento ? [ilike(clientes.cpfCnpj, `%${documento}%`)] : []),
-    ...(digitos ? [ilike(clientes.telefone, `%${digitos}%`), ilike(clientes.whatsapp, `%${digitos}%`)] : []),
-    ...(placa.length >= 3
-      ? [sql`exists (select 1 from veiculos v where v.cliente_id = "clientes"."id" and v.placa like ${`%${placa}%`})`]
-      : []),
-  )!;
+  const trecho = (texto: string) => (texto ? `%${texto}%` : null);
+  return sql`${clientes.id} in (select busca_clientes(${`%${q}%`}::text, ${trecho(documento)}::text,
+    ${trecho(digitos)}::text, ${placa.length >= 3 ? `%${placa}%` : null}::text))`;
 }
 
+/** Aniversariantes da janela (usa o índice clientes_aniversario). */
+export const aniversarioNaJanela = (janela: JanelaDeAniversarios) =>
+  inArray(
+    clientes.aniversario,
+    janela.map((j) => j.mmdd),
+  );
+
+/** Dias até o aniversário de quem está na janela, sem chamar a função do banco para cada linha. */
+export const diasNaJanela = (janela: JanelaDeAniversarios) =>
+  sql<number>`case ${clientes.aniversario} ${sql.join(
+    janela.map((j) => sql`when ${j.mmdd} then ${j.dias}::int`),
+    sql` `,
+  )} end`.mapWith(Number);
+
 /** Dias até o próximo aniversário (função do banco, migração 0016), contando a partir de hoje em Brasília. */
-export const diasAteAniversario = () =>
+const diasAteAniversario = () =>
   sql<number | null>`dias_ate_aniversario(${clientes.dataNascimento}, ${hojeIso()}::date)`;
 
 const cidadePrincipal = sql<string | null>`(select e.cidade || '/' || e.uf from cliente_enderecos e
@@ -387,7 +403,10 @@ export const clientesRoutes: FastifyPluginAsyncZod = async (app) => {
         porPagina,
       } = req.query;
       const busca = q ? buscaDeCliente(q) : undefined;
-      const dias = diasAteAniversario();
+      // Aniversariantes de hoje ou da semana: pelo índice, os mais próximos primeiro.
+      const janela = aniversario
+        ? janelaDeAniversarios(hojeIso(), aniversario === 'hoje' ? 0 : DIAS_ANIVERSARIO_SEMANA)
+        : null;
       const filtro = and(
         busca,
         ativo ? eq(clientes.ativo, ativo === 'true') : undefined,
@@ -396,8 +415,7 @@ export const clientesRoutes: FastifyPluginAsyncZod = async (app) => {
         ate ? lte(clientes.clienteDesde, ate) : undefined,
         origemId ? eq(clientes.origemId, origemId) : undefined,
         relacionamentoId ? eq(clientes.relacionamentoId, relacionamentoId) : undefined,
-        aniversario === 'hoje' ? sql`${dias} = 0` : undefined,
-        aniversario === 'semana' ? sql`${dias} <= ${DIAS_ANIVERSARIO_SEMANA}` : undefined,
+        janela ? aniversarioNaJanela(janela) : undefined,
       );
       return withTenant(req.user.tid, async (tx) => {
         const linhas = await tx
@@ -406,7 +424,7 @@ export const clientesRoutes: FastifyPluginAsyncZod = async (app) => {
           .where(filtro)
           // Filtrando aniversariantes, os mais próximos primeiro; depois a coluna escolhida e o nome, para desempatar.
           .orderBy(
-            ...(aniversario ? [asc(dias)] : []),
+            ...(janela ? [asc(diasNaJanela(janela))] : []),
             (direcao === 'desc' ? desc : asc)(ordenar === 'clienteDesde' ? clientes.clienteDesde : clientes.nome),
             asc(clientes.nome),
             asc(clientes.id),

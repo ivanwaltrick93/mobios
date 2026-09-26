@@ -71,8 +71,9 @@ Todas as dependências são open source com licenças permissivas (MIT, Apache-2
 MobiOS/
 ├── apps/
 │   ├── api/            # Fastify + Drizzle
-│   │   ├── src/modules/<modulo>/{routes,service}.ts
-│   │   ├── src/db/{schema,client}.ts
+│   │   ├── src/modules/<modulo>/routes.ts (+ regras.ts, consulta.ts…)
+│   │   ├── src/db/schema/<dominio>.ts, src/db/client.ts
+│   │   ├── bench/      # benchmark e carga contra o banco mobios_bench
 │   │   └── drizzle/    # migrações SQL versionadas
 │   └── web/            # React + Vite
 ├── packages/
@@ -106,7 +107,7 @@ Valores monetários em **centavos (inteiro)** — nunca `float`.
 Chaves e índices (obrigatório em toda tabela):
 - **PK** `id uuid` gerada no banco (`gen_random_uuid()`).
 - **Chave natural única** sempre que existir (e-mail do usuário; placa e CPF/CNPJ por oficina).
-- **Índice em toda FK** e nas colunas usadas em filtro/ordenação frequentes, começando por `tenant_id` quando a consulta é por oficina.
+- **Índice em toda FK** e nas colunas usadas em filtro/ordenação frequentes, começando por `tenant_id` quando a consulta é por oficina. Sob o RLS, só operador "leakproof" usa índice: busca por trecho vai pelas funções `busca_*` (ver `docs/performance/DATABASE.md`).
 
 ```
 tenants (id, nome, cnpj, plano, criado_em)
@@ -210,7 +211,7 @@ contadores (tenant_id + chave [PK], valor)  -- sequências por oficina: usuarios
 
 - **Tudo em containers:** `docker compose up -d --build` → `db`, `migrate` (aplica migrações e encerra), `api` e `web` (Caddy com o build do front + proxy de `/api`). Acesso em `http://localhost:8080`.
 - **Dev:** `docker compose up -d db` + `pnpm dev` (api e web com hot reload).
-- **Produção (VPS)** *(fase 4)*: o mesmo compose; trocar `:80` pelo domínio no `infra/caddy/Caddyfile` (HTTPS automático), `COOKIE_SECURE=true` e senhas/JWT fortes no `.env`. Backup diário com `pg_dump` para um storage S3 compatível (Backblaze B2, Cloudflare R2 ou MinIO).
+- **Produção (VPS)** *(fase 4)*: o mesmo compose; trocar `:80` pelo domínio no `infra/caddy/Caddyfile` (HTTPS automático), `COOKIE_SECURE=true` e senhas/JWT fortes no `.env`. Backup diário com `infra/db/backup.sh` (cron) copiado, criptografado, para um storage S3 compatível (Backblaze B2, Cloudflare R2 ou MinIO); ensaio de restauração com `infra/db/restaurar.sh` (`docs/performance/DATABASE.md` §12).
 - **Self-hosted:** o mesmo compose, entregue ao cliente.
 - **Crescimento:** api é stateless → várias réplicas atrás do Caddy; Postgres gerenciado ou réplica de leitura; depois Kubernetes se necessário (ver §9).
 
@@ -226,7 +227,7 @@ Kubernetes **não** faz parte do MVP: a carga de uma oficina é baixa e uma VPS 
 | API sem estado | Sessão em JWT no cookie; qualquer réplica atende qualquer request |
 | Configuração externa | Só variáveis de ambiente (→ `ConfigMap`/`Secret`) |
 | Migração fora da API | Serviço `migrate` (→ `Job` do Kubernetes) |
-| Health check | `GET /api/saude` (→ liveness probe) |
+| Health check | `GET /api/saude`, 200 só com o banco respondendo (→ readiness probe) |
 | Desligamento limpo | SIGTERM fecha o servidor e o pool do Postgres |
 | Logs | JSON no stdout (pino) |
 
@@ -236,7 +237,7 @@ Kubernetes **não** faz parte do MVP: a carga de uma oficina é baixa e uma VPS 
 2. **Nenhum estado compartilhado em memória.** Cache, contadores, rate limit, travas e filas ficam no Postgres ou, quando houver, no Redis. Cache em memória só para dados imutáveis ou que tolerem ficar diferentes entre réplicas.
 3. **Sequências de negócio geradas no banco.** Códigos de usuário, função e vendedor (e, depois, o número da O.S.) vêm da tabela `contadores` pela função `proximo_codigo('<chave>')`, usada como DEFAULT da coluna (migração 0018): UPSERT com trava da linha dentro da transação, sem buraco quando o INSERT é desfeito. O trigger `impedir_troca_de_codigo` bloqueia alterar o código depois. Nunca em memória.
 4. **Nada agendado dentro da API.** Tarefas periódicas (alerta de estoque mínimo, lembretes) rodam num processo `worker` separado ou garantem execução única com `pg_try_advisory_lock`. Com N réplicas, um `setInterval` na API roda N vezes.
-5. **Conexões com o banco são finitas.** Cada réplica abre até `max` conexões (hoje 10). Ao escalar horizontalmente, colocar PgBouncer (modo transaction) na frente do Postgres. O `set_config(..., true)` do `withTenant` é local à transação, então é compatível com esse modo.
+5. **Conexões com o banco são finitas.** Cada réplica abre até `DB_POOL_MAX` conexões (padrão 10), com `statement_timeout` e `idle_in_transaction_session_timeout`. Réplicas × pool + folga ≤ `max_connections`; além disso, PgBouncer (modo transaction) na frente do Postgres. O `set_config(..., true)` do `withTenant` é local à transação, então é compatível com esse modo (`docs/performance/DATABASE.md` §7).
 
 ### Caminho de crescimento
 

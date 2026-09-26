@@ -10,7 +10,7 @@ import {
   veiculoSchema,
   veiculoTransferirSchema,
 } from '@mobios/shared';
-import { and, asc, count, desc, eq, ilike, ne, or, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, ne, sql } from 'drizzle-orm';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { withTenant, type Tx } from '../../db/client.js';
@@ -109,30 +109,30 @@ export const veiculosRoutes: FastifyPluginAsyncZod = async (app) => {
       const { q, status, pagina, porPagina } = req.query;
       const placa = q ? normalizarPlaca(q) : '';
       const filtro = and(
+        // Placa, marca, modelo ou nome do dono, pela função busca_veiculos (migração 0028).
         q
-          ? or(
-              ...(placa ? [ilike(veiculos.placa, `%${placa}%`)] : []),
-              ilike(veiculos.marca, `%${q}%`),
-              ilike(veiculos.modelo, `%${q}%`),
-              ilike(clientes.nome, `%${q}%`),
-            )
+          ? sql`${veiculos.id} in (select busca_veiculos(${placa ? `%${placa}%` : null}::text, ${`%${q}%`}::text))`
           : undefined,
         status ? eq(veiculos.status, status) : undefined,
       );
       return withTenant(req.user.tid, async (tx) => {
-        const linhas = await tx
-          .select({ ...colunas, clienteNome: clientes.nome })
+        // Pagina só os ids (os filtros são todos de veiculos) e junta o dono depois, só nas linhas da página.
+        const daPagina = tx
+          .select({ id: veiculos.id })
           .from(veiculos)
-          .innerJoin(clientes, eq(clientes.id, veiculos.clienteId))
           .where(filtro)
           .orderBy(asc(veiculos.placa))
           .limit(porPagina)
-          .offset((pagina - 1) * porPagina);
-        const [{ total }] = (await tx
-          .select({ total: count() })
+          .offset((pagina - 1) * porPagina)
+          .as('da_pagina');
+        const linhas = await tx
+          .select({ ...colunas, clienteNome: clientes.nome })
           .from(veiculos)
+          .innerJoin(daPagina, eq(daPagina.id, veiculos.id))
           .innerJoin(clientes, eq(clientes.id, veiculos.clienteId))
-          .where(filtro)) as [{ total: number }];
+          .orderBy(asc(veiculos.placa));
+        // Todo veículo tem dono (FK): a contagem dispensa a junção.
+        const [{ total }] = (await tx.select({ total: count() }).from(veiculos).where(filtro)) as [{ total: number }];
         return { itens: linhas.map(comPendencias), total };
       });
     },

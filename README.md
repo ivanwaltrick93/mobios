@@ -57,7 +57,7 @@ pnpm dev                          # api em :3333, web em http://localhost:5173
 | `pnpm lint` | ESLint em todo o projeto |
 | `pnpm format` / `pnpm format:check` | Formata com Prettier / só confere |
 | `pnpm check` | Tudo o que o CI roda: formatação, lint, tipos e testes |
-| `pnpm db:generate` | Gera migração SQL a partir de `apps/api/src/db/schema.ts` |
+| `pnpm db:generate` | Gera migração SQL a partir de `apps/api/src/db/schema/` |
 | `pnpm db:migrate` | Aplica migrações pendentes |
 
 ## Estrutura

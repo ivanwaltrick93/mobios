@@ -6,9 +6,9 @@ import {
   type ModuloId,
   type Nivel,
 } from '@mobios/shared';
-import { and, asc, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
-import { funcaoPermissoes, funcoes, usuarioFuncoes, users, vendedores } from '../db/schema.js';
+import { funcaoPermissoes, funcoes, usuarioFuncoes } from '../db/schema.js';
 
 export type AcessoUsuario = {
   ativo: boolean;
@@ -23,52 +23,39 @@ export type AcessoUsuario = {
   vendedorId: string | null;
 };
 
-/** Calcula o acesso do usuário a partir das funções dele (sempre dentro de withTenant). */
+/**
+ * Calcula o acesso do usuário a partir das funções dele (sempre dentro de withTenant). Uma consulta só: roda em toda
+ * requisição autenticada (lib/auth.ts), e cada ida ao banco conta (docs/performance/DATABASE.md §Autenticação).
+ */
 export async function carregarAcesso(tx: Tx, usuarioId: string): Promise<AcessoUsuario | undefined> {
-  const [usuario] = await tx.select({ ativo: users.ativo }).from(users).where(eq(users.id, usuarioId));
-  if (!usuario) return undefined;
+  const [linha] = (await tx.execute(sql`
+    select u.ativo,
+      coalesce((select json_agg(json_build_object('id', f.id, 'nome', f.nome, 'admin', f.admin) order by f.nome)
+        from usuario_funcoes uf join funcoes f on f.id = uf.funcao_id
+        where uf.usuario_id = u.id and f.ativa), '[]'::json) as funcoes,
+      coalesce((select json_agg(json_build_object('modulo', p.modulo, 'nivel', p.nivel))
+        from usuario_funcoes uf join funcoes f on f.id = uf.funcao_id join funcao_permissoes p on p.funcao_id = f.id
+        where uf.usuario_id = u.id and f.ativa), '[]'::json) as niveis,
+      (select v.id from vendedores v where v.usuario_id = u.id and v.ativo) as "vendedorId"
+    from users u
+    where u.id = ${usuarioId}`)) as unknown as {
+    ativo: boolean;
+    funcoes: FuncaoResumo[];
+    niveis: { modulo: ModuloId; nivel: Nivel }[];
+    vendedorId: string | null;
+  }[];
+  if (!linha) return undefined;
 
-  const lista = await tx
-    .select({ id: funcoes.id, nome: funcoes.nome, admin: funcoes.admin, ativa: funcoes.ativa })
-    .from(usuarioFuncoes)
-    .innerJoin(funcoes, eq(funcoes.id, usuarioFuncoes.funcaoId))
-    .where(eq(usuarioFuncoes.usuarioId, usuarioId))
-    .orderBy(asc(funcoes.nome));
-  const ativas = lista.filter((f) => f.ativa);
-  const admin = ativas.some((f) => f.admin);
-
-  let acessos = ACESSO_TOTAL;
-  if (!admin) {
-    const niveis = ativas.length
-      ? await tx
-          .select({
-            funcaoId: funcaoPermissoes.funcaoId,
-            modulo: funcaoPermissoes.modulo,
-            nivel: funcaoPermissoes.nivel,
-          })
-          .from(funcaoPermissoes)
-          .where(
-            inArray(
-              funcaoPermissoes.funcaoId,
-              ativas.map((f) => f.id),
-            ),
-          )
-      : [];
-    acessos = combinarAcessos(niveis.map((n) => ({ [n.modulo]: n.nivel }) as Partial<Acessos>));
-  }
-  const [vendedor] = admin
-    ? []
-    : await tx
-        .select({ id: vendedores.id })
-        .from(vendedores)
-        .where(and(eq(vendedores.usuarioId, usuarioId), eq(vendedores.ativo, true)));
-  // Funções desativadas deixam de valer e também somem do perfil do usuário.
+  // Só as funções ATIVAS valem; desativadas também somem do perfil do usuário.
+  const admin = linha.funcoes.some((f) => f.admin);
   return {
-    ativo: usuario.ativo,
+    ativo: linha.ativo,
     admin,
-    funcoes: ativas.map(({ id, nome, admin }) => ({ id, nome, admin })),
-    acessos,
-    vendedorId: vendedor?.id ?? null,
+    funcoes: linha.funcoes,
+    acessos: admin
+      ? ACESSO_TOTAL
+      : combinarAcessos(linha.niveis.map((n) => ({ [n.modulo]: n.nivel }) as Partial<Acessos>)),
+    vendedorId: admin ? null : linha.vendedorId,
   };
 }
 

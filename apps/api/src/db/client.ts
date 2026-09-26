@@ -4,7 +4,18 @@ import postgres from 'postgres';
 import { env } from '../env.js';
 import * as schema from './schema.js';
 
-export const sqlClient = postgres(env.DATABASE_URL, { max: 10 });
+export const sqlClient = postgres(env.DATABASE_URL, {
+  max: env.DB_POOL_MAX,
+  // Conexão ociosa fecha depois de 60 s; toda conexão é renovada em até 30 min (evita conexões eternas atrás de
+  // proxies e balanceia após failover). Sem banco em 10 s, a requisição falha em vez de esperar.
+  idle_timeout: 60,
+  max_lifetime: 60 * 30,
+  connect_timeout: 10,
+  connection: {
+    statement_timeout: env.DB_STATEMENT_TIMEOUT_MS,
+    idle_in_transaction_session_timeout: env.DB_IDLE_TX_TIMEOUT_MS,
+  },
+});
 export const db = drizzle(sqlClient, { schema, casing: 'snake_case' });
 
 export type Db = typeof db;

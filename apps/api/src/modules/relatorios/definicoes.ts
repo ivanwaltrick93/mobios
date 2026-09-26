@@ -39,13 +39,14 @@ type Definicao = RelatorioDescricao & {
 
 const FUSO = 'America/Sao_Paulo';
 
-/** Filtro de período pela data local (Brasília) de cadastro, com os dois extremos inclusivos. */
+/**
+ * Filtro de período pela data local (Brasília) de cadastro, com os dois extremos inclusivos. Compara instantes,
+ * sem converter a coluna linha a linha (e sem impedir um índice na coluna).
+ */
 function periodo(coluna: PgColumn, { de, ate }: Filtro): SQL | undefined {
-  const dia = sql`(${coluna} at time zone ${FUSO})::date`;
-  if (de && ate) return sql`${dia} between ${de}::date and ${ate}::date`;
-  if (de) return sql`${dia} >= ${de}::date`;
-  if (ate) return sql`${dia} <= ${ate}::date`;
-  return undefined;
+  const desde = de ? sql`${coluna} >= ${de}::date::timestamp at time zone ${FUSO}` : undefined;
+  const antes = ate ? sql`${coluna} < (${ate}::date + 1)::timestamp at time zone ${FUSO}` : undefined;
+  return and(desde, antes);
 }
 
 const texto = (v: string | number | null | undefined) => (v == null || v === '' ? '' : String(v));

@@ -3,9 +3,10 @@
  * cores só por tokens (bg-primaria, text-texto-suave...), definidos em src/index.css.
  */
 import { Eye, Info, Search, TriangleAlert, X } from 'lucide-react';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useEffectEvent, useId, useRef, useState } from 'react';
 import type { UseFormRegisterReturn } from 'react-hook-form';
 import { Link } from 'react-router';
+import { useValorAdiado } from '../../lib/busca';
 import type {
   ButtonHTMLAttributes,
   InputHTMLAttributes,
@@ -353,8 +354,11 @@ export function Abas<T extends string>({
   );
 }
 
-/** Campo de busca grande, com lupa, usado no topo das listagens. */
-export const CampoBusca = ({
+/**
+ * Campo de busca grande, com lupa, usado no topo das listagens. Mostra o que é digitado na hora, mas só avisa
+ * `aoMudar` depois de uma pausa na digitação (ESPERA_BUSCA_MS): uma requisição por busca, não uma por tecla.
+ */
+export function CampoBusca({
   rotulo,
   valor,
   aoMudar,
@@ -367,22 +371,36 @@ export const CampoBusca = ({
   aoMudar: (valor: string) => void;
   placeholder?: string;
   autoFocus?: boolean;
-}) => (
-  <div className="relative">
-    <Search
-      className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-texto-suave"
-      aria-hidden
-    />
-    <Input
-      autoFocus={autoFocus}
-      className="h-9 pl-9"
-      placeholder={placeholder}
-      aria-label={rotulo}
-      value={valor}
-      onChange={(e) => aoMudar(e.target.value)}
-    />
-  </div>
-);
+}) {
+  const [texto, setTexto] = useState(valor);
+  // Valor trocado por fora (ex.: limpar os filtros) substitui o que está no campo.
+  const [recebido, setRecebido] = useState(valor);
+  if (valor !== recebido) {
+    setRecebido(valor);
+    setTexto(valor);
+  }
+  const adiado = useValorAdiado(texto);
+  const avisar = useEffectEvent((novo: string) => {
+    if (novo !== valor) aoMudar(novo);
+  });
+  useEffect(() => avisar(adiado), [adiado]);
+  return (
+    <div className="relative">
+      <Search
+        className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-texto-suave"
+        aria-hidden
+      />
+      <Input
+        autoFocus={autoFocus}
+        className="h-9 pl-9"
+        placeholder={placeholder}
+        aria-label={rotulo}
+        value={texto}
+        onChange={(e) => setTexto(e.target.value)}
+      />
+    </div>
+  );
+}
 
 /** Estado vazio amigável: ícone, mensagem e ação opcional. */
 export const Vazio = ({

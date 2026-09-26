@@ -51,10 +51,10 @@ Não discuta estilo em revisão: o **Prettier** decide a formatação (`.prettie
 
 ### 4.1 Nova tabela ou coluna
 
-1. Edite `apps/api/src/db/schema.ts`. Tabela de negócio precisa de `tenantId: tenantId()`, `isolamentoPorTenant('<tabela>')`, FKs compostas `(tenant_id, x_id)` e índice em toda FK.
+1. Edite o arquivo do domínio em `apps/api/src/db/schema/` (tabela de um domínio novo: arquivo novo, reexportado em `src/db/schema.ts`). Tabela de negócio precisa de `tenantId: tenantId()`, `isolamentoPorTenant('<tabela>')`, FKs compostas `(tenant_id, x_id)` e índice em toda FK.
 2. `pnpm db:generate --name <descricao_em_snake>` (ex.: `--name ordens_servico`) e **leia o SQL gerado** em `apps/api/drizzle/`; ajuste-o quando precisar (extensões, triggers, seeds, recriação de enum).
 3. `pnpm db:migrate`.
-4. Inclua a tabela nova na lista do teste de RLS em `apps/api/src/app.test.ts`.
+4. Inclua a tabela nova na lista do teste de RLS em `apps/api/src/rls.test.ts`.
 5. Constraint que o usuário pode violar (UNIQUE/CHECK): dê um nome estável e registre a mensagem em `apps/api/src/lib/erros.ts`.
 
 Nunca edite uma migração que já foi aplicada ou commitada: crie outra.
@@ -66,6 +66,7 @@ Nunca edite uma migração que já foi aplicada ou commitada: crie outra.
 3. Registre em `apps/api/src/app.ts` com `prefix: '/api/<nome>'`.
 4. Todo acesso ao banco dentro de `withTenant(req.user.tid, (tx) => ...)`.
 5. Testes de integração em `apps/api/src/*.test.ts` usando `app.inject`.
+6. Lista, busca ou painel: siga as regras de `docs/performance/DATABASE.md` §2 (busca por trecho pelas funções `busca_*`, nunca `ILIKE` direto) e confira o plano com `sh infra/bench/explicar.sh` e o tempo com `pnpm --filter @mobios/api bench` (banco de benchmark: `sh infra/bench/preparar.sh`).
 
 ### 4.3 Novo módulo de permissão
 

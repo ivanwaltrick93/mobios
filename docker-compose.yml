@@ -12,6 +12,21 @@ services:
   db:
     image: postgres:17-alpine
     restart: unless-stopped
+    # O padrão do Docker (64 MB de /dev/shm) não comporta as consultas paralelas sob concorrência: o Postgres
+    # falha com "could not resize shared memory segment" (medido no teste de carga, docs/performance/DATABASE.md).
+    shm_size: ${DB_SHM_SIZE:-256mb}
+    # Observabilidade (docs/performance/DATABASE.md): estatística por consulta, tempo de I/O, consultas lentas
+    # e esperas por trava no log. Ajuste de memória fica para quando houver medição no servidor de produção.
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_stat_statements
+      - -c
+      - track_io_timing=on
+      - -c
+      - log_min_duration_statement=${DB_LOG_LENTAS_MS:-500}
+      - -c
+      - log_lock_waits=on
     environment:
       POSTGRES_USER: mobios
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mobios}
@@ -56,6 +71,10 @@ services:
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       # A API só é acessada pelo Caddy (serviço web), pela rede interna do Docker (endereços privados).
       TRUST_PROXY: uniquelocal
+      # Pool e limites de tempo no banco (docs/performance/DATABASE.md §Pool).
+      DB_POOL_MAX: ${DB_POOL_MAX:-10}
+      DB_STATEMENT_TIMEOUT_MS: ${DB_STATEMENT_TIMEOUT_MS:-30000}
+      DB_IDLE_TX_TIMEOUT_MS: ${DB_IDLE_TX_TIMEOUT_MS:-60000}
     depends_on:
       migrate:
         condition: service_completed_successfully

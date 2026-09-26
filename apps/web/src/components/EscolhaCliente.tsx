@@ -42,7 +42,8 @@ export function JanelaEscolhaCliente({
   });
   const lista = useQuery({
     queryKey: ['orcamentos', 'apoio', 'clientes', parametros.toString()],
-    queryFn: () => api<{ itens: ClienteParaOrcamento[]; total: number }>(`/orcamentos/apoio/clientes?${parametros}`),
+    queryFn: ({ signal }) =>
+      api<{ itens: ClienteParaOrcamento[]; total: number }>(`/orcamentos/apoio/clientes?${parametros}`, { signal }),
     placeholderData: keepPreviousData,
   });
   const mudar = (campo: keyof typeof filtro, valor: string) => {

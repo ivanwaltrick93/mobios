@@ -4,3 +4,9 @@ dist/
 *.log
 .DS_Store
 coverage/
+
+# Credenciais do banco de benchmark (geradas por infra/bench/preparar.sh)
+infra/bench/.credenciais
+
+# Backups do banco (infra/db/backup.sh): dados pessoais, nunca no git
+backups/

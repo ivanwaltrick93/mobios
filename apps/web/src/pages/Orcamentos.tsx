@@ -48,7 +48,7 @@ export function Orcamentos() {
   );
   const orcamentos = useQuery({
     queryKey: ['orcamentos', 'lista', parametros.toString()],
-    queryFn: () => api<{ itens: OrcamentoResumo[]; total: number }>(`/orcamentos?${parametros}`),
+    queryFn: ({ signal }) => api<{ itens: OrcamentoResumo[]; total: number }>(`/orcamentos?${parametros}`, { signal }),
     placeholderData: keepPreviousData,
     enabled: perfil.podeVer,
   });

@@ -14,11 +14,14 @@ type OpcoesApi = {
   body?: unknown;
   /** Arquivo enviado como o próprio corpo (imagem, planilha CSV), com o tipo informado. */
   arquivo?: { conteudo: Blob; tipo: string };
+  /** Cancela a requisição (TanStack Query passa o `signal` quando a busca muda antes da resposta). */
+  signal?: AbortSignal;
 };
 
-export async function api<T>(caminho: string, { method = 'GET', body, arquivo }: OpcoesApi = {}): Promise<T> {
+export async function api<T>(caminho: string, { method = 'GET', body, arquivo, signal }: OpcoesApi = {}): Promise<T> {
   const res = await fetch(`/api${caminho}`, {
     method,
+    signal,
     credentials: 'same-origin',
     headers: arquivo
       ? { 'Content-Type': arquivo.tipo }

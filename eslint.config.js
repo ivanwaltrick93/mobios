@@ -36,7 +36,7 @@ export default tseslint.config(
   },
   {
     // Scripts de linha de comando escrevem no terminal.
-    files: ['apps/api/src/db/migrate.ts'],
+    files: ['apps/api/src/db/migrate.ts', 'apps/api/bench/**/*.ts'],
     rules: { 'no-console': 'off' },
   },
 );

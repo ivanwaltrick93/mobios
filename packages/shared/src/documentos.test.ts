@@ -50,7 +50,7 @@ describe('documentos', () => {
 });
 
 describe('veiculoInputSchema', async () => {
-  const { veiculoInputSchema } = await import('./schemas.js');
+  const { veiculoInputSchema } = await import('./veiculos.js');
   const base = {
     clienteId: '4d3c1a2b-9f8e-4d7c-8b6a-5f4e3d2c1b0a',
     placa: 'BRA2E19',
@@ -89,7 +89,7 @@ describe('veiculoInputSchema', async () => {
 });
 
 describe('clienteInputSchema', async () => {
-  const { clienteInputSchema } = await import('./schemas.js');
+  const { clienteInputSchema } = await import('./clientes.js');
   const endereco = {
     tipo: 'comercial',
     cep: '88015-100',

@@ -16,18 +16,18 @@ Regra de negócio ambígua: pergunte. Commit e push só quando pedido.
 ## Arquitetura
 - Monorepo pnpm, TypeScript estrito, ESM.
   - `packages/shared`: schemas Zod, tipos e regras puras (sem banco nem DOM), usados pela API e pelo front.
-  - `apps/api`: Fastify 5 + fastify-type-provider-zod + Drizzle + PostgreSQL 17. `src/modules/<recurso>/routes.ts`, `src/lib/` (erros, cadastro, auth), `src/db/schema.ts`, `drizzle/` (migrações).
+  - `apps/api`: Fastify 5 + fastify-type-provider-zod + Drizzle + PostgreSQL 17. `src/modules/<recurso>/routes.ts`, `src/lib/` (erros, cadastro, auth), `src/db/schema/<dominio>.ts` (reexportados por `src/db/schema.ts`), `drizzle/` (migrações).
   - `apps/web`: React 19 + Vite + React Router + TanStack Query + react-hook-form + Tailwind 4. `pages/`, `components/` (kit em `components/ui/`), `lib/`.
 - Não há controller, service, repository nem DTO: o handler valida com o schema do `shared`, usa o Drizzle dentro de `withTenant` e helpers de `src/lib/`.
 - Não introduza camadas, design patterns, factories, repositories, services, wrappers, abstrações ou dependências sem necessidade concreta e combinada.
 
 ## Multi-tenancy (não negociável)
 Tenant = oficina: a unidade de isolamento dos dados.
-- Toda tabela de negócio tem `tenantId: tenantId()` e `isolamentoPorTenant('<tabela>')` em `apps/api/src/db/schema.ts`.
+- Toda tabela de negócio tem `tenantId: tenantId()` e `isolamentoPorTenant('<tabela>')` em `apps/api/src/db/schema/<dominio>.ts`.
 - Toda FK entre tabelas de negócio é composta `(tenant_id, x_id)`: a checagem de FK ignora RLS.
 - Todo acesso a tabelas de negócio passa por `withTenant(req.user.tid, tx => ...)`. Não filtre por `tenant_id` à mão; o RLS faz isso.
 - A API conecta como `mobios_app` (sem superuser/BYPASSRLS); migrações rodam como `mobios`.
-- O teste "toda tabela com tenant_id tem RLS ativo" (`apps/api/src/app.test.ts`) deve passar; tabela nova entra na lista dele.
+- O teste "toda tabela com tenant_id tem RLS ativo" (`apps/api/src/rls.test.ts`) deve passar; tabela nova entra na lista dele.
 
 ## Escalabilidade horizontal (não negociável — `docs/ARQUITETURA.md` §9)
 - API sem estado, pronta para N réplicas. Nenhum estado compartilhado em memória (cache, contador, rate limit, trava): use Postgres ou Redis.
@@ -42,10 +42,10 @@ Tenant = oficina: a unidade de isolamento dos dados.
 - Não altere TypeScript, lint, formatter, testes, banco, build, Docker ou segurança só para fazer algo passar. Mudança de configuração é intencional e justificada.
 
 ## Banco
-- PK `id uuid` gerado pelo banco. Chave de negócio (SKU, código) é UNIQUE por tenant, nunca PK (exceção: tabela de saldo com PK composta natural, como `estoques`). Índice em toda FK e em filtro/ordenação frequente (`pg_trgm` para busca de texto).
+- PK `id uuid` gerado pelo banco. Chave de negócio (SKU, código) é UNIQUE por tenant, nunca PK (exceção: tabela de saldo com PK composta natural, como `estoques`). Índice em toda FK e em filtro/ordenação frequente. Busca por trecho: funções `busca_*` (migração 0028) com GIN `(tenant_id, coluna gin_trgm_ops)`; nunca `ILIKE` direto na rota (sob o RLS ele não usa índice, `docs/performance/DATABASE.md` §2–3).
 - Nomes em português, `snake_case`, tabela no plural (no TS, camelCase via `casing: 'snake_case'`). Constraint que o usuário pode violar tem nome estável (`<tabela>_<campo>_unico`, `<tabela>_<regra>`) e mensagem em `mensagensUnicidade`/`mensagensCheck` (`apps/api/src/lib/erros.ts`).
 - Integridade no banco: NOT NULL, CHECK, UNIQUE, FK RESTRICT, EXCLUDE para períodos. Dinheiro em centavos (`bigint`), nunca float. Quantidade `numeric(14,3)` com `mode: 'number'`.
-- Migração: `schema.ts` → `pnpm db:generate --name <descricao>` → revise e ajuste o SQL (extensões, triggers, seeds) → `pnpm db:migrate`. Nunca edite migração aplicada ou commitada.
+- Migração: `schema/<dominio>.ts` → `pnpm db:generate --name <descricao>` → revise e ajuste o SQL (extensões, triggers, seeds) → `pnpm db:migrate`. Nunca edite migração aplicada ou commitada.
 - Módulo de permissão novo: acrescente em `MODULOS` (`packages/shared/src/acessos.ts`) e **recrie** o enum `modulo` na migração (renomear, criar, `ALTER COLUMN ... USING modulo::text::modulo`, apagar o antigo). Nunca `ADD VALUE` (ver `drizzle/0008`).
 - SQL só parametrizado (`eq`, `ilike`, `` sql`...${valor}` ``). `sql.raw`/`sql.identifier` só com constantes do código.
 - Ler e depois gravar uma regra: mesma transação, com `for('update')` ou `pg_advisory_xact_lock` se houver corrida.
@@ -109,11 +109,14 @@ Domínio em português; termos técnicos consagrados em inglês. Nada de nomes g
 - Chamada externa só para destino fixo em código ou configuração, nunca para URL vinda do usuário.
 
 ## Performance
-Sem otimização prematura e sem desperdício óbvio:
+Sem otimização prematura e sem desperdício óbvio (medição e regras: `docs/performance/DATABASE.md`):
 - Nada de N+1: use join, `json_agg` ou `inArray`.
-- Listas paginadas (`pagina`/`porPagina` com limite), com `count` separado e só as colunas necessárias.
-- Filtro novo precisa de índice.
-- No front, não repita requisições que já estão em cache.
+- Listas paginadas (`pagina`/`porPagina` com limite), com `count` separado, sem junção desnecessária, e só as colunas necessárias.
+- Filtro novo precisa de índice que o RLS deixe usar: só operador "leakproof" (`=`, `<`, `>`) vira condição de índice; `ILIKE` e funções não.
+- Índice para ordenar decrescente: `.desc().nullsFirst()` (o `.desc()` do Drizzle é NULLS LAST e não serve a `ORDER BY ... DESC`).
+- Data: compare instantes (`coluna >= $data::date::timestamp at time zone 'America/Sao_Paulo'`), nunca `(coluna at time zone ...)::date`. Na lista de colunas, subconsulta escalar com `limit 1` em vez de `exists`.
+- Lista, busca ou painel novo: `sh infra/bench/explicar.sh` no banco de benchmark antes de concluir.
+- No front, não repita requisições que já estão em cache; busca digitada usa `CampoBusca` ou `useValorAdiado` (espera a pausa) e passa o `signal` à `api()`.
 
 ## Testes
 - Vitest. `shared`: testes unitários; `api`: integração via `app.inject` no banco `mobios_test` (nunca no de uso). O front não tem testes automatizados: confira no navegador sem criar nem alterar dados reais.

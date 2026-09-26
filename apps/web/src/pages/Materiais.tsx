@@ -41,7 +41,7 @@ export function Materiais() {
   );
   const materiais = useQuery({
     queryKey: ['materiais', parametros.toString()],
-    queryFn: () => api<{ itens: MaterialResumo[]; total: number }>(`/materiais?${parametros}`),
+    queryFn: ({ signal }) => api<{ itens: MaterialResumo[]; total: number }>(`/materiais?${parametros}`, { signal }),
     placeholderData: keepPreviousData,
   });
   const mudar = (campo: keyof typeof filtro, valor: string) => {

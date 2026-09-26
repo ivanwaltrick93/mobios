@@ -1,9 +1,10 @@
 import helmet from '@fastify/helmet';
 import Fastify from 'fastify';
 import { serializerCompiler, validatorCompiler, type ZodTypeProvider } from 'fastify-type-provider-zod';
+import { sqlClient } from './db/client.js';
 import { env } from './env.js';
 import { authPlugin } from './lib/auth.js';
-import { registrarTratamentoDeErros } from './lib/erros.js';
+import { ErroHttp, registrarTratamentoDeErros } from './lib/erros.js';
 import { authRoutes } from './modules/auth/routes.js';
 import { categoriasRoutes } from './modules/categorias/routes.js';
 import { estoqueRoutes } from './modules/estoque/routes.js';
@@ -41,7 +42,17 @@ export async function criarApp() {
   await app.register(helmet);
   await app.register(authPlugin);
 
-  app.get('/api/saude', async () => ({ ok: true }));
+  // Prontidão: a instância só está pronta com o banco respondendo (o healthcheck do Docker e um balanceador de carga
+  // tiram de rotação a instância sem banco). Sem autenticação e sem tenant: só "select 1".
+  app.get('/api/saude', async (req) => {
+    try {
+      await sqlClient`select 1`;
+    } catch (erro) {
+      req.log.error({ err: erro }, 'Banco de dados indisponível no healthcheck');
+      throw new ErroHttp(503, 'Banco de dados indisponível.');
+    }
+    return { ok: true };
+  });
   await app.register(authRoutes, { prefix: '/api/auth' });
   await app.register(publicoRoutes, { prefix: '/api/publico' });
   await app.register(usuariosRoutes, { prefix: '/api/usuarios' });

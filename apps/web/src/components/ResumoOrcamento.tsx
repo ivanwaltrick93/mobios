@@ -1,16 +1,8 @@
 import { formatarHoras, formatarMoeda, formatarPercentual, formatarQuantidade, somarItens } from '@mobios/shared';
 import type { ReactNode } from 'react';
 import { CardCliente } from './ContextoCliente';
-import {
-  calculoDaLinha,
-  contarItens,
-  CONTORNO_ACIMA_DA_ALCADA,
-  NomeDoItem,
-  percentualDaLinha,
-  precoDaLinha,
-  useItensAcimaDaAlcada,
-  type LinhaTela,
-} from './ItensOrcamento';
+import { calculoDaLinha, contarItens, percentualDaLinha, precoDaLinha, type LinhaTela } from '../lib/linhasOrcamento';
+import { CONTORNO_ACIMA_DA_ALCADA, NomeDoItem, useItensAcimaDaAlcada } from './ItensOrcamento';
 import { dicaItemAcimaDaAlcada, IndicadorAlcada, PrecoNegociado, Totais } from './Orcamento';
 import { Bloco, Cabecalho, Dado, Dica, Linha, Tabela, Td, Th } from './ui';
 
