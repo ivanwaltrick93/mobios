@@ -29,6 +29,24 @@ import { ErroHttp } from '../../lib/erros.js';
 
 export type LinhaItem = Omit<typeof orcamentoItens.$inferInsert, 'tenantId' | 'orcamentoId'> & { id: string };
 export type ItemGravado = typeof orcamentoItens.$inferSelect;
+/** O que `montarItens` usa de um item já gravado (do orçamento ou, do catálogo, da O.S.). */
+export type ItemJaGravado = Pick<
+  ItemGravado,
+  | 'id'
+  | 'tipo'
+  | 'materialId'
+  | 'servicoId'
+  | 'codigo'
+  | 'descricao'
+  | 'unidade'
+  | 'formaPreco'
+  | 'multiplo'
+  | 'fracionada'
+  | 'precoTabelaCentavos'
+  | 'pmcCentavos'
+>;
+/** Venda (orçamento: produto com "Permite venda") ou O.S. (produto com "Permite uso em O.S.", OS-R10). */
+export type UsoDoItem = 'venda' | 'os';
 
 /** O que é preciso saber do cadastro para incluir um item novo (guardado depois como snapshot). */
 type Catalogo = {
@@ -90,8 +108,8 @@ async function pmcsDosMateriais(tx: Tx, ids: string[]): Promise<Map<string, numb
   return new Map(lista.flatMap((m) => (m.pmcCentavos == null ? [] : [[m.id, m.pmcCentavos] as [string, number]])));
 }
 
-/** Cadastro dos itens novos (ativos; material também com "Permite venda"). */
-async function catalogo(tx: Tx, itens: { tipo: TipoItemPreco; id: string }[]) {
+/** Cadastro dos itens novos (ativos; material também com "Permite venda" ou, na O.S., "Permite uso em O.S."). */
+async function catalogo(tx: Tx, itens: { tipo: TipoItemPreco; id: string }[], uso: UsoDoItem) {
   const mapa = new Map<string, Catalogo>();
   const idsMaterial = itens.filter((i) => i.tipo === 'material').map((i) => i.id);
   const idsServico = itens.filter((i) => i.tipo === 'servico').map((i) => i.id);
@@ -105,6 +123,7 @@ async function catalogo(tx: Tx, itens: { tipo: TipoItemPreco; id: string }[]) {
         multiplo: materiais.multiplo,
         ativo: materiais.ativo,
         permiteVenda: materiais.permiteVenda,
+        permiteUsoOs: materiais.permiteUsoOs,
       })
       .from(materiais)
       .where(inArray(materiais.id, idsMaterial));
@@ -116,8 +135,12 @@ async function catalogo(tx: Tx, itens: { tipo: TipoItemPreco; id: string }[]) {
         formaPreco: null,
         multiplo: m.multiplo,
         fracionada: UNIDADES[m.unidade].fracionada,
-        vendavel: m.ativo && m.permiteVenda,
-        motivo: !m.ativo ? 'está inativo' : 'não está marcado como "Permite venda"',
+        vendavel: m.ativo && (uso === 'os' ? m.permiteUsoOs : m.permiteVenda),
+        motivo: !m.ativo
+          ? 'está inativo'
+          : uso === 'os'
+            ? 'não está marcado como "Permite uso em O.S."'
+            : 'não está marcado como "Permite venda"',
       });
   }
   if (idsServico.length) {
@@ -172,10 +195,11 @@ const nomeDoItem = (l: { codigo: string; descricao: string }) => `${l.codigo} �
 export async function montarItens(
   tx: Tx,
   entrada: ItemOrcamentoDados[],
-  gravados: ItemGravado[],
+  gravados: ItemJaGravado[],
   tabelaPrecoId: string,
   hoje: string,
   trocouTabela: boolean,
+  uso: UsoDoItem = 'venda',
 ): Promise<{ linhas: LinhaItem[]; avisos: string[] }> {
   const avisos: string[] = [];
   const porId = new Map(gravados.map((g) => [g.id, g]));
@@ -186,7 +210,7 @@ export async function montarItens(
     return g && g.tipo === i.tipo && (g.materialId ?? g.servicoId) === itemDe(i).id ? g : undefined;
   };
   const novos = entrada.filter((i) => !anterior(i)).map(itemDe);
-  const cadastro = await catalogo(tx, novos);
+  const cadastro = await catalogo(tx, novos, uso);
   const repreco = trocouTabela ? entrada.map(itemDe) : novos;
   const precos = await precosDoDia(tx, repreco, tabelaPrecoId, hoje);
   // PMC: congelado ao incluir; a troca de tabela o atualiza junto com o preço (os demais mantêm o gravado).
@@ -212,7 +236,11 @@ export async function montarItens(
           const c = cadastro.get(chave(item.tipo, item.id));
           const rotulo = item.tipo === 'material' ? 'Produto' : 'Serviço';
           if (!c) throw new ErroHttp(400, `Item ${n + 1}: ${rotulo.toLowerCase()} não encontrado.`);
-          if (!c.vendavel) throw new ErroHttp(400, `${rotulo} ${nomeDoItem(c)} ${c.motivo} e não pode ser vendido.`);
+          if (!c.vendavel)
+            throw new ErroHttp(
+              400,
+              `${rotulo} ${nomeDoItem(c)} ${c.motivo} e não pode ser ${uso === 'os' ? 'usado na O.S.' : 'vendido'}.`,
+            );
           return c;
         })();
 

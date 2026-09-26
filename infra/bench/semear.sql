@@ -236,13 +236,68 @@ begin
   join users u on u.id = vd.usuario_id
   where o.tenant_id = p_tenant and o.status in ('aguardando_aprovacao_comercial', 'reprovado_comercialmente');
 
+  -- O.S. (metade do número de orçamentos), abertas no balcão, com situação variada, os itens de um orçamento
+  -- (4 produtos e 1 serviço, já aprovados) e um mecânico (usuário de vendedor) em cada três.
+  create temp table ords as
+  with base as (
+    select i,
+      (array['aberta','em_diagnostico','aguardando_aprovacao','aprovada','em_execucao','aguardando_peca',
+             'concluida','entregue','entregue','entregue','recusada','cancelada'])[1 + i % 12]::status_os as status,
+      now() - ((i::bigint * 7907) % 730) * interval '1 day' - (i % 86400) * interval '1 second' as criado
+    from generate_series(1, p_orcamentos / 2) i
+  ), o as (
+    insert into ordens_servico (tenant_id, numero, status, cliente_id, veiculo_id, vendedor_id, tabela_preco_id,
+      km_entrada, relato_cliente, previsao_entrega, motivo_cancelamento, subtotal_servicos_centavos,
+      subtotal_materiais_centavos, desconto_centavos, total_centavos, criado_por, atualizado_por, criado_em,
+      atualizado_em)
+    select p_tenant, b.i, b.status, orc.cliente_id, orc.veiculo_id, orc.vendedor_id, v_tabela, 10000 + b.i % 90000,
+      'Barulho na suspensão', b.criado + interval '2 days',
+      case when b.status = 'cancelada' then 'Cliente desistiu' end, 0, 0, 0, 0, v_admin, v_admin, b.criado, b.criado
+    from base b
+    join orcamentos orc on orc.tenant_id = p_tenant and orc.numero = b.i
+    returning id, numero, criado_em
+  )
+  select row_number() over () - 1 as idx, id, numero, criado_em from o;
+
+  insert into os_itens (tenant_id, ordem_servico_id, ordem, tipo, material_id, servico_id, codigo, descricao, unidade,
+    forma_preco, multiplo, quantidade, tempo_minutos, preco_tabela_centavos, preco_unitario_centavos,
+    desconto_percentual, pmc_centavos, bruto_centavos, desconto_centavos, total_centavos, aprovacao)
+  select p_tenant, os.id, it.ordem, it.tipo, it.material_id, it.servico_id, it.codigo, it.descricao, it.unidade,
+    it.forma_preco, it.multiplo, it.quantidade, it.tempo_minutos, it.preco_tabela_centavos,
+    it.preco_unitario_centavos, it.desconto_percentual, it.pmc_centavos, it.bruto_centavos, it.desconto_centavos,
+    it.total_centavos, 'aprovado'
+  from ords os
+  join orcamentos orc on orc.tenant_id = p_tenant and orc.numero = os.numero
+  join orcamento_itens it on it.orcamento_id = orc.id;
+
+  update ordens_servico o set subtotal_servicos_centavos = t.servicos, subtotal_materiais_centavos = t.materiais,
+    desconto_centavos = t.desconto, total_centavos = t.total
+  from (
+    select ordem_servico_id,
+      sum(bruto_centavos) filter (where tipo = 'servico') servicos,
+      sum(bruto_centavos) filter (where tipo = 'material') materiais,
+      sum(desconto_centavos) desconto, sum(total_centavos) total
+    from os_itens where tenant_id = p_tenant group by ordem_servico_id
+  ) t
+  where o.id = t.ordem_servico_id;
+
+  insert into os_eventos (tenant_id, ordem_servico_id, evento, detalhe, usuario_id, criado_em)
+  select p_tenant, os.id, 'criada', 'Carga de benchmark', v_admin, os.criado_em from ords os;
+
+  insert into os_mecanicos (tenant_id, ordem_servico_id, usuario_id)
+  select p_tenant, os.id, u.id
+  from ords os
+  join ven u on u.idx = os.idx % p_vendedores
+  where os.idx % 3 = 0;
+
   -- Contadores coerentes com os códigos gerados (novos cadastros pela API continuam a sequência).
   insert into contadores (tenant_id, chave, valor) values
-    (p_tenant, 'orcamentos', p_orcamentos), (p_tenant, 'servicos', p_servicos),
+    (p_tenant, 'orcamentos', p_orcamentos), (p_tenant, 'ordens_servico', p_orcamentos / 2),
+    (p_tenant, 'servicos', p_servicos),
     (p_tenant, 'vendedores', p_vendedores), (p_tenant, 'usuarios', 100 + p_vendedores)
   on conflict (tenant_id, chave) do update set valor = greatest(contadores.valor, excluded.valor);
 
-  drop table ven, vend, mat, ser, cli, vei, orc;
+  drop table ven, vend, mat, ser, cli, vei, orc, ords;
 end;
 $$;
 

@@ -19,8 +19,8 @@ import { ErroHttp, naoEncontrado } from './erros.js';
 
 /*
  * Motor da aprovação comercial por alçada (docs/modulos/APROVACAO_COMERCIAL.md). Não conhece regra de documento:
- * cada documento (hoje o Orçamento) avalia a alçada na própria ação, pede a aprovação aqui e fornece um adaptador
- * para conferir e aplicar a decisão. Pedido de Venda e O.S. entram depois com o seu adaptador.
+ * cada documento (Orçamento e O.S.) avalia a alçada na própria ação, pede a aprovação aqui e fornece um adaptador
+ * para conferir e aplicar a decisão. O Pedido de Venda entra depois com o seu adaptador.
  */
 
 export type AprovacaoGravada = typeof aprovacoesComerciais.$inferSelect;
@@ -117,10 +117,10 @@ export type Solicitacao = {
 
 /** Coluna do documento na solicitação (uma por tipo, para manter a FK composta). */
 const colunaDoDocumento = (tipo: TipoDocumentoComercial, documentoId: string) =>
-  ({ orcamento: { orcamentoId: documentoId } })[tipo];
+  ({ orcamento: { orcamentoId: documentoId }, ordem_servico: { ordemServicoId: documentoId } })[tipo];
 
-export const documentoDaAprovacao = (a: Pick<AprovacaoGravada, 'tipoDocumento' | 'orcamentoId'>) =>
-  ({ orcamento: a.orcamentoId })[a.tipoDocumento]!;
+export const documentoDaAprovacao = (a: Pick<AprovacaoGravada, 'tipoDocumento' | 'orcamentoId' | 'ordemServicoId'>) =>
+  ({ orcamento: a.orcamentoId, ordem_servico: a.ordemServicoId })[a.tipoDocumento]!;
 
 /**
  * Cria a solicitação (desconto acima da alçada de quem emite), com o retrato e as alçadas do momento. Se ninguém
@@ -185,7 +185,9 @@ export async function pendenteDoDocumento(tx: Tx, tipo: TipoDocumentoComercial, 
       and(
         eq(aprovacoesComerciais.tipoDocumento, tipo),
         eq(aprovacoesComerciais.status, 'pendente'),
-        tipo === 'orcamento' ? eq(aprovacoesComerciais.orcamentoId, documentoId) : undefined,
+        tipo === 'orcamento'
+          ? eq(aprovacoesComerciais.orcamentoId, documentoId)
+          : eq(aprovacoesComerciais.ordemServicoId, documentoId),
       ),
     )
     .for('update');

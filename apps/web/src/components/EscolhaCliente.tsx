@@ -29,9 +29,12 @@ const POR_PAGINA_JANELA = 10;
 export function JanelaEscolhaCliente({
   aoEscolher,
   aoFechar,
+  apoio = '/orcamentos/apoio',
 }: {
   aoEscolher: (c: ClienteParaOrcamento) => void;
   aoFechar: () => void;
+  /** Rotas de apoio do documento (orçamento ou O.S.): clientes e recentes. */
+  apoio?: string;
 }) {
   const [filtro, setFiltro] = useState({ q: '', ativo: 'true', tipo: '' });
   const [pagina, setPagina] = useState(1);
@@ -41,9 +44,9 @@ export function JanelaEscolhaCliente({
     porPagina: String(POR_PAGINA_JANELA),
   });
   const lista = useQuery({
-    queryKey: ['orcamentos', 'apoio', 'clientes', parametros.toString()],
+    queryKey: [apoio, 'clientes', parametros.toString()],
     queryFn: ({ signal }) =>
-      api<{ itens: ClienteParaOrcamento[]; total: number }>(`/orcamentos/apoio/clientes?${parametros}`, { signal }),
+      api<{ itens: ClienteParaOrcamento[]; total: number }>(`${apoio}/clientes?${parametros}`, { signal }),
     placeholderData: keepPreviousData,
   });
   const mudar = (campo: keyof typeof filtro, valor: string) => {
@@ -53,8 +56,8 @@ export function JanelaEscolhaCliente({
   // Recentes: os clientes dos últimos orçamentos, só com a busca vazia (atalho para quem volta a orçar).
   const buscando = filtro.q.trim() !== '';
   const recentes = useQuery({
-    queryKey: ['orcamentos', 'apoio', 'clientes', 'recentes'],
-    queryFn: () => api<ClienteParaOrcamento[]>('/orcamentos/apoio/clientes/recentes'),
+    queryKey: [apoio, 'clientes', 'recentes'],
+    queryFn: () => api<ClienteParaOrcamento[]>(`${apoio}/clientes/recentes`),
     enabled: !buscando,
   });
   const dados = lista.data;

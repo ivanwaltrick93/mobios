@@ -4,14 +4,13 @@ import {
   formatarMoeda,
   formatarPercentual,
   formatarQuantidade,
-  TIPOS_DOCUMENTO_COMERCIAL,
   type AprovacaoComercial,
 } from '@mobios/shared';
 import { useQuery } from '@tanstack/react-query';
 import { ExternalLink, TriangleAlert } from 'lucide-react';
 import { Link, useParams } from 'react-router';
 import { AnaliseMargem } from '../components/AnaliseMargem';
-import { AcoesDecisao, SeloAprovacao } from '../components/AprovacaoComercial';
+import { AcoesDecisao, linkDoDocumento, SeloAprovacao, SeloTipoDocumento } from '../components/AprovacaoComercial';
 import { CONTORNO_ACIMA_DA_ALCADA } from '../components/ItensOrcamento';
 import { PrecoNegociado, Totais } from '../components/Orcamento';
 import {
@@ -29,7 +28,7 @@ import {
   Th,
 } from '../components/ui';
 import { api } from '../lib/api';
-import { usePerfilOrcamento, usePode } from '../lib/sessao';
+import { usePerfilOrcamento, usePerfilOs, usePode } from '../lib/sessao';
 import { useTrilha } from '../lib/trilha';
 
 const dataHora = (d: Date | string) => new Date(d).toLocaleString('pt-BR');
@@ -45,6 +44,7 @@ const quem = (nome: string | null, funcao: string | null, alcada: number | null)
 export function AprovacaoComercialDetalhe() {
   const { id } = useParams() as { id: string };
   const perfil = usePerfilOrcamento();
+  const perfilOs = usePerfilOs();
   const pode = usePode();
   const consulta = useQuery({
     queryKey: ['aprovacoes-comerciais', id],
@@ -56,17 +56,26 @@ export function AprovacaoComercialDetalhe() {
   if (consulta.isError) return <Alerta>{consulta.error.message}</Alerta>;
   if (!a) return <Carregando />;
   const s = a.snapshot;
-  // O vendedor só abre os próprios orçamentos; os demais, se consultam orçamentos.
-  const abreDocumento = perfil.vendedorId ? perfil.vendedorId === a.documentoVendedorId : perfil.podeVer;
+  // Orçamento: o vendedor só abre os próprios; os demais, se consultam orçamentos. O.S.: quem vê as O.S.
+  const os = a.tipoDocumento === 'ordem_servico';
+  const abreDocumento = os
+    ? perfilOs.podeVer
+    : perfil.vendedorId
+      ? perfil.vendedorId === a.documentoVendedorId
+      : perfil.podeVer;
   const decidida = a.status === 'aprovada' || a.status === 'reprovada';
 
   return (
     <div className="space-y-4">
       <CabecalhoObjeto
-        titulo={`${a.documentoNumero} · versão ${a.documentoVersao}`}
-        selos={<SeloAprovacao status={a.status} />}
+        titulo={os ? a.documentoNumero : `${a.documentoNumero} · versão ${a.documentoVersao}`}
+        selos={
+          <>
+            <SeloTipoDocumento tipo={a.tipoDocumento} />
+            <SeloAprovacao status={a.status} />
+          </>
+        }
         atributos={[
-          { rotulo: 'Tipo', valor: TIPOS_DOCUMENTO_COMERCIAL[a.tipoDocumento] },
           { rotulo: 'Cliente', valor: a.clienteNome },
           { rotulo: 'Solicitante', valor: quem(a.solicitante, a.solicitanteFuncao, null) },
           { rotulo: 'Alçada do solicitante', valor: formatarPercentual(a.alcadaSolicitante) },
@@ -86,8 +95,8 @@ export function AprovacaoComercialDetalhe() {
           <>
             {a.podeDecidir && <AcoesDecisao aprovacao={a} />}
             {abreDocumento && (
-              <Link to={`/orcamentos/${a.documentoId}`} className={classesBotao('secundario')}>
-                <ExternalLink className="mr-1.5 size-4" aria-hidden /> Abrir orçamento
+              <Link to={linkDoDocumento(a)} className={classesBotao('secundario')}>
+                <ExternalLink className="mr-1.5 size-4" aria-hidden /> {os ? 'Abrir O.S.' : 'Abrir orçamento'}
               </Link>
             )}
           </>

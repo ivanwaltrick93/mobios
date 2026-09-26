@@ -12,7 +12,7 @@ const chaves = <T extends Record<string, unknown>>(o: T) =>
   Object.keys(o) as [keyof T & string, ...(keyof T & string)[]];
 
 /** Documentos ligados ao motor. Pedido de Venda e O.S. entram aqui quando existirem. */
-export const TIPOS_DOCUMENTO_COMERCIAL = { orcamento: 'Orçamento' } as const;
+export const TIPOS_DOCUMENTO_COMERCIAL = { orcamento: 'Orçamento', ordem_servico: 'O.S.' } as const;
 export type TipoDocumentoComercial = keyof typeof TIPOS_DOCUMENTO_COMERCIAL;
 
 export const STATUS_APROVACAO_COMERCIAL = {
@@ -81,6 +81,8 @@ export const snapshotComercialSchema = z.object({
   observacoes: z.string().nullable(),
   itens: z.array(
     z.object({
+      /** Item do documento (O.S.: a reprovação volta ao preço de tabela os itens marcados acima da alçada). */
+      id: z.uuid().optional(),
       tipo: z.string(),
       codigo: z.string(),
       descricao: z.string(),

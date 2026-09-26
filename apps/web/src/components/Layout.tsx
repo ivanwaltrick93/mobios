@@ -85,7 +85,7 @@ const menu: ItemMenu[] = [
     ],
   },
   { para: '/estoque', rotulo: 'Estoque', icone: Warehouse, modulo: 'estoque' },
-  { para: '/os', rotulo: 'Ordens de serviço', icone: ClipboardList, modulo: 'os' },
+  { para: '/os', rotulo: 'Ordens de serviço', icone: ClipboardList, modulo: 'os', paraVendedor: true },
   { para: '/financeiro', rotulo: 'Financeiro', icone: Wallet, modulo: 'financeiro' },
   { para: '/relatorios', rotulo: 'Relatórios', icone: BarChart3, modulo: 'relatorios' },
   {

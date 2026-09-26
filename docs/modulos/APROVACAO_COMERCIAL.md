@@ -6,10 +6,12 @@ schemas), `apps/api/src/lib/aprovacao-comercial.ts` (motor), `apps/api/src/modul
 `apps/api/src/modules/alcadas/` (rotas), `apps/api/src/modules/orcamentos/aprovacao.ts` (adaptador do Orçamento),
 `apps/web/src/pages/AprovacoesComerciais.tsx`, `AprovacaoComercialDetalhe.tsx` e `Alcadas.tsx`.
 
-> **Pedido de Venda e O.S. ainda não existem no MobiOS.** Nesta fase só o **Orçamento** está ligado ao motor. A alçada,
-> as tabelas, as rotas, as permissões e a tela já são genéricas (tipo de documento): quando o Pedido de Venda e a O.S.
-> forem construídos, eles se ligam ao motor com um **adaptador** próprio (§10), sem mudar o motor nem as regras.
-> Os critérios de aceite que pedem Pedido de Venda e O.S. usando o motor ficam **adiados** para essas fases.
+> **Documentos ligados ao motor:** **Orçamento** e, desde a onda 5.1, **O.S.** (adaptador em
+> `apps/api/src/modules/ordens-servico/aprovacao.ts`; regras em `docs/modulos/ORDENS_SERVICO.md` §5). Na O.S. a
+> alçada é avaliada **ao salvar os itens** (não há emissão): os itens são gravados, a O.S. fica parada até a decisão;
+> aprovar libera a O.S.; reprovar volta os itens acima da alçada ao preço de tabela. A fila e o detalhe mostram o
+> tipo do documento em destaque (Orçamento ou O.S.). O **Pedido de Venda** ainda não existe: vai se ligar ao motor
+> com um adaptador próprio (§10), sem mudar o motor nem as regras.
 
 **Fora do escopo** (não há nada disso no código): autorização de serviço pelo cliente, aprovação de execução de O.S.,
 aceite técnico, aprovação pública ou pelo cliente, assinatura eletrônica, aprovação de compra, financeira ou de estoque

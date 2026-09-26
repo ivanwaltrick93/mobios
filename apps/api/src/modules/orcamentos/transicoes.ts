@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import {
   calcularMargem,
+  conversaoOrcamentoInputSchema,
+  conversaoOrcamentoSchema,
   dentroDaAlcada,
   formatarDataIso,
   formatarNumeroOrcamento,
@@ -28,6 +30,7 @@ import {
 } from '../../lib/aprovacao-comercial.js';
 import { ErroHttp } from '../../lib/erros.js';
 import { snapshotDoOrcamento } from './aprovacao.js';
+import { converterEmOs } from './conversao.js';
 import {
   carregar,
   exigirPrecosDoDia,
@@ -262,6 +265,28 @@ export const transicoesOrcamentoRoutes: FastifyPluginAsyncZod = async (app) => {
         await registrar(tx, atual.id, 'aprovacao_comercial_retirada', req.user.sub, 'Voltou a rascunho.');
         return carregar(tx, atual.id, req.user.vendedorId);
       }),
+  );
+
+  /**
+   * Conversão do orçamento aprovado em O.S. (docs/modulos/ORCAMENTOS.md §6): só o Administrador (qualquer orçamento)
+   * e o vendedor (só os próprios). A regra toda fica em `converterEmOs`.
+   */
+  app.post(
+    '/:id/converter',
+    {
+      ...editar,
+      schema: {
+        params: idParamSchema,
+        body: conversaoOrcamentoInputSchema,
+        response: { 201: conversaoOrcamentoSchema },
+      },
+    },
+    async (req, reply) => {
+      const ordemServicoId = await withTenant(req.user.tid, (tx) =>
+        converterEmOs(tx, req.params.id, req.body, req.user),
+      );
+      return reply.code(201).send({ destino: 'ordem_servico' as const, ordemServicoId });
+    },
   );
 
   /**

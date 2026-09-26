@@ -17,7 +17,7 @@ export type Token = { sub: string; tid: string };
 declare module '@fastify/jwt' {
   interface FastifyJWT {
     payload: Token;
-    user: Token & { admin: boolean; acessos: Acessos; vendedorId: string | null };
+    user: Token & { admin: boolean; acessos: Acessos; vendedorId: string | null; mecanico: boolean };
   }
 }
 
@@ -59,6 +59,7 @@ export const authPlugin = fp(async (app) => {
       admin: acesso.admin,
       acessos: acesso.acessos,
       vendedorId: acesso.vendedorId,
+      mecanico: acesso.mecanico,
     };
   });
 

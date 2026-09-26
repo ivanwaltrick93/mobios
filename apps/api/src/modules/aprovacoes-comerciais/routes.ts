@@ -14,7 +14,13 @@ import type { FastifyRequest } from 'fastify';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { withTenant, type Tx } from '../../db/client.js';
-import { aprovacoesComerciais, aprovacoesComerciaisEventos, orcamentos, users } from '../../db/schema.js';
+import {
+  aprovacoesComerciais,
+  aprovacoesComerciaisEventos,
+  orcamentos,
+  ordensServico,
+  users,
+} from '../../db/schema.js';
 import {
   alcadaDoUsuario,
   bloqueioDaDecisao,
@@ -26,13 +32,18 @@ import {
 import { nomeUsuario } from '../../lib/cadastro.js';
 import { naoEncontrado } from '../../lib/erros.js';
 import { adaptadorOrcamento } from '../orcamentos/aprovacao.js';
+import { adaptadorOrdemServico } from '../ordens-servico/aprovacao.js';
 
-/** Um adaptador por documento ligado ao motor. Pedido de Venda e O.S. entram aqui quando existirem. */
-const ADAPTADORES: Record<TipoDocumentoComercial, AdaptadorDocumento> = { orcamento: adaptadorOrcamento };
+/** Um adaptador por documento ligado ao motor. O Pedido de Venda entra aqui quando existir. */
+const ADAPTADORES: Record<TipoDocumentoComercial, AdaptadorDocumento> = {
+  orcamento: adaptadorOrcamento,
+  ordem_servico: adaptadorOrdemServico,
+};
 
 /**
  * O que o usuário enxerga. O vendedor (não Administrador) que também decide vê as solicitações dele, as dos
- * orçamentos dele, as que decidiu e as pendentes que a alçada dele cobre; os demais, todas.
+ * orçamentos e O.S. dele, as que decidiu e as pendentes que a alçada dele cobre; os demais, todas. As consultas
+ * que usam o escopo juntam orçamento e O.S. (`comDocumentos`).
  */
 async function escopo(tx: Tx, req: FastifyRequest): Promise<SQL | undefined> {
   if (!req.user.vendedorId) return undefined;
@@ -41,6 +52,7 @@ async function escopo(tx: Tx, req: FastifyRequest): Promise<SQL | undefined> {
     eq(aprovacoesComerciais.solicitanteId, req.user.sub),
     eq(aprovacoesComerciais.decididoPor, req.user.sub),
     eq(orcamentos.vendedorId, req.user.vendedorId),
+    eq(ordensServico.vendedorId, req.user.vendedorId),
     and(eq(aprovacoesComerciais.status, 'pendente'), sql`${aprovacoesComerciais.percentual} <= ${alcada.percentual}`),
   );
 }
@@ -51,6 +63,7 @@ export async function contarPendentes(tx: Tx, req: FastifyRequest): Promise<numb
     .select({ total: count() })
     .from(aprovacoesComerciais)
     .leftJoin(orcamentos, eq(orcamentos.id, aprovacoesComerciais.orcamentoId))
+    .leftJoin(ordensServico, eq(ordensServico.id, aprovacoesComerciais.ordemServicoId))
     .where(and(eq(aprovacoesComerciais.status, 'pendente'), await escopo(tx, req)))) as [{ total: number }];
   return total;
 }
@@ -59,6 +72,7 @@ const colunasResumo = {
   id: aprovacoesComerciais.id,
   tipoDocumento: aprovacoesComerciais.tipoDocumento,
   orcamentoId: aprovacoesComerciais.orcamentoId,
+  ordemServicoId: aprovacoesComerciais.ordemServicoId,
   documentoNumero: aprovacoesComerciais.documentoNumero,
   documentoVersao: aprovacoesComerciais.documentoVersao,
   clienteNome: aprovacoesComerciais.clienteNome,
@@ -77,14 +91,20 @@ const colunasResumo = {
   versao: aprovacoesComerciais.versao,
 };
 const paraResumo = <
-  T extends { tipoDocumento: TipoDocumentoComercial; orcamentoId: string | null; solicitante: string | null },
+  T extends {
+    tipoDocumento: TipoDocumentoComercial;
+    orcamentoId: string | null;
+    ordemServicoId: string | null;
+    solicitante: string | null;
+  },
 >({
   orcamentoId,
+  ordemServicoId,
   solicitante,
   ...a
 }: T) => ({
   ...a,
-  documentoId: documentoDaAprovacao({ tipoDocumento: a.tipoDocumento, orcamentoId }),
+  documentoId: documentoDaAprovacao({ tipoDocumento: a.tipoDocumento, orcamentoId, ordemServicoId }),
   solicitante: solicitante ?? '',
 });
 
@@ -94,10 +114,11 @@ async function carregar(tx: Tx, req: FastifyRequest, id: string): Promise<Aprova
     .select({
       ...colunasResumo,
       gravada: aprovacoesComerciais,
-      documentoVendedorId: orcamentos.vendedorId,
+      documentoVendedorId: sql<string | null>`coalesce(${orcamentos.vendedorId}, ${ordensServico.vendedorId})`,
     })
     .from(aprovacoesComerciais)
     .leftJoin(orcamentos, eq(orcamentos.id, aprovacoesComerciais.orcamentoId))
+    .leftJoin(ordensServico, eq(ordensServico.id, aprovacoesComerciais.ordemServicoId))
     .where(and(eq(aprovacoesComerciais.id, id), await escopo(tx, req)));
   if (!linha) throw naoEncontrado('Aprovação comercial');
   const { gravada, documentoVendedorId, ...resumo } = linha;
@@ -153,7 +174,8 @@ export const aprovacoesComerciaisRoutes: FastifyPluginAsyncZod = async (app) => 
     },
     async (req) => {
       const { q, status, tipo, posso, pagina, porPagina } = req.query;
-      const numero = q?.replace(/^orc-?/i, '').replace(/^0+(?=\d)/, '');
+      // "ORC-0000000012", "OS-000012" e "12" são o mesmo número (do orçamento ou da O.S.).
+      const numero = q?.replace(/^(orc|os)-?/i, '').replace(/^0+(?=\d)/, '');
       return withTenant(req.user.tid, async (tx) => {
         const alcada = posso ? await alcadaDoUsuario(tx, req.user.sub) : null;
         const onde = and(
@@ -161,7 +183,9 @@ export const aprovacoesComerciaisRoutes: FastifyPluginAsyncZod = async (app) => 
           q
             ? or(
                 ilike(aprovacoesComerciais.clienteNome, `%${q}%`),
-                ...(numero && /^\d{1,9}$/.test(numero) ? [eq(orcamentos.numero, Number(numero))] : []),
+                ...(numero && /^\d{1,9}$/.test(numero)
+                  ? [eq(orcamentos.numero, Number(numero)), eq(ordensServico.numero, Number(numero))]
+                  : []),
               )
             : undefined,
           status ? eq(aprovacoesComerciais.status, status) : undefined,
@@ -180,6 +204,7 @@ export const aprovacoesComerciaisRoutes: FastifyPluginAsyncZod = async (app) => 
           .select(colunasResumo)
           .from(aprovacoesComerciais)
           .leftJoin(orcamentos, eq(orcamentos.id, aprovacoesComerciais.orcamentoId))
+          .leftJoin(ordensServico, eq(ordensServico.id, aprovacoesComerciais.ordemServicoId))
           .where(onde)
           .orderBy(desc(aprovacoesComerciais.criadoEm), desc(aprovacoesComerciais.id))
           .limit(porPagina)
@@ -188,6 +213,7 @@ export const aprovacoesComerciaisRoutes: FastifyPluginAsyncZod = async (app) => 
           .select({ total: count() })
           .from(aprovacoesComerciais)
           .leftJoin(orcamentos, eq(orcamentos.id, aprovacoesComerciais.orcamentoId))
+          .leftJoin(ordensServico, eq(ordensServico.id, aprovacoesComerciais.ordemServicoId))
           .where(onde)) as [{ total: number }];
         return { itens: itens.map(paraResumo), total };
       });

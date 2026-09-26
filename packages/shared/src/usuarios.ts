@@ -80,6 +80,11 @@ export const sessaoSchema = z.object({
   acessos: acessosSchema,
   /** Vendedor ativo do usuário (nunca para o Administrador): orçamentos no nome dele; vê e altera só os próprios. */
   vendedorId: z.uuid().nullable(),
+  /**
+   * Mecânico (função com o parâmetro MECÂNICO, sem ser Administrador nem vendedor): só vê as O.S. vinculadas a ele
+   * (docs/modulos/ORDENS_SERVICO.md §7).
+   */
+  mecanico: z.boolean(),
   // logoVersao: null = sem logo; senão, muda a cada troca (usado na URL para renovar o cache).
   oficina: z.object({ id: z.uuid(), nome: z.string(), tema: temaSchema, logoVersao: z.string().nullable() }),
 });

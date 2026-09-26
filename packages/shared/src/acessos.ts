@@ -172,6 +172,8 @@ export const NOME_FUNCAO_ADMIN = 'Administrador';
  * tabela global `parametros_funcao` (migração 0018); o código usa só os códigos abaixo.
  */
 export const PARAMETRO_VENDEDOR = 'VENDEDOR';
+/** Quem pode ser vinculado a uma O.S. como mecânico (docs/modulos/ORDENS_SERVICO.md §6). */
+export const PARAMETRO_MECANICO = 'MECANICO';
 
 /**
  * Funções criadas em toda oficina nova (matriz aprovada pelo dono do produto, docs/ENTREGAVEIS.md §1.1).
@@ -196,6 +198,7 @@ export const FUNCOES_PADRAO: { nome: string; acessos: Partial<Acessos>; parametr
   },
   {
     nome: 'Mecânico',
+    parametros: [PARAMETRO_MECANICO],
     acessos: {
       clientes: 'consultar',
       orcamentos: 'consultar',

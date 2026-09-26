@@ -159,6 +159,8 @@ export const orcamentoItens = pgTable(
     totalCentavos: bigint({ mode: 'number' }).notNull(),
   },
   (t) => [
+    // Alvo da FK composta do item da O.S. que veio deste item (conversão).
+    unique().on(t.tenantId, t.id),
     foreignKey({ columns: [t.tenantId, t.orcamentoId], foreignColumns: [orcamentos.tenantId, orcamentos.id] }).onDelete(
       'cascade',
     ),

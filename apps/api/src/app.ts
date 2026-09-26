@@ -13,6 +13,7 @@ import { depositosRoutes } from './modules/depositos/routes.js';
 import { marcasRoutes } from './modules/marcas/routes.js';
 import { materiaisRoutes } from './modules/materiais/routes.js';
 import { orcamentosRoutes } from './modules/orcamentos/routes.js';
+import { ordensServicoRoutes } from './modules/ordens-servico/routes.js';
 import { precosRoutes } from './modules/precos/routes.js';
 import { servicosRoutes } from './modules/servicos/routes.js';
 import { tabelasPrecoRoutes } from './modules/tabelas-preco/routes.js';
@@ -80,6 +81,7 @@ export async function criarApp() {
   await app.register(vendedoresRoutes, { prefix: '/api/vendedores' });
   await app.register(servicosRoutes, { prefix: '/api/servicos' });
   await app.register(orcamentosRoutes, { prefix: '/api/orcamentos' });
+  await app.register(ordensServicoRoutes, { prefix: '/api/ordens-servico' });
   await app.register(aprovacoesComerciaisRoutes, { prefix: '/api/aprovacoes-comerciais' });
   await app.register(alcadasRoutes, { prefix: '/api/alcadas' });
 

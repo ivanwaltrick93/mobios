@@ -1,4 +1,6 @@
+import { zodResolver } from '@hookform/resolvers/zod';
 import {
+  conversaoOrcamentoInputSchema,
   dentroDaAlcada,
   descreverValidade,
   EVENTOS_ORCAMENTO,
@@ -6,15 +8,20 @@ import {
   formatarHoras,
   formatarMoeda,
   formatarNumeroOrcamento,
+  formatarNumeroOs,
   formatarPercentual,
+  formatarPlaca,
   formatarQuantidade,
   percentualDoItem,
   type Orcamento,
 } from '@mobios/shared';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, Copy, Pencil, Send, Undo2, XCircle } from 'lucide-react';
+import { CheckCircle2, Copy, Pencil, Send, Undo2, Wrench, XCircle } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
+import { useForm } from 'react-hook-form';
 import { Link, useLocation, useNavigate, useParams } from 'react-router';
+import type { z } from 'zod';
+import { useVeiculosCliente } from '../components/CabecalhoOrcamento';
 import {
   atributosDoOrcamento,
   AvisoAprovacaoComercial,
@@ -33,9 +40,11 @@ import {
   Campo,
   Cartao,
   classesBotao,
+  Input,
   Janela,
   Linha,
   Secao,
+  Select,
   Tabela,
   Td,
   TextoSuave,
@@ -43,6 +52,7 @@ import {
   Titulo,
 } from '../components/ui';
 import { api } from '../lib/api';
+import { aplicarErrosDaApi } from '../lib/formulario';
 import { useOrcamento } from '../lib/orcamentos';
 import { usePerfilOrcamento, useSessao } from '../lib/sessao';
 
@@ -104,6 +114,7 @@ export function OrcamentoDetalhe() {
     if (temEstado) navigate(location.pathname, { replace: true });
   }, [temEstado, navigate, location.pathname]);
   const [confirmando, setConfirmando] = useState<Acao | null>(null);
+  const [convertendo, setConvertendo] = useState(false);
   const [motivo, setMotivo] = useState('');
   const acao = useMutation({
     mutationFn: ({ tipo, o }: { tipo: Acao; o: Orcamento }) =>
@@ -234,6 +245,16 @@ export function OrcamentoDetalhe() {
                 <Pencil className="mr-1.5 size-4" aria-hidden /> Editar
               </Link>
             )}
+            {o.ordemServico && (
+              <Link to={`/os/${o.ordemServico.id}`} className={classesBotao('secundario')}>
+                <Wrench className="mr-1.5 size-4" aria-hidden /> {formatarNumeroOs(o.ordemServico.numero)}
+              </Link>
+            )}
+            {editar && o.situacao === 'aprovado' && !o.ordemServico && (
+              <Botao onClick={() => setConvertendo(true)}>
+                <Wrench className="mr-1.5 size-4" aria-hidden /> Converter em O.S.
+              </Botao>
+            )}
             {botoes.map((b) => (
               <Botao key={b.tipo} variante={b.variante} onClick={() => setConfirmando(b.tipo)}>
                 {b.icone}
@@ -349,6 +370,8 @@ export function OrcamentoDetalhe() {
         </Secao>
       </Cartao>
 
+      {convertendo && <JanelaConversao orcamento={o} aoFechar={() => setConvertendo(false)} />}
+
       {confirmando && confirmacao && (
         <Janela titulo={confirmacao.titulo} aoFechar={() => setConfirmando(null)}>
           <div className="space-y-4">
@@ -388,5 +411,81 @@ export function OrcamentoDetalhe() {
         </Janela>
       )}
     </div>
+  );
+}
+
+type EntradaConversao = z.input<typeof conversaoOrcamentoInputSchema>;
+type SaidaConversao = z.output<typeof conversaoOrcamentoInputSchema>;
+
+/**
+ * Conversão do orçamento aprovado em O.S. (docs/modulos/ORCAMENTOS.md §6): pede só o que a abertura exige e o
+ * orçamento não tem (veículo, se faltar, km de entrada e relato). Os itens vão aprovados; o orçamento fica aprovado.
+ */
+function JanelaConversao({ orcamento: o, aoFechar }: { orcamento: Orcamento; aoFechar: () => void }) {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const veiculos = useVeiculosCliente(o.veiculo ? undefined : o.cliente.id);
+  const form = useForm<EntradaConversao, unknown, SaidaConversao>({
+    resolver: zodResolver(conversaoOrcamentoInputSchema),
+    defaultValues: { veiculoId: o.veiculo?.id ?? '', relatoCliente: '' },
+    mode: 'onTouched',
+  });
+  const erros = form.formState.errors;
+  const converter = useMutation({
+    mutationFn: (dados: SaidaConversao) =>
+      api<{ ordemServicoId: string }>(`/orcamentos/${o.id}/converter`, { method: 'POST', body: dados }),
+    onSuccess: ({ ordemServicoId }) => {
+      queryClient.invalidateQueries({ queryKey: ['orcamentos'] });
+      queryClient.invalidateQueries({ queryKey: ['ordens-servico'] });
+      queryClient.invalidateQueries({ queryKey: ['painel'] });
+      navigate(`/os/${ordemServicoId}`);
+    },
+  });
+  return (
+    <Janela titulo="Converter em O.S." aoFechar={aoFechar}>
+      <form noValidate onSubmit={form.handleSubmit((d) => converter.mutate(d))} className="space-y-4">
+        <TextoSuave>
+          A O.S. nasce aberta com os itens e preços deste orçamento, já aprovados pelo cliente. O orçamento continua
+          aprovado, com a referência à O.S.
+        </TextoSuave>
+        {o.veiculo ? (
+          <p className="text-sm">
+            <span className="text-texto-suave">Veículo: </span>
+            {formatarPlaca(o.veiculo.placa)} — {o.veiculo.marca} {o.veiculo.modelo}
+          </p>
+        ) : (
+          <Campo rotulo="Veículo *" erro={erros.veiculoId}>
+            <Select {...form.register('veiculoId')}>
+              <option value="">Escolha o veículo</option>
+              {veiculos.data?.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {formatarPlaca(v.placa)} — {v.marca} {v.modelo}
+                </option>
+              ))}
+            </Select>
+          </Campo>
+        )}
+        <Campo rotulo="Km de entrada *" erro={erros.kmEntrada}>
+          <Input
+            type="number"
+            inputMode="numeric"
+            min={0}
+            {...form.register('kmEntrada', { setValueAs: (v) => (v === '' || v == null ? undefined : Number(v)) })}
+          />
+        </Campo>
+        <Campo rotulo="Relato do cliente" erro={erros.relatoCliente}>
+          <AreaTexto rows={3} {...form.register('relatoCliente')} />
+        </Campo>
+        <Alerta>{converter.isError && aplicarErrosDaApi(converter.error, form.setError)}</Alerta>
+        <div className="flex justify-end gap-2">
+          <Botao type="button" variante="secundario" onClick={aoFechar}>
+            Voltar
+          </Botao>
+          <Botao type="submit" disabled={converter.isPending}>
+            {converter.isPending ? 'Convertendo…' : 'Converter em O.S.'}
+          </Botao>
+        </div>
+      </form>
+    </Janela>
   );
 }

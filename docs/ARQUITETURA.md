@@ -190,18 +190,19 @@ lancamentos (id, tenant_id, tipo receber|pagar, descricao, categoria, valor, ven
 pagamentos (id, tenant_id, os_id?, lancamento_id?, forma pix|credito|debito|dinheiro|boleto|transferencia,
             valor, parcelas, referencia /* NSU, id Pix */, recebido_em, user_id)
 
-contadores (tenant_id + chave [PK], valor)  -- sequências por oficina: usuarios, funcoes, vendedores (e O.S.)
+contadores (tenant_id + chave [PK], valor)  -- sequências por oficina: usuarios, funcoes, vendedores, ordens_servico
 ```
 
 ### Ciclo de vida da O.S.
 
 ```
- orcamento ──► aguardando_aprovacao ──► aprovada ──► em_execucao ──► concluida ──► entregue
-     │                 │                                  │  ▲
-     │                 └──► recusada                      ▼  │
-     └──────────────────────────► cancelada          aguardando_peca
+ aberta ──► em_diagnostico ──► aguardando_aprovacao ──► aprovada ──► em_execucao ──► concluida ──► entregue
+                                       │                               │  ▲
+                                       └──► recusada                   ▼  │
+ qualquer situação em aberto ──► cancelada (motivo)               aguardando_peca
 ```
 
+- Regras, ações e permissões: `docs/modulos/ORDENS_SERVICO.md` (O.S. convertida do orçamento nasce `aberta` com os itens aprovados).
 - Toda transição grava um `os_eventos` (quem, quando, de → para).
 - Peça lançada na O.S. **reserva/baixa estoque** ao entrar em `em_execucao` (movimento `saida` com `os_id`); cancelamento estorna.
 - Ao `concluida`, gera o lançamento `receber`; os pagamentos registrados abatem o saldo.
@@ -290,7 +291,7 @@ Com um Ingress fazendo o TLS no cluster, o Caddy fica só com o front e o repass
 
 1. **Nenhum arquivo no disco do container.** Por decisão do produto, **todos os dados ficam no PostgreSQL**, inclusive arquivos pequenos como o logo da oficina (`bytea`, até 1 MB), que assim entram no mesmo backup. Arquivos grandes e numerosos (fotos do checklist, PDFs) devem ser reavaliados quando chegarem: no banco enquanto o volume for pequeno; se o banco crescer demais, migrar para storage compatível com S3 (MinIO, R2, B2) guardando só a chave no banco.
 2. **Nenhum estado compartilhado em memória.** Cache, contadores, rate limit, travas e filas ficam no Postgres ou no Redis (o cache de leitura, §3.1). Cache em memória só para dados imutáveis ou que tolerem ficar diferentes entre réplicas.
-3. **Sequências de negócio geradas no banco.** Códigos de usuário, função e vendedor (e, depois, o número da O.S.) vêm da tabela `contadores` pela função `proximo_codigo('<chave>')`, usada como DEFAULT da coluna (migração 0018): UPSERT com trava da linha dentro da transação, sem buraco quando o INSERT é desfeito. O trigger `impedir_troca_de_codigo` bloqueia alterar o código depois. Nunca em memória.
+3. **Sequências de negócio geradas no banco.** Códigos de usuário, função e vendedor e o número da O.S. vêm da tabela `contadores` pela função `proximo_codigo('<chave>')`, usada como DEFAULT da coluna (migração 0018): UPSERT com trava da linha dentro da transação, sem buraco quando o INSERT é desfeito. O trigger `impedir_troca_de_codigo` bloqueia alterar o código depois. Nunca em memória.
 4. **Nada agendado dentro da API.** Tarefas periódicas (alerta de estoque mínimo, lembretes) rodam num processo `worker` separado ou garantem execução única com `pg_try_advisory_lock`. Com N réplicas, um `setInterval` na API roda N vezes.
 5. **Conexões com o banco são finitas.** Cada réplica abre até `DB_POOL_MAX` conexões (padrão 10), com `statement_timeout` e `idle_in_transaction_session_timeout`. Réplicas × pool + folga ≤ `max_connections`; além disso, PgBouncer (modo transaction) na frente do Postgres. O `set_config(..., true)` do `withTenant` é local à transação, então é compatível com esse modo (`docs/performance/DATABASE.md` §7).
 

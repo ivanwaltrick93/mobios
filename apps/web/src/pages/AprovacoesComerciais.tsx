@@ -9,7 +9,7 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { BadgeCheck } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router';
-import { AcoesDecisao, SeloAprovacao, usePodeDecidir } from '../components/AprovacaoComercial';
+import { AcoesDecisao, SeloAprovacao, SeloTipoDocumento, usePodeDecidir } from '../components/AprovacaoComercial';
 import {
   Alerta,
   BarraFiltros,
@@ -134,12 +134,14 @@ export function AprovacoesComerciais() {
                     {a.documentoNumero}
                   </Link>
                 </Td>
-                <Td suave>{TIPOS_DOCUMENTO_COMERCIAL[a.tipoDocumento]}</Td>
+                <Td>
+                  <SeloTipoDocumento tipo={a.tipoDocumento} />
+                </Td>
                 <Td className="min-w-40">{a.clienteNome}</Td>
                 <Td suave>{a.solicitante}</Td>
                 <Td suave>{a.solicitanteFuncao ?? '—'}</Td>
                 <Td suave className="text-right tabular-nums">
-                  {a.documentoVersao}
+                  {a.tipoDocumento === 'ordem_servico' ? '—' : a.documentoVersao}
                 </Td>
                 <Td className="whitespace-nowrap text-right tabular-nums">{formatarMoeda(a.subtotalCentavos)}</Td>
                 <Td className="whitespace-nowrap text-right tabular-nums">{formatarMoeda(a.descontoCentavos)}</Td>

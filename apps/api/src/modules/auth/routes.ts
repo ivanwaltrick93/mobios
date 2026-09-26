@@ -33,6 +33,7 @@ async function carregarSessao(userId: string, tenantId: string): Promise<Sessao 
       usuario: { ...linha.usuario, fotoVersao: versaoFoto(linha.fotoEm), admin: acesso.admin, funcoes: acesso.funcoes },
       acessos: acesso.acessos,
       vendedorId: acesso.vendedorId,
+      mecanico: acesso.mecanico,
       oficina: { ...linha.oficina, tema: await lerTema(tx), logoVersao: await lerVersaoLogo(tx) },
     };
   });

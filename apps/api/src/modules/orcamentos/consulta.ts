@@ -15,6 +15,7 @@ import {
   clientes,
   orcamentos,
   orcamentosEventos,
+  ordensServico,
   tabelasPreco,
   users,
   veiculos,
@@ -161,6 +162,12 @@ export async function carregar(tx: Tx, id: string, dono: string | null, avisos: 
     .orderBy(desc(aprovacoesComerciais.criadoEm))
     .limit(1);
 
+  // A O.S. guarda a referência ao orçamento; o orçamento não muda ao ser convertido (ORCAMENTOS.md §6, CV-07).
+  const [ordemServico] = await tx
+    .select({ id: ordensServico.id, numero: ordensServico.numero })
+    .from(ordensServico)
+    .where(eq(ordensServico.orcamentoId, id));
+
   const { cliente, veiculoId, veiculoPlaca, veiculoMarca, veiculoModelo, ...resto } = o;
   return {
     ...resto,
@@ -176,6 +183,7 @@ export async function carregar(tx: Tx, id: string, dono: string | null, avisos: 
       descontoPercentual: descontoPercentual == null ? null : descontoPercentual / 100,
     })),
     aprovacaoComercial: aprovacao ? { ...aprovacao, solicitante: aprovacao.solicitante ?? '' } : null,
+    ordemServico: ordemServico ?? null,
     eventos,
     versoes,
     avisos,

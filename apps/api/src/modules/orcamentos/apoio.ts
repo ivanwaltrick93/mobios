@@ -16,7 +16,7 @@ import {
 import { and, asc, count, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { withTenant } from '../../db/client.js';
+import { withTenant, type Tx } from '../../db/client.js';
 import {
   clienteEnderecos,
   clientes,
@@ -32,7 +32,7 @@ import { buscaDeMaterial, buscaDeServico } from '../../lib/cadastro.js';
 import { naoEncontrado } from '../../lib/erros.js';
 import { buscaDeCliente } from '../clientes/routes.js';
 import { colunasPendencia, exigirQuemAltera, pendencias, situacaoSql, type BasePendencia } from './consulta.js';
-import { precosDoDia } from './regras.js';
+import { precosDoDia, type UsoDoItem } from './regras.js';
 
 /** Colunas da janela de escolha do cliente (lista e recentes), com a cidade principal e as placas. */
 const colunasClienteParaOrcamento = {
@@ -60,6 +60,120 @@ const paraClienteParaOrcamento = (
   pendencias: pendencias(c),
 });
 
+/** Janela de escolha do cliente (orçamento e O.S.): lista paginada, filtros de situação e tipo, placas. */
+export async function listarClientesParaEscolha(tx: Tx, filtro: z.output<typeof clienteParaOrcamentoFiltroSchema>) {
+  const { q, ativo, tipo, pagina, porPagina } = filtro;
+  const onde = and(
+    q ? buscaDeCliente(q) : undefined,
+    ativo ? eq(clientes.ativo, ativo === 'true') : undefined,
+    tipo ? eq(clientes.tipo, tipo) : undefined,
+  );
+  const lista = await tx
+    .select(colunasClienteParaOrcamento)
+    .from(clientes)
+    .where(onde)
+    .orderBy(asc(clientes.nome), asc(clientes.id))
+    .limit(porPagina)
+    .offset((pagina - 1) * porPagina);
+  const [{ total }] = (await tx.select({ total: count() }).from(clientes).where(onde)) as [{ total: number }];
+  return { itens: lista.map(paraClienteParaOrcamento), total };
+}
+
+/** Clientes pelos ids, na ordem pedida (recentes da janela de escolha). */
+export async function clientesParaEscolhaPorId(tx: Tx, ids: string[]) {
+  if (!ids.length) return [];
+  const lista = await tx.select(colunasClienteParaOrcamento).from(clientes).where(inArray(clientes.id, ids));
+  const porId = new Map(lista.map((c) => [c.id, c]));
+  return ids.flatMap((id) => {
+    const c = porId.get(id);
+    return c ? [paraClienteParaOrcamento(c)] : [];
+  });
+}
+
+/** Veículos do cliente, o principal primeiro. */
+export const veiculosDoCliente = (tx: Tx, clienteId: string) =>
+  tx
+    .select({ id: veiculos.id, placa: veiculos.placa, marca: veiculos.marca, modelo: veiculos.modelo })
+    .from(veiculos)
+    .where(eq(veiculos.clienteId, clienteId))
+    .orderBy(desc(veiculos.principal), asc(veiculos.placa));
+
+/**
+ * Busca de itens com o preço de hoje na tabela: produtos ativos com "Permite venda" (orçamento) ou "Permite uso em
+ * O.S." (O.S.) e serviços ativos. Sem preço (`precoCentavos` null) aparece, mas não pode ser incluído.
+ */
+export async function itensComPrecoDoDia(
+  tx: Tx,
+  { q, tabelaPrecoId, tipo }: z.output<typeof itemVendavelQuerySchema>,
+  uso: UsoDoItem,
+): Promise<ItemVendavel[]> {
+  // Filtro por tipo: a consulta do outro tipo nem roda.
+  const listaMateriais =
+    tipo === 'servico'
+      ? []
+      : await tx
+          .select({
+            id: materiais.id,
+            sku: materiais.sku,
+            descricao: materiais.descricao,
+            unidade: materiais.unidade,
+            multiplo: materiais.multiplo,
+            estoque: sql<number>`(select coalesce(sum(e.disponivel - e.reservado), 0)
+        from estoques e where e.material_id = "materiais"."id")`.mapWith(Number),
+          })
+          .from(materiais)
+          .where(
+            and(
+              eq(materiais.ativo, true),
+              uso === 'os' ? eq(materiais.permiteUsoOs, true) : eq(materiais.permiteVenda, true),
+              buscaDeMaterial(q),
+            ),
+          )
+          .orderBy(asc(materiais.descricao))
+          .limit(10);
+  const listaServicos =
+    tipo === 'material'
+      ? []
+      : await tx
+          .select({
+            id: servicos.id,
+            codigo: servicos.codigo,
+            nome: servicos.nome,
+            formaPreco: servicos.formaPreco,
+            tempoMinutos: servicos.tempoMinutos,
+          })
+          .from(servicos)
+          .where(and(eq(servicos.ativo, true), buscaDeServico(q)))
+          .orderBy(asc(servicos.nome))
+          .limit(10);
+  const itens: Omit<ItemVendavel, 'precoCentavos'>[] = [
+    ...listaMateriais.map((m) => ({
+      tipo: 'material' as const,
+      id: m.id,
+      codigo: m.sku,
+      descricao: m.descricao,
+      unidade: m.unidade,
+      formaPreco: null,
+      multiplo: m.multiplo,
+      fracionada: UNIDADES[m.unidade].fracionada,
+      estoque: m.estoque,
+    })),
+    ...listaServicos.map((s) => ({
+      tipo: 'servico' as const,
+      id: s.id,
+      codigo: formatarCodigoServico(s.codigo),
+      descricao: s.nome,
+      unidade: s.formaPreco === 'hora' ? 'H' : 'UN',
+      formaPreco: s.formaPreco,
+      multiplo: s.formaPreco === 'hora' ? s.tempoMinutos! : 1,
+      fracionada: false,
+      estoque: null,
+    })),
+  ];
+  const precos = await precosDoDia(tx, itens, tabelaPrecoId, hojeIso());
+  return itens.map((i) => ({ ...i, precoCentavos: precos.get(`${i.tipo}:${i.id}`) ?? null }));
+}
+
 /**
  * Apoio à tela do orçamento (sem depender dos módulos Clientes, Preços ou da Equipe). Registrado dentro de
  * `orcamentosRoutes`, herda a autenticação e o acesso ao módulo.
@@ -77,25 +191,7 @@ export const apoioOrcamentoRoutes: FastifyPluginAsyncZod = async (app) => {
         response: { 200: z.object({ itens: z.array(clienteParaOrcamentoSchema), total: z.number() }) },
       },
     },
-    async (req) => {
-      const { q, ativo, tipo, pagina, porPagina } = req.query;
-      const onde = and(
-        q ? buscaDeCliente(q) : undefined,
-        ativo ? eq(clientes.ativo, ativo === 'true') : undefined,
-        tipo ? eq(clientes.tipo, tipo) : undefined,
-      );
-      return withTenant(req.user.tid, async (tx) => {
-        const lista = await tx
-          .select(colunasClienteParaOrcamento)
-          .from(clientes)
-          .where(onde)
-          .orderBy(asc(clientes.nome), asc(clientes.id))
-          .limit(porPagina)
-          .offset((pagina - 1) * porPagina);
-        const [{ total }] = (await tx.select({ total: count() }).from(clientes).where(onde)) as [{ total: number }];
-        return { itens: lista.map(paraClienteParaOrcamento), total };
-      });
-    },
+    async (req) => withTenant(req.user.tid, (tx) => listarClientesParaEscolha(tx, req.query)),
   );
 
   /**
@@ -114,21 +210,10 @@ export const apoioOrcamentoRoutes: FastifyPluginAsyncZod = async (app) => {
           .groupBy(orcamentos.clienteId)
           .orderBy(desc(sql`max(${orcamentos.criadoEm})`))
           .limit(5);
-        if (!ultimos.length) return [];
-        const lista = await tx
-          .select(colunasClienteParaOrcamento)
-          .from(clientes)
-          .where(
-            inArray(
-              clientes.id,
-              ultimos.map((u) => u.clienteId),
-            ),
-          );
-        const porId = new Map(lista.map((c) => [c.id, c]));
-        return ultimos.flatMap((u) => {
-          const c = porId.get(u.clienteId);
-          return c ? [paraClienteParaOrcamento(c)] : [];
-        });
+        return clientesParaEscolhaPorId(
+          tx,
+          ultimos.map((u) => u.clienteId),
+        );
       }),
   );
 
@@ -221,14 +306,7 @@ export const apoioOrcamentoRoutes: FastifyPluginAsyncZod = async (app) => {
   app.get(
     '/apoio/clientes/:id/veiculos',
     { ...editar, schema: { params: idParamSchema, response: { 200: z.array(veiculoParaOrcamentoSchema) } } },
-    async (req) =>
-      withTenant(req.user.tid, (tx) =>
-        tx
-          .select({ id: veiculos.id, placa: veiculos.placa, marca: veiculos.marca, modelo: veiculos.modelo })
-          .from(veiculos)
-          .where(eq(veiculos.clienteId, req.params.id))
-          .orderBy(desc(veiculos.principal), asc(veiculos.placa)),
-      ),
+    async (req) => withTenant(req.user.tid, (tx) => veiculosDoCliente(tx, req.params.id)),
   );
 
   /** Todos os vendedores (o filtro da lista usa também os inativos; o formulário oferece só os ativos). */
@@ -260,76 +338,10 @@ export const apoioOrcamentoRoutes: FastifyPluginAsyncZod = async (app) => {
       ),
   );
 
-  /**
-   * Materiais (ativos, "Permite venda") e serviços (ativos) com o preço de hoje na tabela. Sem preço
-   * (`precoCentavos` null) aparece na busca, mas não pode ser incluído.
-   */
+  /** Produtos com "Permite venda" e serviços, com o preço de hoje na tabela (itensComPrecoDoDia). */
   app.get(
     '/apoio/itens',
     { ...editar, schema: { querystring: itemVendavelQuerySchema, response: { 200: z.array(itemVendavelSchema) } } },
-    async (req) => {
-      const { q, tabelaPrecoId, tipo } = req.query;
-      return withTenant(req.user.tid, async (tx) => {
-        // Filtro por tipo: a consulta do outro tipo nem roda.
-        const listaMateriais =
-          tipo === 'servico'
-            ? []
-            : await tx
-                .select({
-                  id: materiais.id,
-                  sku: materiais.sku,
-                  descricao: materiais.descricao,
-                  unidade: materiais.unidade,
-                  multiplo: materiais.multiplo,
-                  estoque: sql<number>`(select coalesce(sum(e.disponivel - e.reservado), 0)
-              from estoques e where e.material_id = "materiais"."id")`.mapWith(Number),
-                })
-                .from(materiais)
-                .where(and(eq(materiais.ativo, true), eq(materiais.permiteVenda, true), buscaDeMaterial(q)))
-                .orderBy(asc(materiais.descricao))
-                .limit(10);
-        const listaServicos =
-          tipo === 'material'
-            ? []
-            : await tx
-                .select({
-                  id: servicos.id,
-                  codigo: servicos.codigo,
-                  nome: servicos.nome,
-                  formaPreco: servicos.formaPreco,
-                  tempoMinutos: servicos.tempoMinutos,
-                })
-                .from(servicos)
-                .where(and(eq(servicos.ativo, true), buscaDeServico(q)))
-                .orderBy(asc(servicos.nome))
-                .limit(10);
-        const itens: Omit<ItemVendavel, 'precoCentavos'>[] = [
-          ...listaMateriais.map((m) => ({
-            tipo: 'material' as const,
-            id: m.id,
-            codigo: m.sku,
-            descricao: m.descricao,
-            unidade: m.unidade,
-            formaPreco: null,
-            multiplo: m.multiplo,
-            fracionada: UNIDADES[m.unidade].fracionada,
-            estoque: m.estoque,
-          })),
-          ...listaServicos.map((s) => ({
-            tipo: 'servico' as const,
-            id: s.id,
-            codigo: formatarCodigoServico(s.codigo),
-            descricao: s.nome,
-            unidade: s.formaPreco === 'hora' ? 'H' : 'UN',
-            formaPreco: s.formaPreco,
-            multiplo: s.formaPreco === 'hora' ? s.tempoMinutos! : 1,
-            fracionada: false,
-            estoque: null,
-          })),
-        ];
-        const precos = await precosDoDia(tx, itens, tabelaPrecoId, hojeIso());
-        return itens.map((i) => ({ ...i, precoCentavos: precos.get(`${i.tipo}:${i.id}`) ?? null }));
-      });
-    },
+    async (req) => withTenant(req.user.tid, (tx) => itensComPrecoDoDia(tx, req.query, 'venda')),
   );
 };

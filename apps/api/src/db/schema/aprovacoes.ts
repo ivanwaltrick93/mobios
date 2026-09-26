@@ -27,6 +27,7 @@ import {
 import { isolamentoPorTenant, tenantId, timestamps } from './comum.js';
 import { autoria, fksAutoria, funcoes, users } from './oficina.js';
 import { orcamentos } from './orcamentos.js';
+import { ordensServico } from './ordensServico.js';
 
 // ---------- Aprovação comercial por alçada (docs/modulos/APROVACAO_COMERCIAL.md) ----------
 
@@ -106,6 +107,7 @@ export const aprovacoesComerciais = pgTable(
     tenantId: tenantId(),
     tipoDocumento: tipoDocumentoComercial().notNull(),
     orcamentoId: uuid(),
+    ordemServicoId: uuid(),
     /** Número formatado (ORC-0000000001) e versão do documento, como estavam na solicitação. */
     documentoNumero: text().notNull(),
     documentoVersao: integer().notNull(),
@@ -134,10 +136,21 @@ export const aprovacoesComerciais = pgTable(
     uniqueIndex('aprovacoes_comerciais_uma_pendente')
       .on(t.tenantId, t.tipoDocumento, t.orcamentoId)
       .where(sql`${t.status} = 'pendente'`),
+    uniqueIndex('aprovacoes_comerciais_uma_pendente_os')
+      .on(t.tenantId, t.ordemServicoId)
+      .where(sql`${t.status} = 'pendente' and ${t.ordemServicoId} is not null`),
     foreignKey({ columns: [t.tenantId, t.orcamentoId], foreignColumns: [orcamentos.tenantId, orcamentos.id] }),
+    foreignKey({
+      columns: [t.tenantId, t.ordemServicoId],
+      foreignColumns: [ordensServico.tenantId, ordensServico.id],
+    }),
     foreignKey({ columns: [t.tenantId, t.solicitanteId], foreignColumns: [users.tenantId, users.id] }),
     foreignKey({ columns: [t.tenantId, t.decididoPor], foreignColumns: [users.tenantId, users.id] }),
-    check('aprovacoes_comerciais_documento', sql`(${t.tipoDocumento} = 'orcamento') = (${t.orcamentoId} is not null)`),
+    check(
+      'aprovacoes_comerciais_documento',
+      sql`(${t.tipoDocumento} = 'orcamento') = (${t.orcamentoId} is not null)
+        and (${t.tipoDocumento} = 'ordem_servico') = (${t.ordemServicoId} is not null)`,
+    ),
     check(
       'aprovacoes_comerciais_alcadas',
       sql`${t.percentual} between 1 and 10000 and ${t.alcadaSolicitante} between 0 and 10000
@@ -162,6 +175,7 @@ export const aprovacoesComerciais = pgTable(
     ),
     index().on(t.tenantId, t.status, t.criadoEm.desc()),
     index().on(t.orcamentoId),
+    index().on(t.ordemServicoId),
     index().on(t.solicitanteId),
     index().on(t.decididoPor),
     isolamentoPorTenant('aprovacoes_comerciais'),

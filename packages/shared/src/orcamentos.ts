@@ -330,6 +330,11 @@ export const orcamentoSchema = orcamentoResumoSchema.extend({
   motivoCancelamento: z.string().nullable(),
   /** Aprovação comercial mais recente desta versão (null = nunca precisou). */
   aprovacaoComercial: aprovacaoDoDocumentoSchema.nullable(),
+  /**
+   * O.S. gerada da conversão deste orçamento (null = não convertido). Lida da O.S., que guarda a referência: o
+   * orçamento não muda ao ser convertido (docs/modulos/ORCAMENTOS.md §6, CV-07).
+   */
+  ordemServico: z.object({ id: z.uuid(), numero: z.number() }).nullable(),
   /** Versões do mesmo número (histórico), da mais nova para a mais antiga. */
   versoes: z.array(z.object({ id: z.uuid(), versaoOrcamento: z.number(), situacao, totalCentavos: z.number() })),
   eventos: z.array(

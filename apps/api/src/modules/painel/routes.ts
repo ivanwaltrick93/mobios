@@ -8,19 +8,21 @@ import {
   painelQuerySchema,
   painelSchema,
   type PeriodoPainel,
+  SITUACOES_OS_EM_ABERTO,
   somarDias,
   temAcesso,
 } from '@mobios/shared';
-import { and, asc, count, desc, eq, sql, type SQL } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, sql, type SQL } from 'drizzle-orm';
 import type { PgColumn } from 'drizzle-orm/pg-core';
 import type { FastifyRequest } from 'fastify';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { withTenant } from '../../db/client.js';
 import { chaveDaOficina, obterOuCarregar, PRAZOS_CACHE, resumoParaChave } from '../../lib/cache.js';
-import { clientes, orcamentos, users, veiculos, vendedores } from '../../db/schema.js';
+import { clientes, orcamentos, ordensServico, users, veiculos, vendedores } from '../../db/schema.js';
 import { contarPendentes } from '../aprovacoes-comerciais/routes.js';
 import { aniversarioNaJanela, diasNaJanela } from '../clientes/routes.js';
 import { situacaoSql } from '../orcamentos/consulta.js';
+import { filtroVisiveis, podeVerOs } from '../ordens-servico/regras.js';
 
 const FUSO = 'America/Sao_Paulo';
 
@@ -80,6 +82,8 @@ export const painelRoutes: FastifyPluginAsyncZod = async (app) => {
         admin: req.user.admin,
         acessos: req.user.acessos,
         vendedorId: req.user.vendedorId,
+        // O mecânico vê só as O.S. dele: o número de O.S. em aberto é do usuário, não do perfil.
+        mecanico: req.user.mecanico ? req.user.sub : null,
       });
       const chave = chaveDaOficina(req.user.tid, 'painel', 'v1', hojeIso(), req.query.periodo, perfil);
       return obterOuCarregar(chave, PRAZOS_CACHE.painel, () => carregarPainel(req), req.log);
@@ -239,14 +243,24 @@ const carregarPainel = (req: FastifyRequest<{ Querystring: { periodo: PeriodoPai
         .limit(5);
     }
 
-    indicadores.push({
-      id: 'os_abertas',
-      titulo: 'O.S. em aberto',
-      valor: null,
-      formato: 'numero',
-      detalhe: 'Disponível com o módulo de O.S.',
-      variacao: null,
-    });
+    // O.S. ainda na oficina, das que o usuário vê (o mecânico, só as vinculadas a ele).
+    if (podeVerOs(req.user)) {
+      const [{ abertas }] = (await tx
+        .select({ abertas: count() })
+        .from(ordensServico)
+        .where(and(inArray(ordensServico.status, SITUACOES_OS_EM_ABERTO), filtroVisiveis(req.user)))) as [
+        { abertas: number },
+      ];
+      indicadores.push({
+        id: 'os_abertas',
+        titulo: 'O.S. em aberto',
+        valor: abertas,
+        formato: 'numero',
+        detalhe: 'na oficina agora',
+        variacao: null,
+        link: '/os',
+      });
+    }
     // Faturamento só para quem acessa o financeiro.
     if (acessa('financeiro'))
       indicadores.push({

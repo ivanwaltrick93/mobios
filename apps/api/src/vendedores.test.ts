@@ -91,13 +91,14 @@ describe('códigos de usuário e de função', () => {
 });
 
 describe('parâmetros de função', () => {
-  it('Atendente já vem com o parâmetro Vendedor; o admin marca e desmarca em outras funções', async () => {
+  it('Atendente já vem com o parâmetro Vendedor e o Mecânico com Mecânico; o admin marca e desmarca', async () => {
     const o = await novaOficina('Oficina Parâmetros');
     expect((await o.chamar('GET', '/api/funcoes/parametros')).json()).toEqual([
+      expect.objectContaining({ codigo: 'MECANICO', nome: 'Mecânico' }),
       expect.objectContaining({ codigo: 'VENDEDOR', nome: 'Vendedor' }),
     ]);
     expect((await o.funcao('Atendente')).parametros).toEqual(['VENDEDOR']);
-    expect((await o.funcao('Mecânico')).parametros).toEqual([]);
+    expect((await o.funcao('Mecânico')).parametros).toEqual(['MECANICO']);
 
     const mecanico = await o.funcao('Mecânico');
     const marcar = await o.chamar('PUT', `/api/funcoes/${mecanico.id}`, {

@@ -9,7 +9,7 @@ Nada de otimizar por opinião: toda mudança de consulta ou índice passa por pl
 
 | Ferramenta | Para quê |
 |---|---|
-| `sh infra/bench/preparar.sh` | Recria o banco **mobios_bench** (separado de `mobios` e `mobios_test`) com dados sintéticos: 1 oficina grande (200 mil clientes, 300 mil orçamentos, 1,5 milhão de itens), 5 médias e 100 pequenas. ~2,5 min, ~2 GB. |
+| `sh infra/bench/preparar.sh` | Recria o banco **mobios_bench** (separado de `mobios` e `mobios_test`) com dados sintéticos: 1 oficina grande (200 mil clientes, 300 mil orçamentos, 1,5 milhão de itens, 150 mil O.S.), 5 médias e 100 pequenas. ~2,5 min, ~2 GB. |
 | `pnpm --filter @mobios/api bench` | Mede ~27 telas críticas (p50/p95 da requisição inteira e quantos comandos SQL cada uma faz). `--saida x.json` guarda o resultado para comparar; `--filtro texto` roda só alguns cenários. |
 | `pnpm --filter @mobios/api bench:carga` | Carga concorrente: N usuários da oficina grande sem pausa + 1 de uma oficina pequena. Mostra vazão, p50/p95/p99, erros e o efeito de uma oficina sobre a outra. |
 | `sh infra/bench/explicar.sh < consulta.sql` | `EXPLAIN (ANALYZE, BUFFERS)` de uma consulta **como a aplicação a executa**: usuário `mobios_app`, RLS ativo e `app.tenant_id` da oficina grande. Explicar como dono (sem RLS) engana: o plano é outro. |

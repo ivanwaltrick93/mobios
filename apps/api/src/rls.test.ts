@@ -65,6 +65,10 @@ describe('isolamento entre oficinas (RLS)', () => {
       'aprovacoes_comerciais',
       'aprovacoes_comerciais_eventos',
       'materiais_pmc_eventos',
+      'ordens_servico',
+      'os_itens',
+      'os_eventos',
+      'os_mecanicos',
     ]) {
       const linhas = await db.execute(sql`select count(*)::int as n from ${sql.identifier(tabela)}`);
       expect(linhas[0]!.n, tabela).toBe(0);
@@ -91,6 +95,7 @@ describe('busca por trecho sob RLS', () => {
     'busca_servicos',
     'busca_vendedores',
     'busca_orcamentos',
+    'busca_ordens_servico',
   ];
   const oficina = async (a: Awaited<ReturnType<typeof novaOficina>>) =>
     (await a.chamar('GET', '/api/auth/sessao')).json().oficina.id as string;

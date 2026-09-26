@@ -7,4 +7,5 @@ export * from './schema/materiais.js';
 export * from './schema/estoque.js';
 export * from './schema/vendedores.js';
 export * from './schema/orcamentos.js';
+export * from './schema/ordensServico.js';
 export * from './schema/aprovacoes.js';

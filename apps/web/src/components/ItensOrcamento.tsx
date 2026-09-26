@@ -79,10 +79,12 @@ const ID_BUSCA = 'busca-item-orcamento';
  * mas não entra. A partir de 2 letras.
  */
 function BuscaItem({
+  endereco,
   tabelaPrecoId,
   tipo,
   aoEscolher,
 }: {
+  endereco: string;
   tabelaPrecoId: string;
   tipo: FiltroTipoItem;
   aoEscolher: (i: ItemVendavel) => void;
@@ -92,11 +94,9 @@ function BuscaItem({
   const termo = useValorAdiado(busca.trim());
   const pronto = busca.trim().length >= 2;
   const resultados = useQuery({
-    queryKey: ['orcamentos', 'apoio', 'itens', tabelaPrecoId, tipo, termo],
+    queryKey: [endereco, tabelaPrecoId, tipo, termo],
     queryFn: ({ signal }) =>
-      api<ItemVendavel[]>(`/orcamentos/apoio/itens?${new URLSearchParams({ q: termo, tabelaPrecoId, tipo })}`, {
-        signal,
-      }),
+      api<ItemVendavel[]>(`${endereco}?${new URLSearchParams({ q: termo, tabelaPrecoId, tipo })}`, { signal }),
     enabled: pronto && termo.length >= 2,
     placeholderData: keepPreviousData,
   });
@@ -438,6 +438,9 @@ export function ItensOrcamento({
   tabelaPrecoId,
   tipo,
   aoMudarTipo,
+  buscaEm = '/orcamentos/apoio/itens',
+  filtros = Object.keys(FILTROS_TIPO) as FiltroTipoItem[],
+  descricao = 'Adicione os produtos e serviços que farão parte deste orçamento.',
 }: {
   linhas: LinhaTela[];
   aoMudarLinhas: (mudanca: (atuais: LinhaTela[]) => LinhaTela[]) => void;
@@ -445,6 +448,11 @@ export function ItensOrcamento({
   /** Filtro da busca (Todos, Materiais, Serviços): só da tela, não é gravado. */
   tipo: FiltroTipoItem;
   aoMudarTipo: (tipo: FiltroTipoItem) => void;
+  /** Rota da busca de itens com preço (a da O.S. traz os produtos com "Permite uso em O.S."). */
+  buscaEm?: string;
+  /** Filtros oferecidos (ex.: só Serviços para quem não pode incluir produtos na O.S.). */
+  filtros?: FiltroTipoItem[];
+  descricao?: string;
 }) {
   return (
     <section aria-labelledby="titulo-itens" className="space-y-3">
@@ -453,7 +461,7 @@ export function ItensOrcamento({
           <h2 id="titulo-itens" className="text-base font-semibold text-texto">
             Produtos e serviços
           </h2>
-          <p className="text-sm text-texto-suave">Adicione os produtos e serviços que farão parte deste orçamento.</p>
+          <p className="text-sm text-texto-suave">{descricao}</p>
         </div>
         <span className="text-xs text-texto-suave">{contarItens(linhas.length)}</span>
       </div>
@@ -462,22 +470,25 @@ export function ItensOrcamento({
         aria-label="Tipo de item na busca"
         className="inline-flex rounded-md border border-borda-forte p-0.5"
       >
-        {Object.entries(FILTROS_TIPO).map(([valor, rotulo]) => (
-          <button
-            key={valor}
-            type="button"
-            role="radio"
-            aria-checked={tipo === valor}
-            onClick={() => aoMudarTipo(valor as FiltroTipoItem)}
-            className={`rounded px-3 py-1 text-sm focus-visible:ring-2 focus-visible:ring-primaria focus-visible:outline-none ${
-              tipo === valor ? 'bg-primaria text-sobre-primaria' : 'text-texto-suave hover:bg-superficie-alt'
-            }`}
-          >
-            {rotulo}
-          </button>
-        ))}
+        {Object.entries(FILTROS_TIPO)
+          .filter(([valor]) => filtros.includes(valor as FiltroTipoItem))
+          .map(([valor, rotulo]) => (
+            <button
+              key={valor}
+              type="button"
+              role="radio"
+              aria-checked={tipo === valor}
+              onClick={() => aoMudarTipo(valor as FiltroTipoItem)}
+              className={`rounded px-3 py-1 text-sm focus-visible:ring-2 focus-visible:ring-primaria focus-visible:outline-none ${
+                tipo === valor ? 'bg-primaria text-sobre-primaria' : 'text-texto-suave hover:bg-superficie-alt'
+              }`}
+            >
+              {rotulo}
+            </button>
+          ))}
       </div>
       <BuscaItem
+        endereco={buscaEm}
         tabelaPrecoId={tabelaPrecoId}
         tipo={tipo}
         aoEscolher={(i) => aoMudarLinhas((atuais) => incluir(atuais, i))}

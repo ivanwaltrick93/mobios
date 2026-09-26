@@ -171,7 +171,7 @@ describe('painel', () => {
       ['valor_aprovado', 0],
       ['ticket_medio', 0],
       ['taxa_aprovacao', null],
-      ['os_abertas', null],
+      ['os_abertas', 0],
       ['faturamento', null],
     ]);
     expect(vazio.periodo.id).toBe('mes');
