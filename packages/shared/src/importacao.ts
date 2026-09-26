@@ -162,6 +162,13 @@ export const COLUNAS_IMPORTACAO_MATERIAIS: ColunaImportacao[] = [
     exemplo: 'UN',
   },
   { nome: 'marca', obrigatoria: false, descricao: 'Nome ou código da marca', exemplo: 'Mann Filter' },
+  {
+    nome: 'pmc',
+    obrigatoria: false,
+    descricao:
+      'PMC (preço médio de compra) em reais, com vírgula decimal. Exige "Custos e margem" em Editar; vazio = sem PMC',
+    exemplo: '',
+  },
   { nome: 'descricao_curta', obrigatoria: false, descricao: 'Até 40 caracteres', exemplo: '' },
   { nome: 'codigo_fabricante', obrigatoria: false, descricao: 'Part number', exemplo: 'W712' },
   { nome: 'codigo_barras', obrigatoria: false, descricao: 'EAN/GTIN', exemplo: '7891000315507' },

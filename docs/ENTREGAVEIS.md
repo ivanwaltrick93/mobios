@@ -37,9 +37,10 @@ Definido pelo dono do produto: o admin configura em **Configurações → Funç�
 
 **Parâmetros da função** (além dos níveis): marcam o que a função habilita. Hoje há um, **Vendedor** (quem pode ser cadastrado como vendedor, CAD-18).
 
-**Módulos da matriz:** Clientes e veículos · **Orçamentos** · **Aprovar orçamentos** · **Aprovação comercial** · Ordem de Serviço · **Peças na O.S.** · **Materiais** · **Serviços** · **Preços** · Estoque · **Recebimentos** · Financeiro · Relatórios.
+**Módulos da matriz:** Clientes e veículos · **Orçamentos** · **Aprovar orçamentos** · **Aprovação comercial** · **Custos e margem** · Ordem de Serviço · **Peças na O.S.** · **Materiais** · **Serviços** · **Preços** · Estoque · **Recebimentos** · Financeiro · Relatórios.
 *Aprovar orçamentos* é separado de *Orçamentos* para escolher quem registra a resposta do cliente (aprovação ou recusa). Desde 25/09/2026, só o Administrador e o **vendedor ativo** (nos próprios orçamentos, seja qual for a função) criam e alteram orçamentos; os demais só consultam, e aprovam se tiverem *Aprovar orçamentos* (regras em `docs/modulos/ORCAMENTOS.md` §5).
 *Aprovação comercial* (Fase 6, 25/09/2026) é outra coisa: quem aprova ou reprova **desconto acima da alçada** (Consultar = ver; Editar = decidir até a própria alçada). Nenhuma função padrão o recebe; a alçada de cada função fica em Configurações → Alçadas de desconto (Administrador 100%, demais 0% até serem configuradas).
+*Custos e margem* (25/09/2026): ver o PMC (preço médio de compra) do material e a análise de margem na aprovação comercial (Consultar) e alterar o PMC (Editar); informação interna, nunca mostrada ao vendedor. Nenhuma função padrão o recebe.
 *Materiais* (materiais, categorias, marcas, depósitos) e *Preços* (tabelas e vigências) são separados para o almoxarife cadastrar peças sem mexer em preço (decisão de 23/09/2026).
 Os módulos *Peças na O.S.* e *Recebimentos* existem para separar ações que, dentro da O.S., não devem ir para todos os que editam a O.S.: o mecânico edita a O.S. (diagnóstico, solicitar peças, execução), mas **não adiciona peças nem registra pagamento**.
 

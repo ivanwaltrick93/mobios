@@ -4,7 +4,6 @@ import {
   formatarMoeda,
   formatarPercentual,
   formatarPlaca,
-  percentualDeDesconto,
   percentualDoDesconto,
   SITUACOES_ORCAMENTO,
   type AprovacaoDoDocumento,
@@ -123,7 +122,7 @@ export function AvisoAprovacaoComercial({ aprovacao }: { aprovacao: AprovacaoDoD
   if (!aprovacao) return null;
   const a = aprovacao;
   const motivo =
-    `Desconto de ${formatarPercentual(a.percentual)} excede a alçada de ${formatarPercentual(a.alcadaSolicitante)}` +
+    `Desconto de até ${formatarPercentual(a.percentual)} por item excede a alçada de ${formatarPercentual(a.alcadaSolicitante)}` +
     `${a.solicitanteFuncao ? ` (${a.solicitanteFuncao})` : ''}.`;
   const decisor = `${a.decisor ?? '—'}${a.decisorFuncao ? ` (${a.decisorFuncao}` : ''}${
     a.alcadaDecisor != null ? `, alçada de ${formatarPercentual(a.alcadaDecisor)})` : a.decisorFuncao ? ')' : ''
@@ -177,24 +176,29 @@ export const useMinhaAlcada = () =>
   useQuery({ queryKey: ['alcadas', 'minha'], queryFn: () => api<MinhaAlcada>('/alcadas/minha'), staleTime: 60_000 });
 
 /**
- * Desconto total × alçada de quem está logado (a mesma regra da emissão, docs/modulos/APROVACAO_COMERCIAL.md): dentro
- * da alçada ou "aprovação comercial necessária ao emitir". Sem desconto, nada. Não decide nada: só antecipa.
+ * Descontos dos itens × alçada de quem está logado (a mesma regra da emissão, por item —
+ * docs/modulos/APROVACAO_COMERCIAL.md): todos dentro ou quantos itens passarão por aprovação comercial ao emitir.
+ * `percentuais`: de cada item, em centésimos. Sem desconto, nada. Não decide nada: só antecipa.
  */
-export function IndicadorAlcada({ subtotal, desconto }: { subtotal: number; desconto: number }) {
+export function IndicadorAlcada({ percentuais }: { percentuais: number[] }) {
   const alcada = useMinhaAlcada().data;
-  const percentual = percentualDeDesconto(subtotal, desconto);
-  if (!alcada || !percentual) return null;
-  const dentro = dentroDaAlcada(percentual, alcada.percentual);
-  const Icone = dentro ? CheckCircle2 : TriangleAlert;
+  if (!alcada || !percentuais.some((p) => p > 0)) return null;
+  const acima = percentuais.filter((p) => !dentroDaAlcada(p, alcada.percentual)).length;
+  const Icone = acima ? TriangleAlert : CheckCircle2;
   return (
-    <p role="status" className={`flex items-start gap-1.5 text-xs ${dentro ? 'text-sucesso' : 'text-alerta'}`}>
+    <p role="status" className={`flex items-start gap-1.5 text-xs ${acima ? 'text-alerta' : 'text-sucesso'}`}>
       <Icone className="mt-px size-4 shrink-0" aria-hidden />
       <span>
-        Desconto total de {formatarPercentual(percentual)}:{' '}
-        {dentro
-          ? `dentro da sua alçada (${formatarPercentual(alcada.percentual)}).`
-          : `aprovação comercial necessária ao emitir (sua alçada é ${formatarPercentual(alcada.percentual)}).`}
+        {acima
+          ? `${acima} ${acima === 1 ? 'item acima' : 'itens acima'} da sua alçada (${formatarPercentual(alcada.percentual)}): ` +
+            'aprovação comercial necessária ao emitir.'
+          : `Todos os descontos dentro da sua alçada (${formatarPercentual(alcada.percentual)}).`}
       </span>
     </p>
   );
 }
+
+/** Texto da dica do item acima da alçada (tabela de itens e revisão). */
+export const dicaItemAcimaDaAlcada = (percentual: number, alcada: number) =>
+  `Desconto de ${formatarPercentual(percentual)} acima da sua alçada (${formatarPercentual(alcada)}): este orçamento ` +
+  'passará por aprovação comercial ao emitir.';

@@ -609,6 +609,11 @@ export const materiais = pgTable(
     multiplo: integer().notNull().default(1),
     /** Tempo de ressuprimento, em dias corridos. */
     leadtimeDias: integer().notNull().default(30),
+    /**
+     * PMC (preço médio de compra), em centavos: custo de compra, base da margem da aprovação comercial. null = não
+     * disponível. Interno (módulo "Custos e margem"); mudanças em materiais_pmc_eventos.
+     */
+    pmcCentavos: bigint({ mode: 'number' }),
     ativo: boolean().notNull().default(true),
     ...autoria,
     ...timestamps,
@@ -623,6 +628,7 @@ export const materiais = pgTable(
     foreignKey({ columns: [t.tenantId, t.categoriaId], foreignColumns: [categorias.tenantId, categorias.id] }),
     foreignKey({ columns: [t.tenantId, t.marcaId], foreignColumns: [marcas.tenantId, marcas.id] }),
     check('materiais_origem_valida', sql`${t.origem} between 0 and 8`),
+    check('materiais_pmc_positivo', sql`${t.pmcCentavos} is null or ${t.pmcCentavos} >= 0`),
     check('materiais_sku_maiusculo', sql`${t.sku} = upper(${t.sku})`),
     check('materiais_multiplo_positivo', sql`${t.multiplo} > 0`),
     check('materiais_leadtime_positivo', sql`${t.leadtimeDias} >= 0`),
@@ -633,6 +639,26 @@ export const materiais = pgTable(
     index().on(t.tenantId, t.codigoFabricante),
     ...fksAutoria(t),
     isolamentoPorTenant('materiais'),
+  ],
+);
+
+/** Histórico do PMC do material (só inclusão; o banco impede alterar e apagar): antes, depois, quem e quando. */
+export const materiaisPmcEventos = pgTable(
+  'materiais_pmc_eventos',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: tenantId(),
+    materialId: uuid().notNull(),
+    antesCentavos: bigint({ mode: 'number' }),
+    depoisCentavos: bigint({ mode: 'number' }),
+    usuarioId: uuid(),
+    criadoEm: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    foreignKey({ columns: [t.tenantId, t.materialId], foreignColumns: [materiais.tenantId, materiais.id] }),
+    foreignKey({ columns: [t.tenantId, t.usuarioId], foreignColumns: [users.tenantId, users.id] }),
+    index().on(t.materialId, t.criadoEm.desc()),
+    isolamentoPorTenant('materiais_pmc_eventos'),
   ],
 );
 
@@ -1117,6 +1143,11 @@ export const orcamentoItens = pgTable(
     precoUnitarioCentavos: bigint({ mode: 'number' }).notNull(),
     /** Percentual digitado (centésimos: 7,5% = 750); null quando o preço foi digitado ou não há desconto. */
     descontoPercentual: integer(),
+    /**
+     * PMC do material congelado no item (ao incluir; atualizado com o preço no recálculo do rascunho e na troca de
+     * tabela). Base da margem da aprovação; nunca vai nas respostas do orçamento. Serviço: null.
+     */
+    pmcCentavos: bigint({ mode: 'number' }),
     brutoCentavos: bigint({ mode: 'number' }).notNull(),
     descontoCentavos: bigint({ mode: 'number' }).notNull(),
     totalCentavos: bigint({ mode: 'number' }).notNull(),
@@ -1147,6 +1178,7 @@ export const orcamentoItens = pgTable(
       'orcamento_itens_servico_sem_negociacao',
       sql`${t.tipo} = 'material' or ${t.precoUnitarioCentavos} = ${t.precoTabelaCentavos}`,
     ),
+    check('orcamento_itens_pmc', sql`${t.pmcCentavos} is null or (${t.tipo} = 'material' and ${t.pmcCentavos} >= 0)`),
     check(
       'orcamento_itens_percentual',
       sql`${t.descontoPercentual} is null or ${t.descontoPercentual} between 0 and 10000`,

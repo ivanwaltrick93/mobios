@@ -9,3 +9,4 @@ export * from './importacao.js';
 export * from './vendedores.js';
 export * from './orcamentos.js';
 export * from './aprovacoes.js';
+export * from './margem.js';

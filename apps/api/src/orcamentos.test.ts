@@ -707,7 +707,7 @@ type AprovacaoDoc = { id: string; status: string; percentual: number; alcadaSoli
 
 /**
  * Cenário com alçadas: Atendente (o vendedor) 5%, Gerente 15% (aprova, pode ser vendedor), Administrador 100%.
- * Filtro a R$ 123,45: 3% → 3,01%; 8% → 8,01%; 20% → 20,00%; 50% → 50,01% do subtotal.
+ * A alçada é por item (o % digitado): filtro a R$ 123,45 com 8% → 8,00% (R$ 9,88 de desconto).
  */
 async function comAlcadas(nome: string) {
   const c = await cenario(nome);
@@ -759,7 +759,7 @@ describe('aprovação comercial por alçada', () => {
     expect(o.situacao).toBe('emitido');
     expect(o.aprovacaoComercial).toBeNull();
     const desconto = o.eventos.find((e: { evento: string }) => e.evento === 'descontos_alterados');
-    expect(desconto.detalhe).toMatch(/sem desconto → 3,01%.*Desconto total: 3,01%/);
+    expect(desconto.detalhe).toMatch(/sem desconto → 3,00%.*Desconto total: 3,01%/);
     expect(desconto.usuario).toMatch(/^Atendente/);
 
     // Igual à alçada também está dentro: o Administrador (100%) emite 100% sem pedir aprovação.
@@ -773,10 +773,10 @@ describe('aprovação comercial por alçada', () => {
     expect(o.situacao).toBe('aguardando_aprovacao_comercial');
     expect(o.emitidoEm).toBeNull();
     const pedido = o.aprovacaoComercial as NonNullable<AprovacaoDoc> & { solicitanteFuncao: string };
-    expect(pedido).toMatchObject({ status: 'pendente', percentual: 801, alcadaSolicitante: 500 });
+    expect(pedido).toMatchObject({ status: 'pendente', percentual: 800, alcadaSolicitante: 500 });
     expect(pedido.solicitanteFuncao).toBe('Atendente');
     expect(o.eventos[0].evento).toBe('aprovacao_comercial_solicitada');
-    expect(o.eventos[0].detalhe).toBe('Desconto de 8,01% excede a alçada de 5,00% (Atendente).');
+    expect(o.eventos[0].detalhe).toBe('1 item: desconto de até 8,00%, acima da alçada de 5,00% (Atendente).');
 
     // Aguardando: não se edita nem se registra a decisão do cliente.
     const editar = await c.atendente.chamar('PUT', `/api/orcamentos/${o.id}`, {
@@ -803,7 +803,9 @@ describe('aprovação comercial por alçada', () => {
       motivoBloqueio: null,
     });
     expect(detalhe.snapshot).toMatchObject({ validadeDias: 7, vendedor: expect.any(String), descontoCentavos: 988 });
-    expect(detalhe.snapshot.itens).toHaveLength(1);
+    expect(detalhe.snapshot.itens).toEqual([
+      expect.objectContaining({ codigo: 'FIL-1', percentual: 800, acimaDaAlcada: true }),
+    ]);
     expect(detalhe.aprovadores).toEqual([
       { funcao: 'Gerente', alcada: 1500 },
       { funcao: 'Administrador', alcada: 10_000 },
@@ -854,6 +856,90 @@ describe('aprovação comercial por alçada', () => {
     expect((await c.aprovacao(c.chamar, pedido.id)).json().alcadaDecisor).toBe(1500);
     const historico = (await c.chamar('GET', '/api/alcadas/historico')).json();
     expect(historico[0]).toMatchObject({ funcao: 'Gerente', percentualAntes: 1500, percentualDepois: 1000 });
+  });
+
+  it('a alçada é por item: um item acima dela manda para aprovação mesmo com o total diluído', async () => {
+    const c = await comAlcadas('Oficina Alçada Por Item');
+    // Óleo (R$ 50,00 × 6) sem desconto e filtro (R$ 123,45) com 15%: no total dá 4,34% (dentro de 5%), mas o
+    // filtro passa da alçada do Atendente.
+    const o = (
+      await c.atendente.chamar(
+        'POST',
+        '/api/orcamentos',
+        orcamento(c, [
+          { tipo: 'material', materialId: c.oleo.id, quantidade: 6 },
+          itemFiltro(c, { descontoPercentual: 15 }),
+        ]),
+      )
+    ).json();
+    const emitido = (await transicao(c.atendente.chamar, o.id, 'emitir', o.versao)).json();
+    expect(emitido.situacao).toBe('aguardando_aprovacao_comercial');
+    expect(emitido.aprovacaoComercial).toMatchObject({ percentual: 1500, alcadaSolicitante: 500 });
+    const detalhe = (await c.aprovacao(c.gerente.chamar, emitido.aprovacaoComercial.id)).json();
+    expect(
+      detalhe.snapshot.itens.map((i: { codigo: string; percentual: number; acimaDaAlcada: boolean }) => [
+        i.codigo,
+        i.percentual,
+        i.acimaDaAlcada,
+      ]),
+    ).toEqual([
+      ['OLEO-6', 0, false],
+      ['FIL-1', 1500, true],
+    ]);
+
+    // Igual à alçada, por item, não pede aprovação: 5% digitado vale 5,00%, embora o desconto em centavos seja
+    // arredondado a favor do cliente (R$ 6,18 de R$ 123,45 = 5,006%).
+    const noLimite = await c.emitir(c.atendente.chamar, 5);
+    expect(noLimite.o.itens[0].descontoCentavos).toBe(618);
+    expect(noLimite.o.situacao).toBe('emitido');
+  });
+
+  it('margem na aprovação: PMC congelado no item, serviço fora, só para quem tem Custos e margem', async () => {
+    const c = await comAlcadas('Oficina Margem');
+    const pmc = (centavos: number, anterior: number | null) =>
+      c.chamar('PUT', `/api/materiais/${c.filtro.id}/pmc`, { pmcCentavos: centavos, anteriorCentavos: anterior });
+    await pmc(8_000, null);
+    // Filtro (R$ 123,45, 8% → R$ 113,57) com PMC R$ 80,00 + serviço de alinhamento (R$ 80,00, sem PMC).
+    const o = (
+      await c.atendente.chamar(
+        'POST',
+        '/api/orcamentos',
+        orcamento(c, [
+          itemFiltro(c, { descontoPercentual: 8 }),
+          { tipo: 'servico', servicoId: c.alinhamento.id, quantidade: 1 },
+        ]),
+      )
+    ).json();
+    // A resposta do orçamento (a que o vendedor usa) nunca traz o PMC.
+    expect(o.itens[0]).not.toHaveProperty('pmcCentavos');
+    // O PMC ficou congelado ao incluir: mudar o cadastro antes da emissão não muda o orçamento.
+    await pmc(10_000, 8_000);
+    const emitido = (await transicao(c.atendente.chamar, o.id, 'emitir', o.versao)).json();
+    const id = emitido.aprovacaoComercial.id as string;
+
+    const margem = (await c.aprovacao(c.chamar, id)).json().snapshot.margem;
+    expect(margem).toMatchObject({ produtosConsiderados: 1, servicosExcluidos: 1, produtosSemPmc: 0 });
+    expect(margem.comDesconto).toMatchObject({ receitaCentavos: 11_357, custoCentavos: 8_000, margemCentavos: 3_357 });
+    expect(margem.comDesconto.margemPercentual).toBeCloseTo(29.5589, 3);
+    expect(margem.semDesconto).toMatchObject({ receitaCentavos: 12_345, margemCentavos: 4_345 });
+    expect(
+      margem.itens.map((i: { considerado: boolean; motivo: string | null; pmcCentavos: number | null }) => [
+        i.considerado,
+        i.motivo,
+        i.pmcCentavos,
+      ]),
+    ).toEqual([
+      [true, null, 8_000],
+      [false, 'servico', null],
+    ]);
+
+    // Aprovação histórica não muda com o cadastro (caso 8).
+    await pmc(12_000, 10_000);
+    expect((await c.aprovacao(c.chamar, id)).json().snapshot.margem.comDesconto.custoCentavos).toBe(8_000);
+    // O gerente decide, mas sem "Custos e margem" não recebe a margem.
+    const doGerente = (await c.aprovacao(c.gerente.chamar, id)).json();
+    expect(doGerente.podeDecidir).toBe(true);
+    expect(doGerente.snapshot).not.toHaveProperty('margem');
   });
 
   it('alçada insuficiente não aprova; o Administrador aprova; quem pediu não decide', async () => {
@@ -977,7 +1063,7 @@ describe('aprovação comercial por alçada', () => {
     const { resposta } = await c.emitir(c.atendente.chamar, 50);
     expect(resposta.statusCode).toBe(400);
     expect(resposta.json().erro).toMatch(
-      /Nenhum usuário pode aprovar 50,01% de desconto \(a maior alçada de quem aprova é 30,00%\)/,
+      /Nenhum usuário pode aprovar 50,00% de desconto \(a maior alçada de quem aprova é 30,00%\)/,
     );
     // Alçada inativa vale 0%.
     await c.alcada(c.funcaoId('Atendente'), 5, false);

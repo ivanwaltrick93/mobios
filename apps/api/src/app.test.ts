@@ -978,6 +978,7 @@ describe('funções e permissões configuráveis', () => {
     materiais: null,
     servicos: null,
     precos: null,
+    custos: null,
     estoque: null,
     recebimentos: null,
     financeiro: null,
@@ -1007,6 +1008,7 @@ describe('funções e permissões configuráveis', () => {
         materiais: 'editar',
         servicos: 'editar',
         precos: 'editar',
+        custos: 'editar',
         estoque: 'editar',
         recebimentos: 'editar',
         financeiro: 'editar',
@@ -1622,6 +1624,7 @@ describe('isolamento entre oficinas (RLS)', () => {
       'alcadas_desconto_eventos',
       'aprovacoes_comerciais',
       'aprovacoes_comerciais_eventos',
+      'materiais_pmc_eventos',
     ]) {
       const linhas = await db.execute(sql`select count(*)::int as n from ${sql.identifier(tabela)}`);
       expect(linhas[0]!.n, tabela).toBe(0);

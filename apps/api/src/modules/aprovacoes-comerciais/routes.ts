@@ -124,7 +124,8 @@ async function carregar(tx: Tx, req: FastifyRequest, id: string): Promise<Aprova
     alcadaDecisor: gravada.alcadaDecisor,
     justificativa: gravada.justificativa,
     documentoVendedorId,
-    snapshot: gravada.snapshot,
+    // Margem (PMC e custo) é interna: só para quem tem "Custos e margem".
+    snapshot: temAcesso(req.user.acessos, 'custos') ? gravada.snapshot : { ...gravada.snapshot, margem: undefined },
     aprovadores: await funcoesQueAprovam(tx, gravada.percentual),
     podeDecidir: motivoBloqueio === null,
     motivoBloqueio,

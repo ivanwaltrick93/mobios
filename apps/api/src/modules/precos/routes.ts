@@ -11,7 +11,6 @@ import {
   precoCancelarSchema,
   precoEncerrarSchema,
   precoInputSchema,
-  PRECO_MAXIMO,
   precoPadraoInputSchema,
   precoPadraoSchema,
   precoSchema,
@@ -40,9 +39,15 @@ import {
   tabelasPreco,
 } from '../../db/schema.js';
 import { buscaDeMaterial, buscaDeServico, nomeUsuario } from '../../lib/cadastro.js';
-import { lerData, lerNumero } from '../../lib/csv.js';
+import { lerData } from '../../lib/csv.js';
 import { ErroHttp, naoEncontrado } from '../../lib/erros.js';
-import { aceitarUploadDeCsv, comparavel, importarLinhas, lerPlanilhaEnviada } from '../../lib/importacao.js';
+import {
+  aceitarUploadDeCsv,
+  comparavel,
+  importarLinhas,
+  lerPlanilhaEnviada,
+  lerReaisEmCentavos,
+} from '../../lib/importacao.js';
 import {
   criarVigencia,
   definirPrecoPadrao,
@@ -566,7 +571,7 @@ export const precosRoutes: FastifyPluginAsyncZod = async (app) => {
               400,
               tipo === 'servico' ? `Serviço "${codigo}" não encontrado.` : `SKU "${codigo}" não encontrado.`,
             );
-          const precoCentavos = lerPrecoCentavos(valor('preco'));
+          const precoCentavos = lerReaisEmCentavos(valor('preco'), 'Preço');
 
           if (!valor('inicio')) {
             const situacao = await definirPrecoPadrao(savepoint, { item, tabelaPrecoId, precoCentavos }, req.user.sub);
@@ -600,13 +605,3 @@ const consultaPadrao = (tx: Tx) =>
     })
     .from(precosPadrao)
     .innerJoin(tabelasPreco, eq(tabelasPreco.id, precosPadrao.tabelaPrecoId));
-
-/** Preço de planilha em reais (vírgula decimal, até 2 casas) convertido para centavos. */
-function lerPrecoCentavos(texto: string): number {
-  const reais = lerNumero(texto);
-  const centavos = reais == null ? NaN : Math.round(reais * 100);
-  if (reais == null || reais < 0 || Math.abs(centavos - reais * 100) > 1e-6 || centavos > PRECO_MAXIMO) {
-    throw new ErroHttp(400, `Preço "${texto}" inválido: use reais com vírgula decimal (ex.: 150,00).`);
-  }
-  return centavos;
-}

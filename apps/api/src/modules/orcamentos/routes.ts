@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import {
+  calcularMargem,
   clienteParaOrcamentoFiltroSchema,
   clienteParaOrcamentoSchema,
   contextoClienteSchema,
@@ -17,7 +18,7 @@ import {
   orcamentoResumoSchema,
   orcamentoSchema,
   pendenciasCliente,
-  percentualDeDesconto,
+  percentualDoItem,
   formatarPercentual,
   situacaoOrcamento,
   SITUACOES_ORCAMENTO,
@@ -239,7 +240,8 @@ async function carregar(tx: Tx, id: string, dono: string | null, avisos: string[
     cliente: { id: cliente.id, nome: cliente.nome, ativo: cliente.ativo, pendencias: pendencias(cliente) },
     veiculo: veiculoId ? { id: veiculoId, placa: veiculoPlaca!, marca: veiculoMarca!, modelo: veiculoModelo! } : null,
     veiculoPlaca,
-    itens: itens.map(({ tenantId: _t, orcamentoId: _o, descontoPercentual, quantidade, ...i }) => ({
+    // O PMC congelado no item é interno (margem da aprovação): nunca vai na resposta do orçamento.
+    itens: itens.map(({ tenantId: _t, orcamentoId: _o, pmcCentavos: _pmc, descontoPercentual, quantidade, ...i }) => ({
       ...i,
       quantidade: quantidade == null ? null : Number(quantidade),
       descontoPercentual: descontoPercentual == null ? null : descontoPercentual / 100,
@@ -335,6 +337,12 @@ const cabecalho = (dados: OrcamentoDados, tabelaPrecoId: string) => ({
   validadeAte: dados.validadeAte,
   observacoes: dados.observacoes,
 });
+
+/** "1 item" / "2 itens" acima da alçada. */
+const itensAcima = (percentuais: number[], alcada: number) => {
+  const n = percentuais.filter((p) => !dentroDaAlcada(p, alcada)).length;
+  return `${n} ${n === 1 ? 'item' : 'itens'}`;
+};
 
 const resumoDoTotal = (itens: number, total: number) => `${itens} item(ns), total ${formatarMoeda(total)}.`;
 
@@ -854,7 +862,12 @@ export const orcamentosRoutes: FastifyPluginAsyncZod = async (app) => {
             { validadeAte: `No máximo ${formatarDataIso(maxima)}` },
           );
 
-        const percentual = percentualDeDesconto(atual.subtotalCentavos, atual.descontoCentavos);
+        // Alçada por item, nunca pelo total (25/09/2026): vale o maior desconto entre os itens.
+        const gravados = await itensDoOrcamento(tx, atual.id);
+        const percentuais = gravados.map((i) =>
+          percentualDoItem(i.precoTabelaCentavos, i.precoUnitarioCentavos, i.descontoPercentual),
+        );
+        const percentual = Math.max(0, ...percentuais);
         const alcada = await alcadaDoUsuario(tx, req.user.sub);
         if (!dentroDaAlcada(percentual, alcada.percentual)) {
           const orcamento = await carregar(tx, atual.id, null);
@@ -871,7 +884,19 @@ export const orcamentosRoutes: FastifyPluginAsyncZod = async (app) => {
             percentual,
             solicitanteId: req.user.sub,
             alcada,
-            snapshot: snapshotDoOrcamento(orcamento, validadeDias),
+            // Margem para o aprovador: PMC congelado nos itens e preço líquido negociado, calculada agora.
+            snapshot: {
+              ...snapshotDoOrcamento(orcamento, validadeDias, alcada.percentual),
+              margem: calcularMargem(
+                gravados.map((i) => ({
+                  tipo: i.tipo,
+                  quantidade: i.quantidade == null ? null : Number(i.quantidade),
+                  brutoCentavos: i.brutoCentavos,
+                  totalCentavos: i.totalCentavos,
+                  pmcCentavos: i.pmcCentavos,
+                })),
+              ),
+            },
           });
           await tx
             .update(orcamentos)
@@ -882,8 +907,8 @@ export const orcamentosRoutes: FastifyPluginAsyncZod = async (app) => {
             atual.id,
             'aprovacao_comercial_solicitada',
             req.user.sub,
-            `Desconto de ${formatarPercentual(percentual)} excede a alçada de ${formatarPercentual(alcada.percentual)}` +
-              `${alcada.funcao ? ` (${alcada.funcao})` : ''}.`,
+            `${itensAcima(percentuais, alcada.percentual)}: desconto de até ${formatarPercentual(percentual)}, acima da ` +
+              `alçada de ${formatarPercentual(alcada.percentual)}${alcada.funcao ? ` (${alcada.funcao})` : ''}.`,
           );
           return carregar(tx, atual.id, req.user.vendedorId);
         }

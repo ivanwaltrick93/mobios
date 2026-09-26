@@ -11,6 +11,7 @@ import {
   formatarQuantidade,
   paraMilesimos,
   percentualDeDesconto,
+  percentualDoItem,
   somarItens,
   UNIDADES,
   type CalculoItem,
@@ -73,6 +74,20 @@ export async function precosDoDia(
     for (const l of linhas) if (l.preco != null) precos.set(chave(tipo, l.id), Number(l.preco));
   }
   return precos;
+}
+
+/**
+ * PMC atual do cadastro de cada material (para congelar no item). Ausente no mapa = sem PMC (não disponível).
+ * Uma consulta para todos.
+ */
+async function pmcsDosMateriais(tx: Tx, ids: string[]): Promise<Map<string, number>> {
+  const unicos = [...new Set(ids)];
+  if (!unicos.length) return new Map();
+  const lista = await tx
+    .select({ id: materiais.id, pmcCentavos: materiais.pmcCentavos })
+    .from(materiais)
+    .where(inArray(materiais.id, unicos));
+  return new Map(lista.flatMap((m) => (m.pmcCentavos == null ? [] : [[m.id, m.pmcCentavos] as [string, number]])));
 }
 
 /** Cadastro dos itens novos (ativos; material também com "Permite venda"). */
@@ -172,7 +187,13 @@ export async function montarItens(
   };
   const novos = entrada.filter((i) => !anterior(i)).map(itemDe);
   const cadastro = await catalogo(tx, novos);
-  const precos = await precosDoDia(tx, trocouTabela ? entrada.map(itemDe) : novos, tabelaPrecoId, hoje);
+  const repreco = trocouTabela ? entrada.map(itemDe) : novos;
+  const precos = await precosDoDia(tx, repreco, tabelaPrecoId, hoje);
+  // PMC: congelado ao incluir; a troca de tabela o atualiza junto com o preço (os demais mantêm o gravado).
+  const pmcs = await pmcsDosMateriais(
+    tx,
+    repreco.filter((i) => i.tipo === 'material').map((i) => i.id),
+  );
 
   const linhas: LinhaItem[] = [];
   for (const [n, i] of entrada.entries()) {
@@ -261,6 +282,7 @@ export async function montarItens(
         precoTabelaCentavos: precoTabela,
         precoUnitarioCentavos: precoUnitario,
         descontoPercentual,
+        pmcCentavos: item.tipo !== 'material' ? null : g && !trocouTabela ? g.pmcCentavos : (pmcs.get(item.id) ?? null),
         brutoCentavos: 0,
         descontoCentavos: 0,
         totalCentavos: 0,
@@ -290,6 +312,11 @@ export async function recalcularDoDia(
     tabelaPrecoId,
     hoje,
   );
+  // O rascunho de outro dia vai aos preços de hoje: o PMC também é o de hoje (não mistura preço novo e custo antigo).
+  const pmcs = await pmcsDosMateriais(
+    tx,
+    gravados.flatMap((g) => (g.materialId ? [g.materialId] : [])),
+  );
   const avisos: string[] = [];
   const linhas: LinhaItem[] = [];
   for (const { tenantId: _t, orcamentoId: _o, ...g } of gravados) {
@@ -312,6 +339,7 @@ export async function recalcularDoDia(
         precoUnitarioCentavos: precoUnitario,
         // O percentual digitado só vale se o preço de tabela não mudou.
         descontoPercentual: novo === g.precoTabelaCentavos ? g.descontoPercentual : null,
+        pmcCentavos: g.materialId ? (pmcs.get(g.materialId) ?? null) : null,
       }),
     );
   }
@@ -339,10 +367,13 @@ type PrecoDaLinha = {
   descricao: string;
   precoTabelaCentavos: number;
   precoUnitarioCentavos: number;
+  /** Centésimos (null = preço digitado ou sem desconto). */
+  descontoPercentual?: number | null;
 };
 
+/** O mesmo percentual que a alçada avalia (por item). */
 const percentualDaLinha = (l: PrecoDaLinha) =>
-  percentualDeDesconto(l.precoTabelaCentavos, l.precoTabelaCentavos - l.precoUnitarioCentavos);
+  percentualDoItem(l.precoTabelaCentavos, l.precoUnitarioCentavos, l.descontoPercentual ?? null);
 const rotuloDesconto = (centesimos: number) => (centesimos ? formatarPercentual(centesimos) : 'sem desconto');
 
 /**

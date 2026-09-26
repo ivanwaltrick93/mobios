@@ -83,6 +83,15 @@ export const MODULOS = [
     descricao: 'Editar = tabelas de preço e novas vigências de preço.',
   },
   {
+    id: 'custos',
+    nome: 'Custos e margem',
+    niveis: ['consultar', 'editar'],
+    disponivel: true,
+    descricao:
+      'Consultar = ver o PMC (preço médio de compra) no cadastro de material e a análise de margem na aprovação ' +
+      'comercial. Editar = alterar o PMC. Informação interna: não aparece para o vendedor.',
+  },
+  {
     id: 'estoque',
     nome: 'Estoque',
     niveis: ['consultar', 'editar'],

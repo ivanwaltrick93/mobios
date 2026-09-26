@@ -601,3 +601,35 @@ export const precoVigenteSchema = z.object({
   origem: z.enum(chaves(ORIGENS_PRECO)).nullable(),
 });
 export type PrecoVigente = z.infer<typeof precoVigenteSchema>;
+
+// ---------- PMC (preço médio de compra) — docs/modulos/MATERIAIS_E_PRECOS.md §PMC ----------
+
+/**
+ * PMC do material: o custo de compra junto ao fornecedor, base da análise de margem da aprovação comercial.
+ * Informação interna (módulo "Custos e margem"): a API só devolve e só aceita para quem tem o módulo.
+ */
+export const pmcSchema = z.object({
+  /** null = não disponível (nunca zero por falta de dado). */
+  pmcCentavos: z.number().nullable(),
+  historico: z.array(
+    z.object({
+      antesCentavos: z.number().nullable(),
+      depoisCentavos: z.number().nullable(),
+      usuario: z.string().nullable(),
+      criadoEm: z.coerce.date(),
+    }),
+  ),
+});
+export type Pmc = z.infer<typeof pmcSchema>;
+
+export const pmcInputSchema = z.object({
+  pmcCentavos: z
+    .number({ error: 'Informe o PMC' })
+    .int('Informe o PMC em centavos')
+    .min(0, 'O PMC não pode ser negativo')
+    .max(PRECO_MAXIMO, 'PMC alto demais')
+    .nullable(),
+  /** O PMC que a tela leu: se outra pessoa mudou antes, 409. */
+  anteriorCentavos: z.number().int().nullable(),
+});
+export type PmcInput = z.infer<typeof pmcInputSchema>;

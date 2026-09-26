@@ -566,3 +566,12 @@ Telas: **Serviços** (tabela com código, nome e situação; busca, filtros de c
 - A padrão **não pode ser inativada** (CHECK `tabelas_preco_padrao_ativa`) **nem excluída**: antes, outra tabela precisa virar a padrão.
 - Nenhum preço existe fora de uma tabela: sem tabela nenhuma, a oficina não faz orçamento.
 - Em **Linhas de Preço**, o "Cadastrar preço" tem o campo **Tabela de preço** (começa pela tabela da tela; lista as ativas, com a padrão indicada). Salvo numa tabela diferente, a lista passa a mostrar essa tabela. No detalhe de uma tabela, o cadastro continua sem o campo: vale a tabela da página.
+
+## PMC (preço médio de compra) — decisão de 25/09/2026
+
+Custo de compra do material junto ao fornecedor, base da **análise de margem da aprovação comercial**
+(`docs/modulos/APROVACAO_COMERCIAL.md` §16). Campo opcional (`materiais.pmc_centavos`; vazio = não disponível, nunca
+zero), fora do cadastro comum: aparece num bloco próprio da tela do material e na coluna `pmc` da importação, só para
+quem tem **Custos e margem** (Consultar vê; Editar altera). Cada mudança fica em `materiais_pmc_eventos` (antes, depois,
+quem, quando; só inclusão). Material com histórico de PMC não pode ser excluído (só inativado). É copiado para o item do
+orçamento quando ele entra.

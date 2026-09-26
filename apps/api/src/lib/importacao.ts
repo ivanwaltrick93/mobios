@@ -1,8 +1,13 @@
-import { IMPORTACAO_TAMANHO_MAXIMO, type ColunaImportacao, type ResultadoImportacao } from '@mobios/shared';
+import {
+  IMPORTACAO_TAMANHO_MAXIMO,
+  PRECO_MAXIMO,
+  type ColunaImportacao,
+  type ResultadoImportacao,
+} from '@mobios/shared';
 import type { FastifyInstance } from 'fastify';
 import type { z } from 'zod';
 import type { Tx } from '../db/client.js';
-import { lerCsv, lerData, type LinhaCsv } from './csv.js';
+import { lerCsv, lerData, lerNumero, type LinhaCsv } from './csv.js';
 import { ErroHttp, traduzirErro } from './erros.js';
 
 // Importação em massa por planilha CSV: o arquivo vem como texto no corpo (Content-Type text/csv),
@@ -105,4 +110,14 @@ export function exigirPrimeiraVez(vistos: Map<string, number>, chave: string, li
   const anterior = vistos.get(chave);
   if (anterior) throw new ErroHttp(400, `${rotulo} repetido na planilha (já aparece na linha ${anterior}).`);
   vistos.set(chave, linha);
+}
+
+/** Valor de planilha em reais (vírgula decimal, até 2 casas) convertido para centavos (preço, PMC). */
+export function lerReaisEmCentavos(texto: string, rotulo: string): number {
+  const reais = lerNumero(texto);
+  const centavos = reais == null ? NaN : Math.round(reais * 100);
+  if (reais == null || reais < 0 || Math.abs(centavos - reais * 100) > 1e-6 || centavos > PRECO_MAXIMO) {
+    throw new ErroHttp(400, `${rotulo} "${texto}" inválido: use reais com vírgula decimal (ex.: 150,00).`);
+  }
+  return centavos;
 }

@@ -1235,3 +1235,58 @@ describe('serviços (menu Ofertas)', () => {
     ]);
   });
 });
+
+describe('PMC do material (Custos e margem)', () => {
+  it('só quem tem Custos e margem vê e altera; histórico imutável; fora do cadastro; importação', async () => {
+    const o = await novaOficina('Oficina PMC');
+    const { material } = await catalogoBasico(o);
+    const url = `/api/materiais/${material.id}/pmc`;
+    const importarPmc = (chamar: typeof o.chamar, pmc: string) =>
+      chamar(
+        'POST',
+        '/api/materiais/importar',
+        planilha('sku;descricao;tipo;categoria;unidade;pmc', `FIL-001;Filtro de óleo W712;Peça;PEC;UN;${pmc}`),
+        { 'content-type': 'text/csv' },
+      );
+
+    // Sem PMC: não disponível (null), nunca zero.
+    expect((await o.chamar('GET', url)).json()).toEqual({ pmcCentavos: null, historico: [] });
+    expect((await o.chamar('PUT', url, { pmcCentavos: 8_000, anteriorCentavos: null })).statusCode).toBe(204);
+    // A tela diz o que leu: outra pessoa mudou antes = 409.
+    expect((await o.chamar('PUT', url, { pmcCentavos: 9_000, anteriorCentavos: null })).statusCode).toBe(409);
+    expect((await o.chamar('PUT', url, { pmcCentavos: -1, anteriorCentavos: 8_000 })).statusCode).toBe(400);
+    await o.chamar('PUT', url, { pmcCentavos: 9_000, anteriorCentavos: 8_000 });
+    const pmc = (await o.chamar('GET', url)).json();
+    expect(pmc.pmcCentavos).toBe(9_000);
+    expect(
+      pmc.historico.map((h: { antesCentavos: number | null; depoisCentavos: number | null }) => [
+        h.antesCentavos,
+        h.depoisCentavos,
+      ]),
+    ).toEqual([
+      [8_000, 9_000],
+      [null, 8_000],
+    ]);
+    // O cadastro do material (que quem tem Materiais vê) não traz o PMC.
+    expect((await o.chamar('GET', `/api/materiais/${material.id}`)).json()).not.toHaveProperty('pmcCentavos');
+
+    // Almoxarife (Materiais em Editar, sem Custos e margem): não vê, não altera, não importa PMC.
+    const almoxarife = await o.pessoa('Almoxarife');
+    expect((await almoxarife('GET', url)).statusCode).toBe(403);
+    expect((await almoxarife('PUT', url, { pmcCentavos: 1, anteriorCentavos: 9_000 })).statusCode).toBe(403);
+    const semPermissao = (await importarPmc(almoxarife, '50,00')).json();
+    expect(semPermissao.erros[0].mensagem).toMatch(/^pmc: você não tem permissão/);
+
+    // Administrador importa: valor grava; vazio = sem PMC; inválido = erro na linha.
+    await importarPmc(o.chamar, '12,34');
+    expect((await o.chamar('GET', url)).json().pmcCentavos).toBe(1_234);
+    expect((await importarPmc(o.chamar, 'abc')).json().erros[0].mensagem).toMatch(/PMC "abc" inválido/);
+    await importarPmc(o.chamar, '');
+    expect((await o.chamar('GET', url)).json().pmcCentavos).toBeNull();
+
+    // Histórico só de inclusão, mesmo por fora da API.
+    await expect(
+      withTenant(o.tid, (tx) => tx.execute(sql`update materiais_pmc_eventos set depois_centavos = 0`)),
+    ).rejects.toThrow();
+  });
+});

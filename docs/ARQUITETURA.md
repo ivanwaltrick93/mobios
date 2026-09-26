@@ -130,13 +130,16 @@ orcamentos (id, tenant_id, numero [seq. por oficina], versao_orcamento, orcament
             veiculo_id?, vendedor_id, tabela_preco_id, validade_ate, precos_em, subtotal/desconto/total_centavos,
             emitido/enviado/aprovado/recusado/cancelado em+por, observacoes)   -- "vencido" é calculado pela validade
 orcamento_itens (id, tenant_id, orcamento_id, ordem, tipo material|servico, material_id?|servico_id?, codigo, descricao,
-                 unidade, multiplo, quantidade|tempo_minutos, preco_tabela, preco_unitario, desconto_percentual?, totais)
+                 unidade, multiplo, quantidade|tempo_minutos, preco_tabela, preco_unitario, desconto_percentual?, totais,
+                 pmc_centavos? [PMC congelado; interno])
 orcamentos_eventos (id, tenant_id, orcamento_id, evento, detalhe, usuario_id, criado_em)   -- histórico
 alcadas_desconto (id, tenant_id, funcao_id [única], percentual [centésimos], ativa)   -- sem linha = 0%
 alcadas_desconto_eventos (id, tenant_id, funcao_id, percentual/ativa antes e depois, usuario_id, criado_em)
 aprovacoes_comerciais (id, tenant_id, tipo_documento, orcamento_id? [depois: pedido_venda_id?, os_id?], documento
             numero/versao, cliente_nome, subtotal/desconto/total, percentual, solicitante + funcao + alcada, status
             pendente|aprovada|reprovada|cancelada, decidido_por + funcao + alcada + em, justificativa, snapshot jsonb)
+materiais_pmc_eventos (id, tenant_id, material_id, antes/depois_centavos, usuario_id, criado_em)   -- histórico do PMC
+            (materiais.pmc_centavos: preço médio de compra; só com o módulo Custos e margem)
 aprovacoes_comerciais_eventos (id, tenant_id, aprovacao_id, evento, usuario_id, funcao, alcada, detalhe, criado_em)
             -- aprovação comercial por alçada (docs/modulos/APROVACAO_COMERCIAL.md); eventos imutáveis (trigger)
 

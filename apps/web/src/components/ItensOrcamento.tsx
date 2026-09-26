@@ -1,4 +1,5 @@
 import {
+  dentroDaAlcada,
   arredondarMinutos,
   arredondarQuantidade,
   calcularItem,
@@ -13,6 +14,7 @@ import {
   mascaraQuantidade,
   moedaParaCentavos,
   paraMilesimos,
+  percentualDoItem,
   percentualParaNumero,
   quantidadeParaNumero,
   TIPOS_ITEM_PRECO,
@@ -24,7 +26,7 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { ArrowRight, Minus, PackageSearch, Plus, Search, Trash2 } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { api } from '../lib/api';
-import { PrecoNegociado } from './Orcamento';
+import { dicaItemAcimaDaAlcada, PrecoNegociado, useMinhaAlcada } from './Orcamento';
 import { Botao, Cabecalho, Dica, Input, Linha, Select, Selo, Tabela, Td, TextoSuave, Th, Vazio } from './ui';
 
 // Itens do orçamento (docs/modulos/ORCAMENTOS.md §2): a linha como a pessoa digita, as contas e a etapa de itens.
@@ -113,6 +115,27 @@ const quantidadeDaLinha = (l: LinhaTela) =>
   l.formaPreco === 'hora'
     ? { tempoMinutos: horasParaMinutos(l.horas) || 0 }
     : { quantidadeMilesimos: paraMilesimos(quantidadeParaNumero(l.quantidade) ?? 0) };
+
+/** Percentual de desconto do item (centésimos), o mesmo que a alçada avalia na emissão (por item). */
+export const percentualDaLinha = (l: LinhaTela) => {
+  const { unitario, percentual } = precoDaLinha(l);
+  return percentualDoItem(l.precoTabelaCentavos, unitario, percentual == null ? null : Math.round(percentual * 100));
+};
+
+/** Itens acima da alçada de quem está logado: `acima(l)` devolve o percentual do item se passa, senão null. */
+export function useItensAcimaDaAlcada() {
+  const alcada = useMinhaAlcada().data?.percentual;
+  return {
+    alcada,
+    acima: (l: LinhaTela) => {
+      const p = percentualDaLinha(l);
+      return alcada != null && !dentroDaAlcada(p, alcada) ? p : null;
+    },
+  };
+}
+
+/** Contorno laranja da linha (item acima da alçada). */
+export const CONTORNO_ACIMA_DA_ALCADA = 'outline-2 -outline-offset-2 outline-alerta';
 
 export const calculoDaLinha = (l: LinhaTela) =>
   calcularItem(l.precoTabelaCentavos, precoDaLinha(l).unitario, quantidadeDaLinha(l));
@@ -376,7 +399,11 @@ function ControleQuantidade({ l, aoMudar }: PropsLinha) {
 /** Preço de tabela e negociado; no serviço por hora, "/h" discreto embaixo. */
 const PrecoDaLinha = ({ l }: { l: LinhaTela }) => (
   <>
-    <PrecoNegociado precoTabelaCentavos={l.precoTabelaCentavos} precoUnitarioCentavos={precoDaLinha(l).unitario} />
+    <PrecoNegociado
+      precoTabelaCentavos={l.precoTabelaCentavos}
+      precoUnitarioCentavos={precoDaLinha(l).unitario}
+      descontoPercentual={percentualDaLinha(l) / 100}
+    />
     {l.formaPreco === 'hora' && <span className="block text-xs text-texto-suave">/h</span>}
   </>
 );
@@ -454,9 +481,13 @@ const BotaoRemover = ({ l, aoRemover }: { l: LinhaTela; aoRemover: (chave: strin
   </button>
 );
 
-const NomeDoItem = ({ l }: { l: LinhaTela }) => (
+/** Descrição e código; `aviso`: ícone discreto ao lado (ex.: passará por aprovação comercial). */
+export const NomeDoItem = ({ l, aviso }: { l: LinhaTela; aviso?: ReactNode }) => (
   <>
-    <div className="font-medium">{l.descricao}</div>
+    <div className="flex items-start gap-1">
+      <span className="min-w-0 font-medium">{l.descricao}</span>
+      {aviso && <span className="-my-2 shrink-0">{aviso}</span>}
+    </div>
     <div className="font-mono text-xs text-texto-suave">
       {l.tipo === 'material' ? 'SKU' : 'Código'} {l.codigo}
     </div>
@@ -476,6 +507,17 @@ function TabelaItens({
   aoMudar: PropsLinha['aoMudar'];
   aoRemover: (chave: string) => void;
 }) {
+  const { alcada, acima } = useItensAcimaDaAlcada();
+  const aviso = (l: LinhaTela) => {
+    const p = acima(l);
+    return p == null || alcada == null ? undefined : (
+      <Dica
+        alerta
+        rotulo={`${l.descricao}: passará por aprovação comercial`}
+        texto={dicaItemAcimaDaAlcada(p, alcada)}
+      />
+    );
+  };
   return (
     <>
       <div className="hidden md:block">
@@ -490,9 +532,9 @@ function TabelaItens({
           </Cabecalho>
           <tbody>
             {linhas.map((l) => (
-              <Linha key={l.chave}>
+              <Linha key={l.chave} className={acima(l) == null ? '' : CONTORNO_ACIMA_DA_ALCADA}>
                 <Td className="min-w-40">
-                  <NomeDoItem l={l} />
+                  <NomeDoItem l={l} aviso={aviso(l)} />
                 </Td>
                 <Td className="min-w-[13rem]">
                   <ControleQuantidade l={l} aoMudar={aoMudar} />
@@ -516,10 +558,13 @@ function TabelaItens({
       </div>
       <ul className="space-y-2 md:hidden">
         {linhas.map((l) => (
-          <li key={l.chave} className="space-y-3 rounded-md border border-borda p-3">
+          <li
+            key={l.chave}
+            className={`space-y-3 rounded-md border p-3 ${acima(l) == null ? 'border-borda' : 'border-alerta ring-1 ring-alerta'}`}
+          >
             <div className="flex items-start gap-2">
               <div className="min-w-0 flex-1">
-                <NomeDoItem l={l} />
+                <NomeDoItem l={l} aviso={aviso(l)} />
               </div>
               <BotaoRemover l={l} aoRemover={aoRemover} />
             </div>

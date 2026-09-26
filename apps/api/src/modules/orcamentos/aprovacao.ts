@@ -1,8 +1,10 @@
 import {
+  dentroDaAlcada,
   formatarDataIso,
   formatarNumeroOrcamento,
   formatarPercentual,
   hojeIso,
+  percentualDoItem,
   somarDias,
   VALIDADE_PADRAO_DIAS,
   type Orcamento,
@@ -17,8 +19,11 @@ import { registrar } from './regras.js';
 
 // O Orçamento no motor de aprovação comercial (docs/modulos/APROVACAO_COMERCIAL.md §Integrações).
 
-/** Retrato do orçamento na solicitação. `validadeDias`: a validade pedida, que passa a contar na aprovação. */
-export const snapshotDoOrcamento = (o: Orcamento, validadeDias: number): SnapshotComercial => ({
+/**
+ * Retrato do orçamento na solicitação, com o percentual de cada item e se ele passou da `alcada` de quem pediu.
+ * `validadeDias`: a validade pedida, que passa a contar na aprovação.
+ */
+export const snapshotDoOrcamento = (o: Orcamento, validadeDias: number, alcada: number): SnapshotComercial => ({
   documento: { tipo: 'orcamento', numero: formatarNumeroOrcamento(o.numero), versao: o.versaoOrcamento },
   cliente: { id: o.cliente.id, nome: o.cliente.nome },
   vendedor: o.vendedor.nome,
@@ -26,19 +31,28 @@ export const snapshotDoOrcamento = (o: Orcamento, validadeDias: number): Snapsho
   tabela: `${o.tabela.codigo} — ${o.tabela.nome}`,
   validadeDias,
   observacoes: o.observacoes,
-  itens: o.itens.map((i) => ({
-    tipo: i.tipo,
-    codigo: i.codigo,
-    descricao: i.descricao,
-    unidade: i.unidade,
-    quantidade: i.quantidade,
-    tempoMinutos: i.tempoMinutos,
-    precoTabelaCentavos: i.precoTabelaCentavos,
-    precoUnitarioCentavos: i.precoUnitarioCentavos,
-    brutoCentavos: i.brutoCentavos,
-    descontoCentavos: i.descontoCentavos,
-    totalCentavos: i.totalCentavos,
-  })),
+  itens: o.itens.map((i) => {
+    const percentual = percentualDoItem(
+      i.precoTabelaCentavos,
+      i.precoUnitarioCentavos,
+      i.descontoPercentual == null ? null : Math.round(i.descontoPercentual * 100),
+    );
+    return {
+      tipo: i.tipo,
+      codigo: i.codigo,
+      descricao: i.descricao,
+      unidade: i.unidade,
+      quantidade: i.quantidade,
+      tempoMinutos: i.tempoMinutos,
+      precoTabelaCentavos: i.precoTabelaCentavos,
+      precoUnitarioCentavos: i.precoUnitarioCentavos,
+      brutoCentavos: i.brutoCentavos,
+      descontoCentavos: i.descontoCentavos,
+      totalCentavos: i.totalCentavos,
+      percentual,
+      acimaDaAlcada: !dentroDaAlcada(percentual, alcada),
+    };
+  }),
   subtotalCentavos: o.subtotalCentavos,
   descontoCentavos: o.descontoCentavos,
   totalCentavos: o.totalCentavos,

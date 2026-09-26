@@ -120,7 +120,9 @@ export function AprovacoesComerciais() {
             <Th className="text-right">Versão</Th>
             <Th className="text-right">Valor original</Th>
             <Th className="text-right">Desconto</Th>
-            <Th className="text-right">% Desconto</Th>
+            <Th className="text-right" title="Maior desconto entre os itens (a alçada é por item)">
+              Maior % por item
+            </Th>
             <Th className="text-right">Alçada</Th>
             <Th>Data</Th>
             <Th>Situação</Th>

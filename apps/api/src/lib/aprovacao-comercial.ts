@@ -163,8 +163,8 @@ export async function solicitarAprovacao(tx: Tx, s: Solicitacao): Promise<string
     id,
     'necessaria',
     quem,
-    `Desconto de ${formatarPercentual(s.percentual)} excede a alçada de ${formatarPercentual(s.alcada.percentual)}` +
-      `${s.alcada.funcao ? ` (${s.alcada.funcao})` : ''}.`,
+    `Desconto de ${formatarPercentual(s.percentual)} em item excede a alçada de ` +
+      `${formatarPercentual(s.alcada.percentual)}${s.alcada.funcao ? ` (${s.alcada.funcao})` : ''}.`,
   );
   await registrarEventoAprovacao(
     tx,

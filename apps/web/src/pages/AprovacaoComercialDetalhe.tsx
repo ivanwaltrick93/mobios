@@ -8,9 +8,11 @@ import {
   type AprovacaoComercial,
 } from '@mobios/shared';
 import { useQuery } from '@tanstack/react-query';
-import { ExternalLink } from 'lucide-react';
+import { ExternalLink, TriangleAlert } from 'lucide-react';
 import { Link, useParams } from 'react-router';
+import { AnaliseMargem } from '../components/AnaliseMargem';
 import { AcoesDecisao, SeloAprovacao } from '../components/AprovacaoComercial';
+import { CONTORNO_ACIMA_DA_ALCADA } from '../components/ItensOrcamento';
 import { PrecoNegociado, Totais } from '../components/Orcamento';
 import {
   Alerta,
@@ -27,7 +29,7 @@ import {
   Th,
 } from '../components/ui';
 import { api } from '../lib/api';
-import { usePerfilOrcamento } from '../lib/sessao';
+import { usePerfilOrcamento, usePode } from '../lib/sessao';
 import { useTrilha } from '../lib/trilha';
 
 const dataHora = (d: Date | string) => new Date(d).toLocaleString('pt-BR');
@@ -43,6 +45,7 @@ const quem = (nome: string | null, funcao: string | null, alcada: number | null)
 export function AprovacaoComercialDetalhe() {
   const { id } = useParams() as { id: string };
   const perfil = usePerfilOrcamento();
+  const pode = usePode();
   const consulta = useQuery({
     queryKey: ['aprovacoes-comerciais', id],
     queryFn: () => api<AprovacaoComercial>(`/aprovacoes-comerciais/${id}`),
@@ -70,7 +73,7 @@ export function AprovacaoComercialDetalhe() {
           { rotulo: 'Solicitado em', valor: dataHora(a.criadoEm) },
           { rotulo: 'Valor original', valor: formatarMoeda(a.subtotalCentavos) },
           { rotulo: 'Desconto', valor: formatarMoeda(a.descontoCentavos) },
-          { rotulo: 'Percentual', valor: <strong>{formatarPercentual(a.percentual)}</strong> },
+          { rotulo: 'Maior desconto por item', valor: <strong>{formatarPercentual(a.percentual)}</strong> },
           { rotulo: 'Valor final', valor: formatarMoeda(a.totalCentavos) },
           {
             rotulo: 'Aprovador necessário',
@@ -107,6 +110,9 @@ export function AprovacaoComercialDetalhe() {
         )}
       </CabecalhoObjeto>
 
+      {/* Margem: informação interna, só com "Custos e margem" (a API também só a devolve a eles). */}
+      {pode('custos') && <AnaliseMargem snapshot={s} />}
+
       <Bloco titulo="Itens no momento da solicitação">
         <div className="space-y-3">
           <Tabela>
@@ -116,13 +122,25 @@ export function AprovacaoComercialDetalhe() {
               <Th className="text-right">Quantidade</Th>
               <Th className="text-right">Preço</Th>
               <Th className="text-right">Desconto</Th>
+              <Th className="text-right">%</Th>
               <Th className="text-right">Total</Th>
             </Cabecalho>
             <tbody>
               {s.itens.map((i, n) => (
-                <Linha key={`${i.codigo}-${n}`}>
+                // Itens que passaram da alçada de quem pediu: contorno laranja (retratos antigos não têm a marca).
+                <Linha key={`${i.codigo}-${n}`} className={i.acimaDaAlcada ? CONTORNO_ACIMA_DA_ALCADA : ''}>
                   <Td className="whitespace-nowrap font-mono text-xs">{i.codigo}</Td>
-                  <Td>{i.descricao}</Td>
+                  <Td>
+                    <span className="inline-flex items-center gap-1.5">
+                      {i.descricao}
+                      {i.acimaDaAlcada && (
+                        <TriangleAlert
+                          className="size-4 shrink-0 text-alerta"
+                          aria-label="Acima da alçada de quem pediu"
+                        />
+                      )}
+                    </span>
+                  </Td>
                   <Td className="whitespace-nowrap text-right tabular-nums">
                     {i.tempoMinutos != null
                       ? `${formatarHoras(i.tempoMinutos)} h`
@@ -136,6 +154,9 @@ export function AprovacaoComercialDetalhe() {
                   </Td>
                   <Td className="whitespace-nowrap text-right tabular-nums">
                     {i.descontoCentavos ? `−${formatarMoeda(i.descontoCentavos)}` : '—'}
+                  </Td>
+                  <Td className="whitespace-nowrap text-right tabular-nums">
+                    {i.percentual ? formatarPercentual(i.percentual) : '—'}
                   </Td>
                   <Td className="whitespace-nowrap text-right font-semibold tabular-nums">
                     {formatarMoeda(i.totalCentavos)}

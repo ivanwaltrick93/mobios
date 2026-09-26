@@ -8,7 +8,7 @@ import {
   formatarNumeroOrcamento,
   formatarPercentual,
   formatarQuantidade,
-  percentualDeDesconto,
+  percentualDoItem,
   type Orcamento,
 } from '@mobios/shared';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -127,7 +127,17 @@ export function OrcamentoDetalhe() {
   const aberto = o.situacao === 'emitido' || o.situacao === 'enviado';
   const aguardando = o.situacao === 'aguardando_aprovacao_comercial';
   const reprovado = o.situacao === 'reprovado_comercialmente';
-  const percentual = percentualDeDesconto(o.subtotalCentavos, o.descontoCentavos);
+  // Alçada por item: o maior desconto entre os itens (o mesmo que a emissão avalia).
+  const percentual = Math.max(
+    0,
+    ...o.itens.map((i) =>
+      percentualDoItem(
+        i.precoTabelaCentavos,
+        i.precoUnitarioCentavos,
+        i.descontoPercentual == null ? null : Math.round(i.descontoPercentual * 100),
+      ),
+    ),
+  );
   const excedeAlcada = !!alcada && !dentroDaAlcada(percentual, alcada.percentual);
   const botoes: { tipo: Acao; rotulo: string; icone: ReactNode; variante?: 'secundario' | 'perigo' | 'sucesso' }[] = [
     ...(editar && o.situacao === 'rascunho'
@@ -345,7 +355,7 @@ export function OrcamentoDetalhe() {
             <TextoSuave>{confirmacao.texto}</TextoSuave>
             {confirmando === 'emitir' && excedeAlcada && (
               <Aviso>
-                O desconto total de {formatarPercentual(percentual)} está acima da sua alçada de{' '}
+                Há item com desconto de {formatarPercentual(percentual)}, acima da sua alçada de{' '}
                 {formatarPercentual(alcada.percentual)}: o orçamento vai para aprovação comercial e só é emitido quando
                 aprovado (a validade passa a contar da aprovação).
               </Aviso>

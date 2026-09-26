@@ -1,9 +1,18 @@
-import { formatarHoras, formatarMoeda, formatarQuantidade, percentualDoDesconto, somarItens } from '@mobios/shared';
+import { formatarHoras, formatarMoeda, formatarPercentual, formatarQuantidade, somarItens } from '@mobios/shared';
 import type { ReactNode } from 'react';
 import { CardCliente } from './ContextoCliente';
-import { calculoDaLinha, contarItens, precoDaLinha, type LinhaTela } from './ItensOrcamento';
-import { IndicadorAlcada, PrecoNegociado, Totais } from './Orcamento';
-import { Bloco, Cabecalho, Dado, Linha, Tabela, Td, Th } from './ui';
+import {
+  calculoDaLinha,
+  contarItens,
+  CONTORNO_ACIMA_DA_ALCADA,
+  NomeDoItem,
+  percentualDaLinha,
+  precoDaLinha,
+  useItensAcimaDaAlcada,
+  type LinhaTela,
+} from './ItensOrcamento';
+import { dicaItemAcimaDaAlcada, IndicadorAlcada, PrecoNegociado, Totais } from './Orcamento';
+import { Bloco, Cabecalho, Dado, Dica, Linha, Tabela, Td, Th } from './ui';
 
 // Resumo e revisão do orçamento: leem o mesmo estado das etapas (cliente, itens, condições), sem modelo à parte.
 
@@ -57,7 +66,7 @@ export function FaixaResumo({
         </div>
       </dl>
       <div className="mt-1">
-        <IndicadorAlcada subtotal={t.subtotalCentavos} desconto={t.descontoCentavos} />
+        <IndicadorAlcada percentuais={linhas.map(percentualDaLinha)} />
       </div>
     </section>
   );
@@ -80,6 +89,7 @@ export function RevisaoOrcamento({
   condicoes: { rotulo: string; valor: ReactNode; largo?: boolean }[];
 }) {
   const t = totaisDasLinhas(linhas);
+  const { alcada, acima } = useItensAcimaDaAlcada();
   return (
     <div className="space-y-4">
       <Bloco titulo="Cliente">
@@ -97,21 +107,34 @@ export function RevisaoOrcamento({
           <tbody>
             {linhas.map((l) => {
               const unitario = precoDaLinha(l).unitario;
-              const desconto = percentualDoDesconto(l.precoTabelaCentavos, unitario);
+              const desconto = percentualDaLinha(l);
               return (
-                <Linha key={l.chave}>
+                <Linha key={l.chave} className={acima(l) == null ? '' : CONTORNO_ACIMA_DA_ALCADA}>
                   <Td>
-                    <div className="font-medium">{l.descricao}</div>
-                    <div className="font-mono text-xs text-texto-suave">
-                      {l.tipo === 'material' ? 'SKU' : 'Código'} {l.codigo}
-                    </div>
+                    <NomeDoItem
+                      l={l}
+                      aviso={
+                        acima(l) != null &&
+                        alcada != null && (
+                          <Dica
+                            alerta
+                            rotulo={`${l.descricao}: passará por aprovação comercial`}
+                            texto={dicaItemAcimaDaAlcada(acima(l)!, alcada)}
+                          />
+                        )
+                      }
+                    />
                   </Td>
                   <Td className="whitespace-nowrap text-right tabular-nums">{quantidadeDaLinha(l)}</Td>
                   <Td className="whitespace-nowrap text-right tabular-nums">
-                    <PrecoNegociado precoTabelaCentavos={l.precoTabelaCentavos} precoUnitarioCentavos={unitario} />
+                    <PrecoNegociado
+                      precoTabelaCentavos={l.precoTabelaCentavos}
+                      precoUnitarioCentavos={unitario}
+                      descontoPercentual={desconto / 100}
+                    />
                   </Td>
                   <Td suave className="whitespace-nowrap text-right tabular-nums">
-                    {desconto ? `${desconto.toLocaleString('pt-BR')}%` : '—'}
+                    {desconto ? formatarPercentual(desconto) : '—'}
                   </Td>
                   <Td className="whitespace-nowrap text-right font-semibold tabular-nums">
                     {formatarMoeda(calculoDaLinha(l).totalCentavos)}
@@ -142,7 +165,7 @@ export function RevisaoOrcamento({
         <Bloco titulo="Valores">
           <div className="space-y-3">
             <Totais subtotal={t.subtotalCentavos} desconto={t.descontoCentavos} total={t.totalCentavos} />
-            <IndicadorAlcada subtotal={t.subtotalCentavos} desconto={t.descontoCentavos} />
+            <IndicadorAlcada percentuais={linhas.map(percentualDaLinha)} />
           </div>
         </Bloco>
       </div>

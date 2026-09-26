@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dentroDaAlcada, formatarPercentual, percentualDeDesconto } from './aprovacoes.js';
+import { dentroDaAlcada, formatarPercentual, percentualDeDesconto, percentualDoItem } from './aprovacoes.js';
 
 describe('percentual de desconto do documento', () => {
   it('é desconto ÷ subtotal em centésimos, arredondado para cima', () => {
@@ -23,5 +23,22 @@ describe('percentual de desconto do documento', () => {
   it('formata com duas casas', () => {
     expect(formatarPercentual(801)).toBe('8,01%');
     expect(formatarPercentual(10_000)).toBe('100,00%');
+  });
+});
+
+describe('percentual de desconto do item (base da alçada)', () => {
+  it('desconto digitado em %: vale o digitado, mesmo com os centavos arredondados a favor do cliente', () => {
+    // 15% de R$ 56,90 = R$ 8,535 → R$ 8,54 de desconto (15,01% efetivo), mas a alçada vê 15,00%.
+    expect(percentualDoItem(5_690, 4_836, 1_500)).toBe(1_500);
+  });
+
+  it('preço digitado ou recalculado: percentual efetivo arredondado para cima', () => {
+    expect(percentualDoItem(11_000, 10_000, null)).toBe(910); // 9,0909% → 9,10%
+    expect(percentualDoItem(10_000, 9_200, null)).toBe(800);
+  });
+
+  it('sem desconto: zero (inclusive preço igual ao de tabela com percentual zerado)', () => {
+    expect(percentualDoItem(10_000, 10_000, null)).toBe(0);
+    expect(percentualDoItem(10_000, 10_000, 0)).toBe(0);
   });
 });

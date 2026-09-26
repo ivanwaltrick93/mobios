@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { margemSchema } from './margem.js';
 
 /*
  * Aprovação comercial por alçada (docs/modulos/APROVACAO_COMERCIAL.md). Desconto acima da alçada da função de
@@ -44,6 +45,22 @@ export function percentualDeDesconto(subtotalCentavos: number, descontoCentavos:
   return Number((BigInt(descontoCentavos) * 10_000n + s - 1n) / s);
 }
 
+/**
+ * Percentual de desconto de UM item, em centésimos — a alçada é sempre avaliada por item, nunca pelo total
+ * (decisão de 25/09/2026). Desconto digitado em %: vale o digitado (o desconto em centavos é arredondado a favor do
+ * cliente e 15% viraria 15,01%). Preço digitado ou recalculado: o percentual efetivo sobre o preço de tabela,
+ * arredondado para cima. Sem desconto: 0.
+ */
+export function percentualDoItem(
+  precoTabelaCentavos: number,
+  precoUnitarioCentavos: number,
+  percentualDigitado: number | null,
+): number {
+  if (precoUnitarioCentavos >= precoTabelaCentavos) return 0;
+  if (percentualDigitado != null && percentualDigitado > 0) return percentualDigitado;
+  return percentualDeDesconto(precoTabelaCentavos, precoTabelaCentavos - precoUnitarioCentavos);
+}
+
 /** Desconto igual à alçada está dentro dela. */
 export const dentroDaAlcada = (percentual: number, alcada: number) => percentual <= alcada;
 
@@ -75,11 +92,19 @@ export const snapshotComercialSchema = z.object({
       brutoCentavos: z.number(),
       descontoCentavos: z.number(),
       totalCentavos: z.number(),
+      /** Percentual do item (centésimos) e se passou da alçada de quem pediu (solicitações anteriores a 25/09: ausentes). */
+      percentual: z.number().optional(),
+      acimaDaAlcada: z.boolean().optional(),
     }),
   ),
   subtotalCentavos: z.number(),
   descontoCentavos: z.number(),
   totalCentavos: z.number(),
+  /**
+   * Análise de margem calculada na solicitação (PMC congelado nos itens). Informação interna: a API só a devolve a
+   * quem tem "Custos e margem"; ausente nas solicitações anteriores à margem.
+   */
+  margem: margemSchema.optional(),
 });
 export type SnapshotComercial = z.infer<typeof snapshotComercialSchema>;
 
@@ -102,7 +127,7 @@ export const aprovacaoComercialResumoSchema = z.object({
   subtotalCentavos: z.number(),
   descontoCentavos: z.number(),
   totalCentavos: z.number(),
-  /** Centésimos. */
+  /** Maior percentual de desconto entre os itens (centésimos): é a alçada necessária para aprovar. */
   percentual: z.number(),
   alcadaSolicitante: z.number(),
   status,

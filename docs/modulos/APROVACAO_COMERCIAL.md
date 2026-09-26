@@ -114,7 +114,7 @@ rascunho ──Emitir──► [desconto ≤ alçada] ────────�
 
 | Regra | Como está implementada |
 |---|---|
-| **Percentual do documento** | Desconto total ÷ subtotal (preço de tabela) do documento inteiro, em centésimos, **arredondado para cima** (8,001% → 8,01%). O serviço entra no subtotal, sem desconto. O desconto que o próprio recálculo cria (preço subiu e o cliente manteve o valor) **conta**. |
+| **Percentual por item** (decisão de 25/09/2026, substitui o do total) | A alçada é **sempre avaliada por item, nunca pelo total** — no total, um item caro sem desconto diluía o desconto alto de outro. Percentual de cada item (`percentualDoItem`): desconto digitado em %, vale o digitado (os centavos são arredondados a favor do cliente e 15% viraria 15,01%); preço digitado ou desconto criado pelo recálculo (preço subiu e o cliente manteve o valor), o efetivo sobre o preço de tabela, arredondado para cima em centésimos. Serviço não tem desconto. **Qualquer item acima da alçada** manda o orçamento para aprovação, e a alçada necessária para aprovar é o **maior percentual entre os itens** (coluna `percentual` da solicitação; o retrato guarda o percentual de cada item e quais passaram). Solicitações e orçamentos anteriores à mudança não foram reavaliados. |
 | **Quando avalia** | Na **emissão** do Orçamento, com a alçada de **quem emite** (não a do vendedor do orçamento). |
 | RN-01 | Desconto **igual ou menor** que a alçada: emite normalmente, sem solicitação. |
 | RN-02 | Acima da alçada: a solicitação nasce sozinha na emissão. Não existe rota para criar solicitação à mão. |
@@ -135,7 +135,7 @@ rascunho ──Emitir──► [desconto ≤ alçada] ────────�
 
 ## 6. Fluxo de aprovação
 
-1. O vendedor monta o rascunho com desconto. A tela avisa quando o desconto total passa da alçada dele (`GET /api/alcadas/minha`), e a cada gravação o histórico registra quais descontos mudaram, quem e quando (evento *Descontos alterados*).
+1. O vendedor monta o rascunho com desconto. A tela destaca, com contorno laranja e um ícone de atenção (dica: "passará por aprovação comercial ao emitir"), cada item cujo desconto passa da alçada dele — na tabela de itens e na revisão — (`GET /api/alcadas/minha`), e a cada gravação o histórico registra quais descontos mudaram, quem e quando (evento *Descontos alterados*).
 2. **Emitir:** a API calcula o percentual e a alçada de quem emite.
    - Dentro da alçada: o orçamento é emitido.
    - Acima da alçada: é criada a solicitação (eventos *Aprovação necessária* e *Aprovação solicitada*), o orçamento fica aguardando e o histórico do orçamento registra *Enviado para aprovação comercial*.
@@ -151,9 +151,9 @@ rascunho ──Emitir──► [desconto ≤ alçada] ────────�
 - **Selos das situações:** *Aguardando aprovação comercial* em amarelo (alerta) e *Reprovado comercialmente* em
   vermelho, na lista de orçamentos, nas versões e no gráfico do Início.
 - **No resumo do orçamento**, uma caixa com o motivo, sem precisar abrir outra tela:
-  - **Aguardando:** "⚠ Aguardando aprovação comercial — Motivo: Desconto de 8,01% excede a alçada de 5,00% (Atendente). Pedido por… em…".
+  - **Aguardando:** "⚠ Aguardando aprovação comercial — Motivo: Desconto de até 15,00% por item excede a alçada de 5,00% (Atendente). Pedido por… em…".
   - **Reprovado:** quem reprovou (função e alçada), quando e a justificativa.
-  - **Aprovado:** "Aprovado comercialmente — desconto de 8,01% aprovado por João (Gerente, alçada de 15,00%) em…".
+  - **Aprovado:** "Aprovado comercialmente — desconto de 15,00% aprovado por João (Gerente, alçada de 15,00%) em…".
 - **Na confirmação de "Emitir":** o aviso de que o orçamento vai para aprovação.
 
 ## 8. APIs
@@ -175,7 +175,7 @@ Mudanças nas rotas existentes do Orçamento:
 - `/cancelar` e `/nova-versao` aceitam as situações novas;
 - `GET /:id` traz `aprovacaoComercial`, a solicitação mais recente desta versão.
 
-Percentuais em **centésimos** nas respostas (8,01% = 801). Na entrada da alçada, em percentual (7,5).
+Percentuais em **centésimos** nas respostas (8,5% = 850). Na entrada da alçada, em percentual (7,5).
 
 ## 9. Permissões
 
@@ -217,7 +217,7 @@ Percentuais em **centésimos** nas respostas (8,01% = 801). Na entrada da alçad
 - Mesmo roteiro, com `os_id`.
 - Atenção: o ciclo previsto da O.S. em `ARQUITETURA.md` tem "aguardando_aprovacao" do **cliente**. A aprovação
   comercial é outra coisa e deve ter nome próprio, como aqui ("aguardando aprovação comercial").
-- A O.S. é um documento de itens como o Orçamento, então o mesmo percentual (desconto ÷ subtotal) se aplica.
+- A O.S. é um documento de itens como o Orçamento, então a mesma regra por item se aplica.
 
 ## 11. Versionamento
 
@@ -307,3 +307,39 @@ Percentuais em **centésimos** nas respostas (8,01% = 801). Na entrada da alçad
 | Histórico, retrato, versão, valores, percentual, alçadas, usuários e datas preservados | ✅ |
 | Sem dupla decisão; concorrência controlada; backend valida tudo; permissões respeitadas | ✅ |
 | Nenhuma aprovação de serviço pelo cliente, pública ou fora do escopo | ✅ |
+
+## 16. Margem comercial na aprovação (decisão de 25/09/2026)
+
+Indicador **gerencial de apoio ao aprovador**, restrito à jornada de aprovação. **Não é gatilho** (o gatilho continua
+sendo desconto acima da alçada, por item), não é margem contábil e **não aparece para o vendedor** (a tela e as respostas
+do orçamento não trazem PMC nem margem).
+
+- **PMC** (preço médio de compra = custo de compra junto ao fornecedor): campo do cadastro de material
+  (`materiais.pmc_centavos`; vazio = não disponível, nunca zero), com histórico em `materiais_pmc_eventos` (só inclusão).
+  Informado na tela do material ou na importação CSV (coluna `pmc`). Quando existirem compras (Fase 7), o custo médio
+  calculado alimentará esse campo.
+- **PMC congelado no item** (`orcamento_itens.pmc_centavos`): copiado ao incluir o material; a nova versão copia o da
+  anterior; o recálculo do rascunho de outro dia e a troca de tabela o atualizam junto com o preço; emitido, não muda.
+- **Cálculo** (`packages/shared/src/margem.ts`), só materiais (serviço fica fora e aparece como "Não considerado"):
+
+```text
+Receita líquida = quantidade × preço líquido (= total do item)     Custo = quantidade × PMC
+Margem R$ = receita − custo                                        Margem % = margem ÷ receita × 100 (receita 0: não calculada)
+Consolidado = Σ receitas − Σ custos (nunca a média das margens); algum produto sem PMC → não disponível (com o motivo)
+Sem desconto (comparativo "impacto da negociação"): a mesma conta com o preço de tabela
+```
+
+  O custo é calculado em milésimos de centavo (sem arredondar etapas); só a exibição arredonda. Margem negativa e zero
+  aparecem como são. Sem faixas de "boa"/"ruim".
+- **Retrato**: na emissão acima da alçada, `snapshot.margem` guarda os valores de cada item (PMC, receita, custo, margem R$
+  e %, com e sem desconto), o consolidado e `calculadoEm`. A aprovação lê só o retrato: mudar o PMC ou o preço depois não
+  muda nada. Pedidos anteriores à margem: "Análise de margem não disponível".
+- **Permissão** — módulo **Custos e margem**: *Consultar* = ver o PMC (`GET /api/materiais/:id/pmc`) e a margem na
+  aprovação (`GET /api/aprovacoes-comerciais/:id` só inclui `snapshot.margem` para ele); *Editar* = alterar o PMC
+  (`PUT /api/materiais/:id/pmc`, com o valor lido: 409 se outra pessoa mudou antes; e a coluna `pmc` da importação).
+  O Administrador tem tudo; nenhuma função padrão recebe o módulo. A margem não vai para o texto do histórico da
+  aprovação (visível a quem só consulta aprovações).
+- **Tela**: seção **Análise de margem** no detalhe da aprovação (venda líquida dos produtos, custo total, margem R$ e %,
+  "N produtos considerados · N serviços não considerados", comparativo sem × com desconto e a tabela por item).
+- **Testes**: casos 1 a 9 da especificação em `packages/shared/src/margem.test.ts`; PMC oculto e protegido, congelado no
+  item e mantido quando o cadastro muda, em `apps/api/src/orcamentos.test.ts` e `materiais.test.ts`.

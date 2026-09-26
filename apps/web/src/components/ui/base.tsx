@@ -2,7 +2,7 @@
  * Componentes base do style guide. Use sempre estes em vez de classes soltas:
  * cores só por tokens (bg-primaria, text-texto-suave...), definidos em src/index.css.
  */
-import { Eye, Info, Search, X } from 'lucide-react';
+import { Eye, Info, Search, TriangleAlert, X } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
 import type { UseFormRegisterReturn } from 'react-hook-form';
 import { Link } from 'react-router';
@@ -486,7 +486,16 @@ export function Gaveta({ titulo, aoFechar, children }: { titulo: string; aoFecha
  * (não depende de hover). Fecha ao sair, com Esc ou tocando fora. O texto descreve o botão para leitores de tela.
  * Posição fixa, calculada ao abrir: não é cortada por tabelas com rolagem.
  */
-export function Dica({ texto, rotulo = 'Mais informações' }: { texto: string; rotulo?: string }) {
+export function Dica({
+  texto,
+  rotulo = 'Mais informações',
+  alerta = false,
+}: {
+  texto: string;
+  rotulo?: string;
+  /** Ícone de atenção (laranja) em vez do de informação: ex.: item que passará por aprovação comercial. */
+  alerta?: boolean;
+}) {
   const [posicao, setPosicao] = useState<{ top: number; left: number } | null>(null);
   const botao = useRef<HTMLButtonElement>(null);
   const id = useId();
@@ -508,9 +517,9 @@ export function Dica({ texto, rotulo = 'Mais informações' }: { texto: string; 
         onFocus={abrir}
         onBlur={fechar}
         onKeyDown={(e) => e.key === 'Escape' && fechar()}
-        className="inline-flex size-9 items-center justify-center rounded-md text-texto-suave hover:bg-superficie-alt hover:text-primaria focus-visible:ring-2 focus-visible:ring-primaria focus-visible:outline-none"
+        className={`inline-flex size-9 items-center justify-center rounded-md hover:bg-superficie-alt focus-visible:ring-2 focus-visible:ring-primaria focus-visible:outline-none ${alerta ? 'text-alerta' : 'text-texto-suave hover:text-primaria'}`}
       >
-        <Info className="size-4" aria-hidden />
+        {alerta ? <TriangleAlert className="size-4" aria-hidden /> : <Info className="size-4" aria-hidden />}
       </button>
       <span
         id={id}

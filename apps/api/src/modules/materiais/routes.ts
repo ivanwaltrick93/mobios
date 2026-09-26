@@ -5,16 +5,19 @@ import {
   materialInputSchema,
   materialResumoSchema,
   materialSchema,
+  pmcInputSchema,
+  pmcSchema,
   resultadoImportacaoSchema,
   statusInputSchema,
+  temAcesso,
   type Material,
   type MaterialDados,
 } from '@mobios/shared';
-import { and, asc, count, eq, inArray, sql, type SQL } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, sql, type SQL } from 'drizzle-orm';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { withTenant, type Tx } from '../../db/client.js';
-import { categorias, marcas, materiais, tiposMaterial } from '../../db/schema.js';
+import { categorias, marcas, materiais, materiaisPmcEventos, tiposMaterial, users } from '../../db/schema.js';
 import {
   alterarAtivo,
   atualizarVersionado,
@@ -34,6 +37,7 @@ import {
   exigirPrimeiraVez,
   importarLinhas,
   lerPlanilhaEnviada,
+  lerReaisEmCentavos,
   lerSimNao,
   validarLinha,
 } from '../../lib/importacao.js';
@@ -115,6 +119,35 @@ async function criarMaterial(tx: Tx, dados: DadosMaterial, usuarioId: string) {
   return id;
 }
 
+/**
+ * Grava o PMC do material e o histórico (só quando muda). Trava a linha: duas alterações ao mesmo tempo não se
+ * perdem. `anterior` (o que a tela leu): diferente do gravado = 409. undefined = sem conferência (importação).
+ */
+async function gravarPmc(
+  tx: Tx,
+  materialId: string,
+  pmcCentavos: number | null,
+  usuarioId: string,
+  anterior?: number | null,
+) {
+  const [atual] = await tx
+    .select({ pmcCentavos: materiais.pmcCentavos })
+    .from(materiais)
+    .where(eq(materiais.id, materialId))
+    .for('update');
+  if (!atual) throw naoEncontrado('Material');
+  if (anterior !== undefined && atual.pmcCentavos !== anterior)
+    throw new ErroHttp(409, 'O PMC deste material foi alterado por outra pessoa. Recarregue a página e refaça a ação.');
+  if (atual.pmcCentavos === pmcCentavos) return;
+  await tx.update(materiais).set({ pmcCentavos }).where(eq(materiais.id, materialId));
+  await tx.insert(materiaisPmcEventos).values({
+    materialId,
+    antesCentavos: atual.pmcCentavos,
+    depoisCentavos: pmcCentavos,
+    usuarioId,
+  });
+}
+
 /** Alteração com concorrência otimista; manter tipo/categoria/marca atuais é permitido mesmo se inativados. */
 async function atualizarMaterial(tx: Tx, atual: Material, versao: number, dados: DadosMaterial, usuarioId: string) {
   await validarReferencias(tx, dados, atual);
@@ -126,6 +159,50 @@ export const materiaisRoutes: FastifyPluginAsyncZod = async (app) => {
   app.addHook('onRequest', app.exigirAcesso('materiais'));
   const editar = { onRequest: app.exigirAcesso('materiais', 'editar') };
   aceitarUploadDeCsv(app);
+
+  /**
+   * PMC (preço médio de compra) e histórico: informação interna, só com "Custos e margem" (Consultar para ver,
+   * Editar para alterar). Fica fora do cadastro (GET /:id) para não chegar a quem só tem Materiais.
+   */
+  app.get(
+    '/:id/pmc',
+    { onRequest: app.exigirAcesso('custos'), schema: { params: idParamSchema, response: { 200: pmcSchema } } },
+    async (req) =>
+      withTenant(req.user.tid, async (tx) => {
+        const [m] = await tx
+          .select({ pmcCentavos: materiais.pmcCentavos })
+          .from(materiais)
+          .where(eq(materiais.id, req.params.id));
+        if (!m) throw naoEncontrado('Material');
+        const historico = await tx
+          .select({
+            antesCentavos: materiaisPmcEventos.antesCentavos,
+            depoisCentavos: materiaisPmcEventos.depoisCentavos,
+            usuario: users.nome,
+            criadoEm: materiaisPmcEventos.criadoEm,
+          })
+          .from(materiaisPmcEventos)
+          .leftJoin(users, eq(users.id, materiaisPmcEventos.usuarioId))
+          .where(eq(materiaisPmcEventos.materialId, req.params.id))
+          .orderBy(desc(materiaisPmcEventos.criadoEm), desc(materiaisPmcEventos.id))
+          .limit(50);
+        return { pmcCentavos: m.pmcCentavos, historico };
+      }),
+  );
+
+  app.put(
+    '/:id/pmc',
+    {
+      onRequest: app.exigirAcesso('custos', 'editar'),
+      schema: { params: idParamSchema, body: pmcInputSchema },
+    },
+    async (req, reply) => {
+      await withTenant(req.user.tid, (tx) =>
+        gravarPmc(tx, req.params.id, req.body.pmcCentavos, req.user.sub, req.body.anteriorCentavos),
+      );
+      return reply.code(204).send();
+    },
+  );
 
   /**
    * Busca: SKU, código de barras e código do fabricante por igualdade/prefixo (índices B-tree);
@@ -201,6 +278,8 @@ export const materiaisRoutes: FastifyPluginAsyncZod = async (app) => {
    */
   app.post('/importar', { ...editar, schema: { response: { 200: resultadoImportacaoSchema } } }, async (req) => {
     const linhas = lerPlanilhaEnviada(req.body, COLUNAS_IMPORTACAO_MATERIAIS);
+    // A coluna pmc é informação interna: exige "Custos e margem" em Editar (senão, as linhas com ela são recusadas).
+    const podePmc = temAcesso(req.user.acessos, 'custos', 'editar');
     return withTenant(req.user.tid, async (tx) => {
       // Referências lidas uma vez (não uma consulta por linha).
       const categoriasDaOficina = await MapaDeCategorias.carregar(tx);
@@ -278,8 +357,13 @@ export const materiaisRoutes: FastifyPluginAsyncZod = async (app) => {
           },
           ([campo]) => colunaDoCampo(campo === 'tipoId' ? 'tipo' : campo === 'categoriaId' ? 'categoria' : campo!),
         );
+        if (temColuna('pmc') && !podePmc)
+          throw new ErroHttp(400, 'pmc: você não tem permissão para informar o PMC (Custos e margem em Editar).');
+        const pmcCentavos = temColuna('pmc') && valor('pmc') ? lerReaisEmCentavos(valor('pmc'), 'PMC') : null;
+        let id = atual?.id;
         if (atual) await atualizarMaterial(savepoint, atual, atual.versao, dados, req.user.sub);
-        else await criarMaterial(savepoint, dados, req.user.sub);
+        else id = await criarMaterial(savepoint, dados, req.user.sub);
+        if (temColuna('pmc')) await gravarPmc(savepoint, id!, pmcCentavos, req.user.sub);
         return 'importada';
       });
     });
@@ -295,7 +379,7 @@ export const materiaisRoutes: FastifyPluginAsyncZod = async (app) => {
       }),
   );
 
-  /** Só material nunca precificado nem movimentado no estoque pode ser excluído (o histórico não se perde). */
+  /** Só material nunca precificado, movimentado no estoque nem com PMC alterado pode ser excluído (o histórico fica). */
   app.delete('/:id', { ...editar, schema: { params: idParamSchema } }, async (req, reply) => {
     await withTenant(req.user.tid, (tx) =>
       excluirSeNaoUsado(
@@ -303,7 +387,7 @@ export const materiaisRoutes: FastifyPluginAsyncZod = async (app) => {
         materiais,
         req.params.id,
         'Material',
-        'Este material já tem preços ou saldo de estoque e não pode ser excluído (o histórico é mantido). Inative-o.',
+        'Este material já tem preços, saldo de estoque ou histórico de PMC e não pode ser excluído (o histórico é mantido). Inative-o.',
       ),
     );
     return reply.code(204).send();

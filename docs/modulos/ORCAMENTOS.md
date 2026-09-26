@@ -33,7 +33,7 @@ A oportunidade (Fase 2) e a conversão em O.S. ou pedido de venda ainda não exi
   - por **percentual** (até 2 casas, até 100%): o desconto em centavos é arredondado **para cima** (a favor do cliente). Ex.: 10% de R$ 123,45 = R$ 12,35 → R$ 111,10;
   - ou digitando o **preço**, que só pode ficar **abaixo** do preço de tabela (ou igual);
   - a tela mostra o preço de tabela riscado, o negociado e o percentual: ~~R$ 125,00~~ R$ 112,50 −10%.
-- Sem desconto no total do orçamento. **Alçada de desconto** (desde 25/09/2026): o desconto total acima da alçada de quem emite leva o orçamento à aprovação comercial (ver §4 e `docs/modulos/APROVACAO_COMERCIAL.md`). A cada gravação, o histórico registra quais descontos mudaram (*Descontos alterados*).
+- Sem desconto no total do orçamento. **Alçada de desconto** (desde 25/09/2026): um item com desconto acima da alçada de quem emite leva o orçamento à aprovação comercial (a alçada é por item, nunca pelo total) (ver §4 e `docs/modulos/APROVACAO_COMERCIAL.md`). A cada gravação, o histórico registra quais descontos mudaram (*Descontos alterados*).
 - Totais: bruto = preço de tabela × quantidade; total = preço negociado × quantidade (arredondado ao centavo); desconto = a diferença. A API sempre recalcula; o banco confere (CHECKs).
 - O orçamento **não reserva estoque** (é só intenção de compra).
 
@@ -62,7 +62,7 @@ rascunho ─Emitir, desconto acima da alçada→ aguardando aprovação comercia
     reprovado comercialmente → nova versão | cancelado
 ```
 
-- **Aprovação comercial** (`docs/modulos/APROVACAO_COMERCIAL.md`): ao emitir, se o desconto total (÷ subtotal) passa da alçada de quem emite, o orçamento fica *Aguardando aprovação comercial* (itens congelados) e só é emitido quando alguém com alçada aprova; a validade conta da aprovação. Reprovado, corrige-se com uma nova versão. Só quem pediu retira o pedido (volta a rascunho).
+- **Aprovação comercial** (`docs/modulos/APROVACAO_COMERCIAL.md`): ao emitir, se o desconto de algum item passa da alçada de quem emite, o orçamento fica *Aguardando aprovação comercial* (itens congelados) e só é emitido quando alguém com alçada aprova; a validade conta da aprovação. Reprovado, corrige-se com uma nova versão. Só quem pediu retira o pedido (volta a rascunho).
 
 - Só o **rascunho** é editável. Depois de emitido, os itens não mudam (a API recusa e o trigger `orcamento_itens_so_no_rascunho` garante).
 - **Vencido** não é gravado: emitido ou enviado vence sozinho **depois do dia seguinte ao da validade** (validade 30/09 → aprovável até 01/10, 23:59 de Brasília; vencido a partir de 02/10). Vencido não é alterado, aprovado nem reaberto: faz-se um orçamento novo.
@@ -90,7 +90,7 @@ rascunho ─Emitir, desconto acima da alçada→ aguardando aprovação comercia
   1. **Cliente** — card do cliente, veículo, vendedor, tabela, validade e observações. No orçamento novo, **"Continuar para produtos" cria o rascunho** (POST, com o número ORC) e abre a edição dele (`/orcamentos/:id/editar`); rascunho abandonado fica na lista.
   2. **Produtos e serviços** — filtro **Todos | Materiais | Serviços** (campo `tipo` do catálogo; parâmetro `tipo` de `/orcamentos/apoio/itens`; só da tela), busca (a partir de 2 letras; preço de tabela e, no material, o **estoque livre** somado dos depósitos) e a tabela de itens, na largura toda. Serviço mostra "— Não negociável". "Revisar orçamento →" exige **ao menos um item** (regra só da tela) e negociação válida.
   3. **Revisão** — cliente, itens, condições comerciais e valores. **"Finalizar"** leva ao resumo; o orçamento **continua rascunho** (a emissão, com a avaliação da alçada, é no resumo).
-  - **Resumo em faixa** entre as etapas e os itens: cliente, itens, subtotal, descontos, **total**, o aviso da alçada do desconto total e o estado da gravação.
+  - **Resumo em faixa** entre as etapas e os itens: cliente, itens, subtotal, descontos, **total**, o aviso de alçada (quantos itens passam dela) e o estado da gravação. Item acima da alçada: contorno laranja e ícone com a dica "passará por aprovação comercial ao emitir".
   - **Gravação automática do rascunho**: cada alteração (cliente, cabeçalho, incluir, quantidade, negociação, remover) é gravada com o `PUT` do rascunho — incluir e remover na hora; digitação após ~0,8 s de pausa —, uma gravação por vez, sempre com a versão lida (409 se outra pessoa gravou antes). Os ids devolvidos passam às linhas (nada é criado duas vezes). Linha com negociação inválida ou sem quantidade espera ser corrigida ("Corrija a negociação para salvar"). Estado: "Salvando…", "Salvo às hh:mm" ou "Não foi possível salvar — Tentar de novo". Com `automatico: true` a API não registra "Alterado" no histórico (seriam dezenas), mas continua registrando **"Descontos alterados"**. Atualizar a página ou voltar ao orçamento recupera tudo; sair com gravação pendente pede confirmação.
   - **Troca de tabela com itens**: confirmação; a API reprecifica ao gravar (preço cheio; sem preço, sai) e a jornada mostra os avisos.
 - **Resumo e edição** mostram no topo: data de emissão ("Não emitido" no rascunho), validade, tabela de preço, veículo e vendedor.
