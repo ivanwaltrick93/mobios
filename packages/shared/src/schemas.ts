@@ -102,6 +102,8 @@ export const sessaoSchema = z.object({
   }),
   /** Nível efetivo por módulo (maior entre as funções ativas; tudo, para o admin). */
   acessos: acessosSchema,
+  /** Vendedor ativo do usuário (nunca para o Administrador): orçamentos no nome dele; vê e altera só os próprios. */
+  vendedorId: z.uuid().nullable(),
   // logoVersao: null = sem logo; senão, muda a cada troca (usado na URL para renovar o cache).
   oficina: z.object({ id: z.uuid(), nome: z.string(), tema: temaSchema, logoVersao: z.string().nullable() }),
 });

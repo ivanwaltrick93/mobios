@@ -31,13 +31,13 @@ import {
 } from '../components/ui';
 import { api } from '../lib/api';
 import { useVendedoresOrcamento } from '../lib/orcamentos';
-import { usePode } from '../lib/sessao';
+import { usePerfilOrcamento } from '../lib/sessao';
 
 const FILTRO_INICIAL = { q: '', situacao: '', vendedorId: '', desde: '', ate: '' };
 
 /** Orçamentos: lista com número, versão, cliente, vendedor, total, validade e situação ("vencido" é automático). */
 export function Orcamentos() {
-  const pode = usePode();
+  const perfil = usePerfilOrcamento();
   // Links do Início chegam com a situação na URL (ex.: ?situacao=aprovado).
   const [params] = useSearchParams();
   const [filtro, setFiltro] = useState(() => ({ ...FILTRO_INICIAL, situacao: params.get('situacao') ?? '' }));
@@ -50,7 +50,7 @@ export function Orcamentos() {
     queryKey: ['orcamentos', 'lista', parametros.toString()],
     queryFn: () => api<{ itens: OrcamentoResumo[]; total: number }>(`/orcamentos?${parametros}`),
     placeholderData: keepPreviousData,
-    enabled: pode('orcamentos'),
+    enabled: perfil.podeVer,
   });
   const mudar = (campo: keyof typeof filtro, valor: string) => {
     setFiltro((f) => ({ ...f, [campo]: valor }));
@@ -59,13 +59,13 @@ export function Orcamentos() {
   const dados = orcamentos.data;
   const filtrando = Object.values(filtro).some(Boolean);
 
-  if (!pode('orcamentos')) return <Alerta>Você não tem permissão para acessar os orçamentos.</Alerta>;
+  if (!perfil.podeVer) return <Alerta>Você não tem permissão para acessar os orçamentos.</Alerta>;
 
   return (
     <div className="space-y-6">
       <Titulo
         acao={
-          pode('orcamentos', 'editar') && (
+          perfil.podeAlterar && (
             <Link to="/orcamentos/novo" className={classesBotao('primario')}>
               <Plus className="mr-1.5 size-4" aria-hidden /> Novo orçamento
             </Link>
@@ -94,7 +94,12 @@ export function Orcamentos() {
             </Select>
           </Campo>
           <Campo rotulo="Vendedor">
-            <Select value={filtro.vendedorId} onChange={(e) => mudar('vendedorId', e.target.value)}>
+            {/* Vendedor logado: fixo nele e sem troca (a API também só devolve os dele). */}
+            <Select
+              disabled={!!perfil.vendedorId}
+              value={perfil.vendedorId ?? filtro.vendedorId}
+              onChange={(e) => mudar('vendedorId', e.target.value)}
+            >
               <option value="">Todos</option>
               {vendedores.data?.map((v) => (
                 <option key={v.id} value={v.id}>

@@ -2,8 +2,8 @@
  * Componentes base do style guide. Use sempre estes em vez de classes soltas:
  * cores só por tokens (bg-primaria, text-texto-suave...), definidos em src/index.css.
  */
-import { Eye, Search, X } from 'lucide-react';
-import { useEffect, useRef } from 'react';
+import { Eye, Info, Search, X } from 'lucide-react';
+import { useEffect, useId, useRef, useState } from 'react';
 import type { UseFormRegisterReturn } from 'react-hook-form';
 import { Link } from 'react-router';
 import type {
@@ -223,22 +223,25 @@ export function BotaoVisualizar({
   para,
   aoClicar,
   aberto = false,
+  titulo = 'Visualizar',
 }: {
   para?: string;
   aoClicar?: () => void;
   aberto?: boolean;
+  /** Dica e rótulo acessível (ex.: "Visualizar cliente"). */
+  titulo?: string;
 }) {
   const classes = `inline-flex rounded-md p-1.5 hover:bg-superficie-alt ${aberto ? 'text-primaria' : 'text-texto-suave hover:text-primaria'}`;
   const icone = <Eye className="size-4" aria-hidden />;
   return para ? (
-    <Link to={para} title="Visualizar" aria-label="Visualizar" className={classes}>
+    <Link to={para} title={titulo} aria-label={titulo} className={classes}>
       {icone}
     </Link>
   ) : (
     <button
       type="button"
-      title="Visualizar"
-      aria-label="Visualizar"
+      title={titulo}
+      aria-label={titulo}
       aria-expanded={aberto}
       onClick={aoClicar}
       className={classes}
@@ -401,11 +404,38 @@ export const Vazio = ({
   </div>
 );
 
+/** Título e botão de fechar de Janela e Gaveta. */
+const BarraDoDialogo = ({ titulo, aoFechar }: { titulo: string; aoFechar: () => void }) => (
+  <div className="flex items-center justify-between gap-3 border-b border-borda px-5 py-3">
+    <h2 className="font-semibold">{titulo}</h2>
+    <button
+      type="button"
+      title="Fechar"
+      aria-label="Fechar"
+      onClick={aoFechar}
+      className="rounded-md p-1.5 text-texto-suave hover:bg-superficie-alt hover:text-texto"
+    >
+      <X className="size-4" aria-hidden />
+    </button>
+  </div>
+);
+
 /**
  * Janela sobre a página (modal nativo <dialog>): fecha no X, com Esc ou clicando fora.
  * Renderize só enquanto estiver aberta: `{aberta && <Janela ... />}`.
  */
-export function Janela({ titulo, aoFechar, children }: { titulo: string; aoFechar: () => void; children: ReactNode }) {
+export function Janela({
+  titulo,
+  aoFechar,
+  largura = 'max-w-lg',
+  children,
+}: {
+  titulo: string;
+  aoFechar: () => void;
+  /** Largura máxima (ex.: 'max-w-5xl' para uma lista de escolha). */
+  largura?: string;
+  children: ReactNode;
+}) {
   const janela = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     janela.current?.showModal();
@@ -417,21 +447,79 @@ export function Janela({ titulo, aoFechar, children }: { titulo: string; aoFecha
       onClose={aoFechar}
       // O clique no fundo escurecido chega ao próprio <dialog>; dentro do conteúdo, não.
       onClick={(e) => e.target === e.currentTarget && aoFechar()}
-      className="m-auto w-[calc(100%-2rem)] max-w-lg rounded-lg border border-borda bg-superficie p-0 text-texto shadow-xl backdrop:bg-texto/40"
+      className={`m-auto w-[calc(100%-2rem)] ${largura} rounded-lg border border-borda bg-superficie p-0 text-texto shadow-xl backdrop:bg-texto/40`}
     >
-      <div className="flex items-center justify-between gap-3 border-b border-borda px-5 py-3">
-        <h2 className="font-semibold">{titulo}</h2>
-        <button
-          type="button"
-          title="Fechar"
-          aria-label="Fechar"
-          onClick={aoFechar}
-          className="rounded-md p-1.5 text-texto-suave hover:bg-superficie-alt hover:text-texto"
-        >
-          <X className="size-4" aria-hidden />
-        </button>
-      </div>
+      <BarraDoDialogo titulo={titulo} aoFechar={aoFechar} />
       <div className="p-5">{children}</div>
     </dialog>
+  );
+}
+
+/**
+ * Gaveta lateral (Drawer) para consultar algo sem sair do processo (ex.: "Visualizar cliente" no orçamento): presa
+ * à direita, com a página visível ao fundo. Mesmo <dialog> modal da Janela: fecha no X, com Esc ou clicando fora.
+ * Renderize só enquanto estiver aberta: `{aberta && <Gaveta ... />}`.
+ */
+export function Gaveta({ titulo, aoFechar, children }: { titulo: string; aoFechar: () => void; children: ReactNode }) {
+  const gaveta = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    gaveta.current?.showModal();
+  }, []);
+  return (
+    <dialog
+      ref={gaveta}
+      aria-label={titulo}
+      onClose={aoFechar}
+      onClick={(e) => e.target === e.currentTarget && aoFechar()}
+      className="fixed inset-y-0 right-0 left-auto m-0 h-dvh max-h-none w-full max-w-xl border-l border-borda bg-superficie p-0 text-texto shadow-xl backdrop:bg-texto/30"
+    >
+      <div className="flex h-full flex-col">
+        <BarraDoDialogo titulo={titulo} aoFechar={aoFechar} />
+        <div className="flex-1 overflow-y-auto p-5">{children}</div>
+      </div>
+    </dialog>
+  );
+}
+
+/**
+ * Dica (Tooltip acessível): ícone de informação que mostra `texto` ao passar o mouse, ao receber foco e ao tocar
+ * (não depende de hover). Fecha ao sair, com Esc ou tocando fora. O texto descreve o botão para leitores de tela.
+ * Posição fixa, calculada ao abrir: não é cortada por tabelas com rolagem.
+ */
+export function Dica({ texto, rotulo = 'Mais informações' }: { texto: string; rotulo?: string }) {
+  const [posicao, setPosicao] = useState<{ top: number; left: number } | null>(null);
+  const botao = useRef<HTMLButtonElement>(null);
+  const id = useId();
+  const abrir = () => {
+    const r = botao.current?.getBoundingClientRect();
+    if (r) setPosicao({ top: r.top - 6, left: Math.min(Math.max(r.left + r.width / 2, 128), window.innerWidth - 128) });
+  };
+  const fechar = () => setPosicao(null);
+  return (
+    <span className="inline-flex" onMouseEnter={abrir} onMouseLeave={fechar}>
+      <button
+        ref={botao}
+        type="button"
+        aria-label={rotulo}
+        aria-describedby={id}
+        aria-expanded={!!posicao}
+        // Toque: o foco abre e o clique mantém aberta (alternar fecharia logo em seguida).
+        onClick={abrir}
+        onFocus={abrir}
+        onBlur={fechar}
+        onKeyDown={(e) => e.key === 'Escape' && fechar()}
+        className="inline-flex size-9 items-center justify-center rounded-md text-texto-suave hover:bg-superficie-alt hover:text-primaria focus-visible:ring-2 focus-visible:ring-primaria focus-visible:outline-none"
+      >
+        <Info className="size-4" aria-hidden />
+      </button>
+      <span
+        id={id}
+        role="tooltip"
+        style={posicao ?? undefined}
+        className={`fixed z-50 w-60 -translate-x-1/2 -translate-y-full rounded-md bg-texto px-2.5 py-1.5 text-xs text-superficie shadow-lg ${posicao ? '' : 'hidden'}`}
+      >
+        {texto}
+      </span>
+    </span>
   );
 }

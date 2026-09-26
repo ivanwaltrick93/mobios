@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { hojeIso, somarDias } from '@mobios/shared';
+import { hojeIso, SEM_ACESSO, somarDias } from '@mobios/shared';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { criarApp } from './app.js';
@@ -283,15 +283,50 @@ describe('orçamento: rascunho', () => {
     expect(erros[2]!.json().erro).toMatch(/não tem preço na tabela/);
     expect(erros[3]!.json().erro).toMatch(/Permite venda/);
 
-    // A busca mostra o item sem preço (null) e esconde o que não permite venda.
+    // A busca mostra o item sem preço (null) e esconde o que não permite venda. Estoque: saldo livre somado dos
+    // depósitos (disponível − reservado); serviço não tem.
+    const loja = ((await c.chamar('GET', '/api/opcoes/tiposDeposito')).json() as { id: string; nome: string }[]).find(
+      (t) => t.nome === 'Loja',
+    )!;
+    const deposito = (
+      await c.chamar('POST', '/api/depositos', { codigo: 'LOJA', nome: 'Loja', tipoId: loja.id })
+    ).json();
+    const deposito2 = (
+      await c.chamar('POST', '/api/depositos', { codigo: 'LOJA2', nome: 'Loja 2', tipoId: loja.id })
+    ).json();
+    await c.banco(sql`insert into estoques (material_id, deposito_id, disponivel, reservado)
+      values (${c.filtro.id}, ${deposito.id}, 30, 6), (${c.filtro.id}, ${deposito2.id}, 2, 0)`);
     const busca = (
       await c.chamar('GET', `/api/orcamentos/apoio/itens?q=Material&tabelaPrecoId=${c.varejo.id}`)
-    ).json() as { codigo: string; precoCentavos: number | null }[];
-    expect(busca.map((i) => [i.codigo, i.precoCentavos])).toEqual([
-      ['FIL-1', 12_345],
-      ['OLEO-6', 5_000],
-      ['SEMPRECO', null],
+    ).json() as { codigo: string; precoCentavos: number | null; estoque: number | null }[];
+    expect(busca.map((i) => [i.codigo, i.precoCentavos, i.estoque])).toEqual([
+      ['FIL-1', 12_345, 26],
+      ['OLEO-6', 5_000, 0],
+      ['SEMPRECO', null, 0],
     ]);
+    const servico = (
+      await c.chamar('GET', `/api/orcamentos/apoio/itens?q=Alinhamento&tabelaPrecoId=${c.varejo.id}`)
+    ).json() as { estoque: number | null }[];
+    expect(servico[0]!.estoque).toBeNull();
+
+    // Filtro por tipo: só materiais ou só serviços; vazio = os dois.
+    const tipos = async (tipo: string, q: string) =>
+      (
+        (
+          await c.chamar(
+            'GET',
+            `/api/orcamentos/apoio/itens?${new URLSearchParams({ q, tabelaPrecoId: c.varejo.id, tipo })}`,
+          )
+        ).json() as {
+          tipo: string;
+        }[]
+      ).map((i) => i.tipo);
+    expect(new Set(await tipos('', 'a'))).toEqual(new Set(['material', 'servico']));
+    expect(new Set(await tipos('material', 'a'))).toEqual(new Set(['material']));
+    expect(new Set(await tipos('servico', 'a'))).toEqual(new Set(['servico']));
+    expect(
+      (await c.chamar('GET', `/api/orcamentos/apoio/itens?q=a&tabelaPrecoId=${c.varejo.id}&tipo=outro`)).statusCode,
+    ).toBe(400);
   });
 
   it('cliente inativo ou incompleto recebe orçamento (com aviso); veículo de outro cliente e vendedor inativo não', async () => {
@@ -523,5 +558,474 @@ describe('orçamento: emissão, aprovação e versões', () => {
     expect(porNumero.itens.map((i: { versaoOrcamento: number }) => i.versaoOrcamento)).toEqual([2, 1]);
     expect((await c.chamar('GET', `/api/orcamentos?q=${c.cliente.placa}`)).json().total).toBe(2);
     expect((await c.chamar('GET', '/api/orcamentos?situacao=recusado')).json().total).toBe(1);
+  });
+});
+
+describe('orçamento: vendedor e demais usuários', () => {
+  it('vendedor: orçamento no nome dele e só os próprios; os demais consultam todos e quem pode aprova', async () => {
+    const c = await cenario('Oficina Orçamento Vendedores');
+    const outra = await c.pessoa('Atendente');
+    const vendedorB = (
+      await c.chamar('POST', '/api/vendedores', { usuarioId: outra.id, whatsapp: '(48) 99999-1111' })
+    ).json();
+    const financeiro = await c.pessoa('Financeiro');
+
+    // A sessão diz quem atua como vendedor (o Administrador nunca).
+    expect((await c.atendente.chamar('GET', '/api/auth/sessao')).json().vendedorId).toBe(c.vendedor.id);
+    expect((await c.chamar('GET', '/api/auth/sessao')).json().vendedorId).toBeNull();
+
+    // O vendedor cria no próprio nome, mesmo pedindo outro; o Administrador escolhe.
+    const doA = (
+      await c.atendente.chamar('POST', '/api/orcamentos', orcamento(c, [itemFiltro(c)], { vendedorId: vendedorB.id }))
+    ).json();
+    expect(doA.vendedor.id).toBe(c.vendedor.id);
+    const doB = (
+      await c.chamar('POST', '/api/orcamentos', orcamento(c, [itemFiltro(c)], { vendedorId: vendedorB.id }))
+    ).json();
+    expect(doB.vendedor.id).toBe(vendedorB.id);
+
+    // Só os próprios: lista (mesmo filtrando por outro), detalhe, edição e aprovação do outro = 404.
+    const listaA = (await c.atendente.chamar('GET', `/api/orcamentos?vendedorId=${vendedorB.id}`)).json();
+    expect(listaA.itens.map((o: { id: string }) => o.id)).toEqual([doA.id]);
+    expect((await c.atendente.chamar('GET', `/api/orcamentos/${doB.id}`)).statusCode).toBe(404);
+    expect(
+      (await c.atendente.chamar('PUT', `/api/orcamentos/${doB.id}`, { ...orcamento(c, []), versao: doB.versao }))
+        .statusCode,
+    ).toBe(404);
+    const bEmitido = (await transicao(c.chamar, doB.id, 'emitir', doB.versao)).json();
+    expect((await transicao(c.atendente.chamar, doB.id, 'aprovar', bEmitido.versao)).statusCode).toBe(404);
+
+    // Quem não é vendedor nem Administrador: consulta todos, não cria nem edita; com "Aprovar orçamentos", aprova.
+    expect((await financeiro.chamar('GET', '/api/orcamentos')).json().total).toBe(2);
+    expect((await financeiro.chamar('POST', '/api/orcamentos', orcamento(c, []))).statusCode).toBe(403);
+    expect((await financeiro.chamar('GET', '/api/orcamentos/apoio/clientes')).statusCode).toBe(403);
+    expect((await transicao(financeiro.chamar, doB.id, 'aprovar', bEmitido.versao)).json().situacao).toBe('aprovado');
+
+    // Início: o vendedor vê só os próprios números; o Administrador, os de todos.
+    const kpi = async (chamar: Chamar, id: string) =>
+      (await chamar('GET', '/api/painel')).json().indicadores.find((i: { id: string }) => i.id === id).valor;
+    expect(await kpi(c.atendente.chamar, 'orcamentos')).toBe(1);
+    expect(await kpi(c.chamar, 'orcamentos')).toBe(2);
+    expect(await kpi(c.atendente.chamar, 'valor_aprovado')).toBe(0);
+
+    // Janela de clientes: abre listando os ativos, com placas; filtros de tipo e situação.
+    const janela = (await c.atendente.chamar('GET', '/api/orcamentos/apoio/clientes')).json();
+    expect(janela.itens[0]).toMatchObject({ nome: 'Maria Silva', tipo: 'PF', placas: [c.cliente.placa] });
+    expect((await c.atendente.chamar('GET', '/api/orcamentos/apoio/clientes?tipo=PJ')).json().total).toBe(0);
+    expect(
+      (await c.atendente.chamar('GET', `/api/orcamentos/apoio/clientes?q=${c.cliente.placa.toLowerCase()}`)).json()
+        .total,
+    ).toBe(1);
+  });
+});
+
+describe('gravação automática do rascunho', () => {
+  it('não registra "Alterado" a cada gravação, mas mantém "Descontos alterados"', async () => {
+    const c = await cenario('Oficina Gravação Automática');
+    const o = (await c.atendente.chamar('POST', '/api/orcamentos', orcamento(c, [itemFiltro(c)]))).json();
+    const gravar = async (atual: typeof o, desconto: number, automatico?: boolean) =>
+      (
+        await c.atendente.chamar('PUT', `/api/orcamentos/${o.id}`, {
+          ...orcamento(c, [{ ...reenviar(atual)[0], precoUnitarioCentavos: undefined, descontoPercentual: desconto }]),
+          versao: atual.versao,
+          automatico,
+        })
+      ).json();
+    const eventos = (x: { eventos: { evento: string }[] }) => x.eventos.map((e) => e.evento);
+
+    const auto = await gravar(o, 5, true);
+    expect(auto.itens[0].descontoPercentual).toBe(5);
+    expect(eventos(auto)).toEqual(['descontos_alterados', 'criado']);
+    // O mesmo item (id reenviado) não duplica.
+    expect(auto.itens).toHaveLength(1);
+    expect(auto.itens[0].id).toBe(o.itens[0].id);
+
+    const manual = await gravar(auto, 5);
+    expect(eventos(manual)).toEqual(['alterado', 'descontos_alterados', 'criado']);
+  });
+});
+
+describe('contexto do cliente no orçamento', () => {
+  it('traz cadastro, veículos, últimos orçamentos e o último aprovado; o vendedor vê só os dele', async () => {
+    const c = await cenario('Oficina Contexto Cliente');
+    const outro = await c.pessoa('Atendente');
+    await c.chamar('POST', '/api/vendedores', { usuarioId: outro.id, whatsapp: '(48) 99999-0002' });
+    const criar = async (chamar: Chamar, extra: object = {}) =>
+      (await chamar('POST', '/api/orcamentos', orcamento(c, [itemFiltro(c)], extra))).json();
+
+    const meu = await criar(c.atendente.chamar);
+    const emitido = (await transicao(c.atendente.chamar, meu.id, 'emitir', meu.versao)).json();
+    expect((await transicao(c.chamar, meu.id, 'aprovar', emitido.versao)).statusCode).toBe(200);
+    const dele = await criar(outro.chamar);
+
+    const url = `/api/orcamentos/apoio/clientes/${c.cliente.id}/contexto`;
+    const admin = (await c.chamar('GET', url)).json();
+    expect(admin).toMatchObject({
+      nome: 'Maria Silva',
+      tipo: 'PF',
+      ativo: true,
+      pendencias: [],
+      endereco: { cidade: 'Florianópolis', uf: 'SC' },
+      veiculos: [{ placa: c.cliente.placa }],
+      ultimoAprovado: { id: meu.id, totalCentavos: 12_345 },
+    });
+    expect(admin.orcamentos.map((o: { id: string }) => o.id)).toEqual([dele.id, meu.id]);
+    expect(admin.totalOrcamentos).toBe(2);
+    expect(admin.orcamentos[1].situacao).toBe('aprovado');
+
+    // O outro vendedor vê só o dele: nem o orçamento nem a aprovação do colega.
+    const vendedor = (await outro.chamar('GET', url)).json();
+    expect(vendedor.orcamentos.map((o: { id: string }) => o.id)).toEqual([dele.id]);
+    expect(vendedor.ultimoAprovado).toBeNull();
+    expect(vendedor.totalOrcamentos).toBe(1);
+
+    // Recentes: clientes dos últimos orçamentos (do vendedor; da oficina para o Administrador), sem repetir.
+    const joao = await clienteComVeiculo(c, 'João Souza');
+    await criar(c.atendente.chamar, { clienteId: joao.id, veiculoId: joao.veiculoId });
+    await criar(c.atendente.chamar);
+    const nomes = async (chamar: Chamar) =>
+      ((await chamar('GET', '/api/orcamentos/apoio/clientes/recentes')).json() as { nome: string }[]).map(
+        (r) => r.nome,
+      );
+    expect(await nomes(c.atendente.chamar)).toEqual(['Maria Silva', 'João Souza']);
+    expect(await nomes(outro.chamar)).toEqual(['Maria Silva']);
+    expect(await nomes(c.chamar)).toEqual(['Maria Silva', 'João Souza']);
+
+    // Inexistente (ou de outra oficina): 404. Quem não altera orçamentos: 403.
+    expect((await c.chamar('GET', `/api/orcamentos/apoio/clientes/${randomUUID()}/contexto`)).statusCode).toBe(404);
+    const outraOficina = await cenario('Oficina Contexto Outra');
+    expect((await outraOficina.chamar('GET', url)).statusCode).toBe(404);
+    const financeiro = await c.pessoa('Financeiro');
+    expect((await financeiro.chamar('GET', url)).statusCode).toBe(403);
+    expect((await financeiro.chamar('GET', '/api/orcamentos/apoio/clientes/recentes')).statusCode).toBe(403);
+  });
+});
+
+// ---------- Aprovação comercial por alçada (docs/modulos/APROVACAO_COMERCIAL.md) ----------
+
+type AprovacaoDoc = { id: string; status: string; percentual: number; alcadaSolicitante: number } | null;
+
+/**
+ * Cenário com alçadas: Atendente (o vendedor) 5%, Gerente 15% (aprova, pode ser vendedor), Administrador 100%.
+ * Filtro a R$ 123,45: 3% → 3,01%; 8% → 8,01%; 20% → 20,00%; 50% → 50,01% do subtotal.
+ */
+async function comAlcadas(nome: string) {
+  const c = await cenario(nome);
+  const funcoes = (await c.chamar('GET', '/api/funcoes')).json() as { id: string; nome: string }[];
+  const funcaoId = (n: string) => funcoes.find((f) => f.nome === n)!.id;
+  const gerenteFuncao = (
+    await c.chamar('POST', '/api/funcoes', {
+      nome: 'Gerente',
+      descricao: null,
+      ativa: true,
+      parametros: ['VENDEDOR'],
+      acessos: { ...SEM_ACESSO, orcamentos: 'consultar', aprovacao_comercial: 'editar' },
+    })
+  ).json() as { id: string };
+  const alcada = async (id: string, percentual: number, ativa = true) => {
+    const lista = (await c.chamar('GET', '/api/alcadas')).json() as { funcaoId: string; versao: number | null }[];
+    return c.chamar('PUT', `/api/alcadas/${id}`, {
+      percentual,
+      ativa,
+      versao: lista.find((a) => a.funcaoId === id)!.versao,
+    });
+  };
+  expect((await alcada(funcaoId('Atendente'), 5)).statusCode).toBe(200);
+  expect((await alcada(gerenteFuncao.id, 15)).statusCode).toBe(200);
+  const gerente = await c.pessoa('Gerente');
+  const gerente2 = await c.pessoa('Gerente');
+  /** Cria e emite um orçamento com o filtro no desconto pedido; devolve o orçamento depois de emitir. */
+  const emitir = async (chamar: Chamar, desconto: number, extra: object = {}) => {
+    const o = (
+      await chamar('POST', '/api/orcamentos', orcamento(c, [itemFiltro(c, { descontoPercentual: desconto })], extra))
+    ).json();
+    const emitido = await transicao(chamar, o.id, 'emitir', o.versao);
+    return { resposta: emitido, o: emitido.json() };
+  };
+  const aprovacao = (chamar: Chamar, id: string) => chamar('GET', `/api/aprovacoes-comerciais/${id}`);
+  const decidir = (chamar: Chamar, id: string, acao: 'aprovar' | 'reprovar', versao: number, justificativa?: string) =>
+    chamar('POST', `/api/aprovacoes-comerciais/${id}/${acao}`, { versao, justificativa });
+  return { ...c, funcaoId, gerenteFuncao, alcada, gerente, gerente2, emitir, aprovacao, decidir };
+}
+
+describe('aprovação comercial por alçada', () => {
+  it('desconto dentro da alçada emite normalmente, sem aprovação, e registra quem deu o desconto', async () => {
+    const c = await comAlcadas('Oficina Alçada Dentro');
+    expect((await c.atendente.chamar('GET', '/api/alcadas/minha')).json()).toEqual({
+      percentual: 500,
+      funcao: 'Atendente',
+    });
+    const { o } = await c.emitir(c.atendente.chamar, 3);
+    expect(o.situacao).toBe('emitido');
+    expect(o.aprovacaoComercial).toBeNull();
+    const desconto = o.eventos.find((e: { evento: string }) => e.evento === 'descontos_alterados');
+    expect(desconto.detalhe).toMatch(/sem desconto → 3,01%.*Desconto total: 3,01%/);
+    expect(desconto.usuario).toMatch(/^Atendente/);
+
+    // Igual à alçada também está dentro: o Administrador (100%) emite 100% sem pedir aprovação.
+    const tudo = await c.emitir(c.chamar, 100);
+    expect(tudo.o.situacao).toBe('emitido');
+  });
+
+  it('acima da alçada: aguarda aprovação, com retrato, histórico, itens congelados e alerta no Início', async () => {
+    const c = await comAlcadas('Oficina Alçada Acima');
+    const { o } = await c.emitir(c.atendente.chamar, 8);
+    expect(o.situacao).toBe('aguardando_aprovacao_comercial');
+    expect(o.emitidoEm).toBeNull();
+    const pedido = o.aprovacaoComercial as NonNullable<AprovacaoDoc> & { solicitanteFuncao: string };
+    expect(pedido).toMatchObject({ status: 'pendente', percentual: 801, alcadaSolicitante: 500 });
+    expect(pedido.solicitanteFuncao).toBe('Atendente');
+    expect(o.eventos[0].evento).toBe('aprovacao_comercial_solicitada');
+    expect(o.eventos[0].detalhe).toBe('Desconto de 8,01% excede a alçada de 5,00% (Atendente).');
+
+    // Aguardando: não se edita nem se registra a decisão do cliente.
+    const editar = await c.atendente.chamar('PUT', `/api/orcamentos/${o.id}`, {
+      ...orcamento(c, reenviar(o)),
+      versao: o.versao,
+    });
+    expect(editar.statusCode).toBe(409);
+    expect(editar.json().erro).toMatch(/aguardando aprovação comercial/);
+    expect((await transicao(c.chamar, o.id, 'aprovar', o.versao)).statusCode).toBe(409);
+    const itens = c.banco(sql`update orcamento_itens set quantidade = 2 where orcamento_id = ${o.id}`);
+    await expect(itens).rejects.toThrow();
+
+    const detalhe = (await c.aprovacao(c.gerente.chamar, pedido.id)).json();
+    expect(detalhe).toMatchObject({
+      tipoDocumento: 'orcamento',
+      documentoId: o.id,
+      documentoNumero: `ORC-${String(o.numero).padStart(10, '0')}`,
+      documentoVersao: 1,
+      clienteNome: 'Maria Silva',
+      subtotalCentavos: 12_345,
+      descontoCentavos: 988,
+      totalCentavos: 11_357,
+      podeDecidir: true,
+      motivoBloqueio: null,
+    });
+    expect(detalhe.snapshot).toMatchObject({ validadeDias: 7, vendedor: expect.any(String), descontoCentavos: 988 });
+    expect(detalhe.snapshot.itens).toHaveLength(1);
+    expect(detalhe.aprovadores).toEqual([
+      { funcao: 'Gerente', alcada: 1500 },
+      { funcao: 'Administrador', alcada: 10_000 },
+    ]);
+    expect(detalhe.eventos.map((e: { evento: string }) => e.evento)).toEqual(['necessaria', 'solicitada']);
+
+    const lista = (await c.gerente.chamar('GET', '/api/aprovacoes-comerciais?posso=true')).json();
+    expect(lista.itens.map((a: { id: string }) => a.id)).toEqual([pedido.id]);
+    const painel = (await c.gerente.chamar('GET', '/api/painel')).json();
+    expect(painel.alertas[0].mensagem).toMatch(/^1 aprovação\(ões\) comercial\(is\)/);
+
+    // Sem o módulo, o vendedor não abre a área de aprovações (vê tudo pelo próprio orçamento).
+    expect((await c.atendente.chamar('GET', '/api/aprovacoes-comerciais')).statusCode).toBe(403);
+  });
+
+  it('gerente com alçada aprova: o orçamento é emitido e a alçada do momento fica no histórico', async () => {
+    const c = await comAlcadas('Oficina Alçada Aprova');
+    const { o } = await c.emitir(c.atendente.chamar, 8, { validadeAte: somarDias(hoje, 3) });
+    const pedido = o.aprovacaoComercial as NonNullable<AprovacaoDoc>;
+    const lida = (await c.aprovacao(c.gerente.chamar, pedido.id)).json();
+
+    const aprovada = await c.decidir(c.gerente.chamar, pedido.id, 'aprovar', lida.versao);
+    expect(aprovada.statusCode).toBe(200);
+    expect(aprovada.json()).toMatchObject({
+      status: 'aprovada',
+      decisorFuncao: 'Gerente',
+      alcadaDecisor: 1500,
+      podeDecidir: false,
+    });
+    expect(aprovada.json().eventos.at(-1)).toMatchObject({ evento: 'aprovada', funcao: 'Gerente', alcada: 1500 });
+
+    // Emitido agora, com a validade pedida (3 dias) contando da aprovação.
+    const emitido = (await c.atendente.chamar('GET', `/api/orcamentos/${o.id}`)).json();
+    expect(emitido.situacao).toBe('emitido');
+    expect(emitido.validadeAte).toBe(somarDias(hoje, 3));
+    expect(emitido.aprovacaoComercial).toMatchObject({ status: 'aprovada', alcadaDecisor: 1500 });
+    expect(emitido.eventos.slice(0, 2).map((e: { evento: string }) => e.evento)).toEqual([
+      'emitido',
+      'aprovado_comercialmente',
+    ]);
+
+    // Não se aprova de novo, nem com a versão nova.
+    expect((await c.decidir(c.gerente.chamar, pedido.id, 'aprovar', lida.versao)).statusCode).toBe(409);
+    expect((await c.decidir(c.chamar, pedido.id, 'aprovar', aprovada.json().versao)).statusCode).toBe(409);
+
+    // Mudar a alçada depois não reescreve o histórico.
+    await c.alcada(c.gerenteFuncao.id, 10);
+    expect((await c.aprovacao(c.chamar, pedido.id)).json().alcadaDecisor).toBe(1500);
+    const historico = (await c.chamar('GET', '/api/alcadas/historico')).json();
+    expect(historico[0]).toMatchObject({ funcao: 'Gerente', percentualAntes: 1500, percentualDepois: 1000 });
+  });
+
+  it('alçada insuficiente não aprova; o Administrador aprova; quem pediu não decide', async () => {
+    const c = await comAlcadas('Oficina Alçada Insuficiente');
+    const vinte = (await c.emitir(c.atendente.chamar, 20)).o.aprovacaoComercial as NonNullable<AprovacaoDoc>;
+    expect(vinte.percentual).toBe(2000);
+    const lida = (await c.aprovacao(c.gerente.chamar, vinte.id)).json();
+    expect(lida).toMatchObject({
+      podeDecidir: false,
+      motivoBloqueio: 'Sua alçada (15,00%) não cobre 20,00% de desconto.',
+    });
+    const negado = await c.decidir(c.gerente.chamar, vinte.id, 'aprovar', lida.versao);
+    expect(negado.statusCode).toBe(403);
+    expect((await c.gerente.chamar('GET', '/api/aprovacoes-comerciais?posso=true')).json().total).toBe(0);
+
+    const cinquenta = (await c.emitir(c.atendente.chamar, 50)).o.aprovacaoComercial as NonNullable<AprovacaoDoc>;
+    for (const pedido of [vinte, cinquenta]) {
+      const versao = (await c.aprovacao(c.chamar, pedido.id)).json().versao;
+      const ok = await c.decidir(c.chamar, pedido.id, 'aprovar', versao);
+      expect(ok.json()).toMatchObject({ status: 'aprovada', decisorFuncao: 'Administrador', alcadaDecisor: 10_000 });
+    }
+
+    // Gerente que também é vendedor pede 20%; mesmo com a alçada aumentada depois, não aprova o próprio pedido.
+    const vendedorGerente = (
+      await c.chamar('POST', '/api/vendedores', { usuarioId: c.gerente.id, whatsapp: '(48) 99999-0001' })
+    ).json();
+    expect(vendedorGerente.id).toBeDefined();
+    const proprio = (await c.emitir(c.gerente.chamar, 20)).o.aprovacaoComercial as NonNullable<AprovacaoDoc>;
+    await c.alcada(c.gerenteFuncao.id, 25);
+    const meu = (await c.aprovacao(c.gerente.chamar, proprio.id)).json();
+    expect(meu.motivoBloqueio).toBe('Quem pediu a aprovação não pode decidi-la.');
+    expect((await c.decidir(c.gerente.chamar, proprio.id, 'aprovar', meu.versao)).statusCode).toBe(403);
+    // O vendedor-gerente só enxerga o que é dele ou o que a alçada dele cobre; o outro gerente decide.
+    const visiveis = (await c.gerente.chamar('GET', '/api/aprovacoes-comerciais?status=')).json();
+    expect(visiveis.itens.map((a: { id: string }) => a.id)).toEqual([proprio.id]);
+    expect((await c.decidir(c.gerente2.chamar, proprio.id, 'aprovar', meu.versao)).statusCode).toBe(200);
+  });
+
+  it('reprovação exige justificativa; a nova versão é reavaliada e a aprovação da anterior permanece', async () => {
+    const c = await comAlcadas('Oficina Alçada Versões');
+    const v1 = (await c.emitir(c.atendente.chamar, 8)).o;
+    const pedidoV1 = v1.aprovacaoComercial.id as string;
+    await c.decidir(c.gerente.chamar, pedidoV1, 'aprovar', 1);
+
+    // v2 com 12%: a aprovação da v1 não vale para ela.
+    const lidaV1 = (await c.atendente.chamar('GET', `/api/orcamentos/${v1.id}`)).json();
+    const v2 = (await transicao(c.atendente.chamar, v1.id, 'nova-versao', lidaV1.versao)).json();
+    expect(v2.aprovacaoComercial).toBeNull();
+    const alterada = (
+      await c.atendente.chamar('PUT', `/api/orcamentos/${v2.id}`, {
+        ...orcamento(c, [{ ...reenviar(v2)[0], precoUnitarioCentavos: undefined, descontoPercentual: 12 }]),
+        versao: v2.versao,
+      })
+    ).json();
+    const emitidaV2 = (await transicao(c.atendente.chamar, v2.id, 'emitir', alterada.versao)).json();
+    expect(emitidaV2.situacao).toBe('aguardando_aprovacao_comercial');
+    const pedidoV2 = emitidaV2.aprovacaoComercial.id as string;
+    expect(pedidoV2).not.toBe(pedidoV1);
+    expect((await c.aprovacao(c.gerente.chamar, pedidoV2)).json().documentoVersao).toBe(2);
+    expect((await c.aprovacao(c.gerente.chamar, pedidoV1)).json()).toMatchObject({
+      status: 'aprovada',
+      documentoVersao: 1,
+    });
+
+    // Reprovar sem justificativa: 400. Com ela: v2 reprovada comercialmente, com o motivo no histórico.
+    expect((await c.decidir(c.gerente.chamar, pedidoV2, 'reprovar', 1)).statusCode).toBe(400);
+    expect((await c.decidir(c.gerente.chamar, pedidoV2, 'reprovar', 1, '   ')).statusCode).toBe(400);
+    const reprovada = await c.decidir(c.gerente.chamar, pedidoV2, 'reprovar', 1, 'Acima da política comercial.');
+    expect(reprovada.json()).toMatchObject({ status: 'reprovada', justificativa: 'Acima da política comercial.' });
+    const v2Reprovada = (await c.atendente.chamar('GET', `/api/orcamentos/${v2.id}`)).json();
+    expect(v2Reprovada.situacao).toBe('reprovado_comercialmente');
+    expect(v2Reprovada.eventos[0]).toMatchObject({
+      evento: 'reprovado_comercialmente',
+      detalhe: 'Acima da política comercial.',
+    });
+
+    // Para corrigir, nova versão (a v3 nasce rascunho).
+    const v3 = (await transicao(c.atendente.chamar, v2.id, 'nova-versao', v2Reprovada.versao)).json();
+    expect([v3.versaoOrcamento, v3.situacao]).toEqual([3, 'rascunho']);
+  });
+
+  it('o solicitante retira o pedido (volta a rascunho); cancelar o orçamento cancela o pedido', async () => {
+    const c = await comAlcadas('Oficina Alçada Retirar');
+    const { o } = await c.emitir(c.atendente.chamar, 8);
+    // Só quem pediu retira (o Administrador altera o orçamento, mas não retira o pedido de outro).
+    expect((await transicao(c.chamar, o.id, 'retirar-aprovacao', o.versao)).statusCode).toBe(403);
+    const retirado = (await transicao(c.atendente.chamar, o.id, 'retirar-aprovacao', o.versao)).json();
+    expect(retirado.situacao).toBe('rascunho');
+    expect(retirado.aprovacaoComercial.status).toBe('cancelada');
+    const cancelada = (await c.aprovacao(c.chamar, o.aprovacaoComercial.id)).json();
+    expect(cancelada.eventos.at(-1)).toMatchObject({
+      evento: 'cancelada',
+      detalhe: 'Pedido retirado pelo solicitante.',
+    });
+
+    // Emitido de novo e cancelado: a pendente é cancelada junto.
+    const outra = (await transicao(c.atendente.chamar, o.id, 'emitir', retirado.versao)).json();
+    expect(outra.aprovacaoComercial.status).toBe('pendente');
+    const cancelado = (await transicao(c.atendente.chamar, o.id, 'cancelar', outra.versao, 'Cliente desistiu')).json();
+    expect(cancelado.situacao).toBe('cancelado');
+    expect(cancelado.aprovacaoComercial.status).toBe('cancelada');
+  });
+
+  it('decisões simultâneas: só a primeira vale', async () => {
+    const c = await comAlcadas('Oficina Alçada Concorrência');
+    const pedido = (await c.emitir(c.atendente.chamar, 8)).o.aprovacaoComercial as NonNullable<AprovacaoDoc>;
+    const respostas = await Promise.all([
+      c.decidir(c.gerente.chamar, pedido.id, 'aprovar', 1),
+      c.decidir(c.gerente2.chamar, pedido.id, 'reprovar', 1, 'Não'),
+    ]);
+    expect(respostas.map((r) => r.statusCode).sort()).toEqual([200, 409]);
+    const final = (await c.aprovacao(c.chamar, pedido.id)).json();
+    expect(final.eventos.filter((e: { evento: string }) => ['aprovada', 'reprovada'].includes(e.evento))).toHaveLength(
+      1,
+    );
+  });
+
+  it('sem ninguém com alçada suficiente, a emissão é recusada', async () => {
+    const c = await comAlcadas('Oficina Alçada Sem Aprovador');
+    await c.alcada(c.funcaoId('Administrador'), 30);
+    const { resposta } = await c.emitir(c.atendente.chamar, 50);
+    expect(resposta.statusCode).toBe(400);
+    expect(resposta.json().erro).toMatch(
+      /Nenhum usuário pode aprovar 50,01% de desconto \(a maior alçada de quem aprova é 30,00%\)/,
+    );
+    // Alçada inativa vale 0%.
+    await c.alcada(c.funcaoId('Atendente'), 5, false);
+    expect((await c.atendente.chamar('GET', '/api/alcadas/minha')).json().percentual).toBe(0);
+  });
+
+  it('histórico e decisão não podem ser alterados nem apagados, nem por fora da API', async () => {
+    const c = await comAlcadas('Oficina Alçada Imutável');
+    const pedido = (await c.emitir(c.atendente.chamar, 8)).o.aprovacaoComercial as NonNullable<AprovacaoDoc>;
+    await c.decidir(c.gerente.chamar, pedido.id, 'aprovar', 1);
+    for (const consulta of [
+      sql`update aprovacoes_comerciais_eventos set detalhe = 'x' where aprovacao_id = ${pedido.id}`,
+      sql`delete from aprovacoes_comerciais_eventos where aprovacao_id = ${pedido.id}`,
+      sql`update aprovacoes_comerciais set justificativa = 'x' where id = ${pedido.id}`,
+      sql`delete from aprovacoes_comerciais where id = ${pedido.id}`,
+      sql`update alcadas_desconto_eventos set percentual_depois = 0`,
+    ])
+      await expect(c.banco(consulta)).rejects.toThrow();
+  });
+
+  it('só o Administrador configura alçadas, com a versão lida e valores válidos', async () => {
+    const c = await comAlcadas('Oficina Alçada Configuração');
+    expect((await c.atendente.chamar('GET', '/api/alcadas')).statusCode).toBe(403);
+    expect(
+      (await c.gerente.chamar('PUT', `/api/alcadas/${c.gerenteFuncao.id}`, { percentual: 99, ativa: true, versao: 1 }))
+        .statusCode,
+    ).toBe(403);
+    const lista = (await c.chamar('GET', '/api/alcadas')).json();
+    expect(lista.map((a: { funcao: string; percentual: number }) => [a.funcao, a.percentual])).toEqual([
+      ['Administrador', 10_000],
+      ['Almoxarife', 0],
+      ['Atendente', 500],
+      ['Financeiro', 0],
+      ['Gerente', 1500],
+      ['Mecânico', 0],
+    ]);
+    const gerente = lista.find((a: { funcao: string }) => a.funcao === 'Gerente');
+    const url = `/api/alcadas/${c.gerenteFuncao.id}`;
+    expect((await c.chamar('PUT', url, { percentual: 20, ativa: true, versao: gerente.versao + 1 })).statusCode).toBe(
+      409,
+    );
+    expect((await c.chamar('PUT', url, { percentual: 100.5, ativa: true, versao: gerente.versao })).statusCode).toBe(
+      400,
+    );
+    expect((await c.chamar('PUT', url, { percentual: 7.555, ativa: true, versao: gerente.versao })).statusCode).toBe(
+      400,
+    );
+    const ok = await c.chamar('PUT', url, { percentual: 7.5, ativa: true, versao: gerente.versao });
+    expect(ok.json()).toMatchObject({ percentual: 750, versao: gerente.versao + 1 });
   });
 });

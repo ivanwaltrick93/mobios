@@ -30,6 +30,8 @@ const mensagensUnicidade: Record<string, string> = {
   clientes_tenant_id_cpf_cnpj_index: 'Já existe um cliente com este CPF/CNPJ',
   veiculos_tenant_id_placa_index: 'Já existe um veículo com esta placa',
   funcoes_nome_unico: 'Já existe uma função com este nome',
+  alcadas_desconto_funcao_unica: 'A alçada desta função foi alterada por outra pessoa. Recarregue a página.',
+  aprovacoes_comerciais_uma_pendente: 'Este documento já tem uma aprovação comercial pendente. Recarregue a página.',
   origens_cliente_nome_unico: 'Já existe um item com este nome',
   relacionamentos_cliente_nome_unico: 'Já existe um item com este nome',
   cargos_responsavel_nome_unico: 'Já existe um item com este nome',

@@ -15,6 +15,7 @@ import type { PgColumn } from 'drizzle-orm/pg-core';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { withTenant } from '../../db/client.js';
 import { clientes, orcamentos, users, veiculos, vendedores } from '../../db/schema.js';
+import { contarPendentes } from '../aprovacoes-comerciais/routes.js';
 import { diasAteAniversario } from '../clientes/routes.js';
 import { situacaoSql } from '../orcamentos/routes.js';
 
@@ -118,7 +119,9 @@ export const painelRoutes: FastifyPluginAsyncZod = async (app) => {
 
         let orcamentosPorSituacao: Painel['orcamentosPorSituacao'] = null;
         let aprovadosPorVendedor: Painel['aprovadosPorVendedor'] = null;
-        if (acessa('orcamentos')) {
+        // O vendedor (não Administrador) vê os números dos próprios orçamentos; os demais, da oficina inteira.
+        if (acessa('orcamentos') || req.user.vendedorId) {
+          const meus = req.user.vendedorId ? eq(orcamentos.vendedorId, req.user.vendedorId) : undefined;
           // Orçamentos novos contam pela 1ª versão (as versões seguintes são o mesmo orçamento).
           const primeira = eq(orcamentos.versaoOrcamento, 1);
           const aprovadoEm = (p: typeof atual) =>
@@ -136,7 +139,8 @@ export const painelRoutes: FastifyPluginAsyncZod = async (app) => {
               recusados: contar(recusadoEm(atual)),
               recusadosAntes: contar(recusadoEm(anterior)),
             })
-            .from(orcamentos);
+            .from(orcamentos)
+            .where(meus);
           const ticket = (valor: number, n: number) => (n ? Math.round(valor / n) : 0);
           const taxa = (aprovados: number, recusados: number) =>
             aprovados + recusados ? Math.round((aprovados / (aprovados + recusados)) * 1000) / 10 : null;
@@ -190,7 +194,7 @@ export const painelRoutes: FastifyPluginAsyncZod = async (app) => {
               totalCentavos: sql<number>`coalesce(sum(${orcamentos.totalCentavos}), 0)`.mapWith(Number),
             })
             .from(orcamentos)
-            .where(noPeriodo(orcamentos.criadoEm, atual))
+            .where(and(noPeriodo(orcamentos.criadoEm, atual), meus))
             // Pela 1ª coluna: a expressão tem parâmetros, e repeti-la no GROUP BY não casaria com a do SELECT.
             .groupBy(sql`1`);
           aprovadosPorVendedor = await tx
@@ -202,7 +206,7 @@ export const painelRoutes: FastifyPluginAsyncZod = async (app) => {
             .from(orcamentos)
             .innerJoin(vendedores, eq(vendedores.id, orcamentos.vendedorId))
             .innerJoin(users, eq(users.id, vendedores.usuarioId))
-            .where(aprovadoEm(atual))
+            .where(and(aprovadoEm(atual), meus))
             .groupBy(users.nome)
             .orderBy(desc(sql`sum(${orcamentos.totalCentavos})`))
             .limit(5);
@@ -228,6 +232,14 @@ export const painelRoutes: FastifyPluginAsyncZod = async (app) => {
           });
 
         const alertas: AlertaPainel[] = [];
+        const pendentes = acessa('aprovacao_comercial') ? await contarPendentes(tx, req) : 0;
+        if (pendentes > 0) {
+          alertas.push({
+            nivel: 'aviso',
+            mensagem: `${pendentes} aprovação(ões) comercial(is) de desconto aguardando decisão.`,
+            link: '/aprovacoes-comerciais',
+          });
+        }
         if (c!.incompletos > 0) {
           alertas.push({
             nivel: 'aviso',

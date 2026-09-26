@@ -1,19 +1,29 @@
 import {
+  dentroDaAlcada,
   descreverValidade,
   EVENTOS_ORCAMENTO,
   formatarDataIso,
   formatarHoras,
   formatarMoeda,
   formatarNumeroOrcamento,
-  formatarPlaca,
+  formatarPercentual,
   formatarQuantidade,
+  percentualDeDesconto,
   type Orcamento,
 } from '@mobios/shared';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, Copy, Pencil, Send, XCircle } from 'lucide-react';
+import { CheckCircle2, Copy, Pencil, Send, Undo2, XCircle } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router';
-import { ClienteDoOrcamento, PrecoNegociado, SeloSituacao, Totais } from '../components/Orcamento';
+import {
+  atributosDoOrcamento,
+  AvisoAprovacaoComercial,
+  ClienteDoOrcamento,
+  PrecoNegociado,
+  SeloSituacao,
+  Totais,
+  useMinhaAlcada,
+} from '../components/Orcamento';
 import {
   Alerta,
   AreaTexto,
@@ -34,11 +44,11 @@ import {
 } from '../components/ui';
 import { api } from '../lib/api';
 import { useOrcamento } from '../lib/orcamentos';
-import { usePode } from '../lib/sessao';
+import { usePerfilOrcamento, useSessao } from '../lib/sessao';
 
 const dataHora = (d: Date | string) => new Date(d).toLocaleString('pt-BR');
 
-type Acao = 'emitir' | 'enviar' | 'aprovar' | 'recusar' | 'cancelar' | 'nova-versao';
+type Acao = 'emitir' | 'enviar' | 'aprovar' | 'recusar' | 'cancelar' | 'nova-versao' | 'retirar-aprovacao';
 
 /** Ações que pedem confirmação numa janela (recusa e cancelamento aceitam um motivo, opcional). */
 const CONFIRMACOES: Record<Acao, { titulo: string; texto: string; botao: string; motivo?: boolean }> = {
@@ -60,6 +70,13 @@ const CONFIRMACOES: Record<Acao, { titulo: string; texto: string; botao: string;
     botao: 'Cancelar orçamento',
     motivo: true,
   },
+  'retirar-aprovacao': {
+    titulo: 'Retirar pedido de aprovação',
+    texto:
+      'O pedido de aprovação comercial é cancelado e o orçamento volta a rascunho, para ajustar o desconto. ' +
+      'Ao emitir de novo, o desconto é reavaliado.',
+    botao: 'Retirar pedido',
+  },
   'nova-versao': {
     titulo: 'Gerar nova versão',
     texto:
@@ -78,11 +95,13 @@ const Dado = ({ rotulo, children }: { rotulo: string; children: ReactNode }) => 
 /** Detalhe do orçamento: cabeçalho, itens, totais, versões, histórico e as ações da situação atual. */
 export function OrcamentoDetalhe() {
   const { id } = useParams() as { id: string };
-  const pode = usePode();
+  const perfil = usePerfilOrcamento();
+  const usuarioId = useSessao().data?.usuario.id;
+  const alcada = useMinhaAlcada().data;
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { orcamento, recalculando, erroRecalculo, avisos } = useOrcamento(id);
-  // Vindo de "Salvar orçamento": confirma e mostra o que a gravação ajustou. O aviso é guardado na tela e sai do
+  // Vindo de "Finalizar": confirma e mostra o que a gravação ajustou. O aviso é guardado na tela e sai do
   // histórico do navegador, para não reaparecer ao recarregar ou voltar.
   const location = useLocation();
   const [avisosAoSalvar] = useState(() => (location.state as { avisosAoSalvar?: string[] } | null)?.avisosAoSalvar);
@@ -104,13 +123,18 @@ export function OrcamentoDetalhe() {
     },
   });
 
-  if (!pode('orcamentos')) return <Alerta>Você não tem permissão para acessar os orçamentos.</Alerta>;
+  if (!perfil.podeVer) return <Alerta>Você não tem permissão para acessar os orçamentos.</Alerta>;
   if (orcamento.isError) return <Alerta>{orcamento.error.message}</Alerta>;
   if (!orcamento.data || recalculando) return <TextoSuave>Carregando…</TextoSuave>;
   const o = orcamento.data;
-  const editar = pode('orcamentos', 'editar');
-  const aprovar = pode('aprovar_orcamentos', 'editar');
+  // Vendedor: só chega aos próprios (a API devolve 404 nos outros). Os demais só consultam; aprovam se puderem.
+  const editar = perfil.podeAlterar;
+  const aprovar = perfil.podeAprovar;
   const aberto = o.situacao === 'emitido' || o.situacao === 'enviado';
+  const aguardando = o.situacao === 'aguardando_aprovacao_comercial';
+  const reprovado = o.situacao === 'reprovado_comercialmente';
+  const percentual = percentualDeDesconto(o.subtotalCentavos, o.descontoCentavos);
+  const excedeAlcada = !!alcada && !dentroDaAlcada(percentual, alcada.percentual);
   const botoes: { tipo: Acao; rotulo: string; icone: ReactNode; variante?: 'secundario' | 'perigo' | 'sucesso' }[] = [
     ...(editar && o.situacao === 'rascunho'
       ? [
@@ -141,7 +165,17 @@ export function OrcamentoDetalhe() {
     ...(editar && o.situacao === 'emitido'
       ? [{ tipo: 'enviar' as const, rotulo: 'Marcar como enviado', icone: null, variante: 'secundario' as const }]
       : []),
-    ...(editar && aberto
+    ...(editar && aguardando && o.aprovacaoComercial?.solicitanteId === usuarioId
+      ? [
+          {
+            tipo: 'retirar-aprovacao' as const,
+            rotulo: 'Retirar pedido',
+            icone: <Undo2 className="mr-1.5 size-4" aria-hidden />,
+            variante: 'secundario' as const,
+          },
+        ]
+      : []),
+    ...(editar && (aberto || reprovado)
       ? [
           {
             tipo: 'nova-versao' as const,
@@ -151,7 +185,7 @@ export function OrcamentoDetalhe() {
           },
         ]
       : []),
-    ...(editar && (o.situacao === 'rascunho' || aberto)
+    ...(editar && (o.situacao === 'rascunho' || aberto || aguardando || reprovado)
       ? [{ tipo: 'cancelar' as const, rotulo: 'Cancelar', icone: null, variante: 'secundario' as const }]
       : []),
   ];
@@ -182,18 +216,16 @@ export function OrcamentoDetalhe() {
               <span className="text-sm text-texto-suave">Versão {o.versaoOrcamento}</span>
               <SeloSituacao situacao={o.situacao} />
             </div>
-            <h1 className="text-2xl font-semibold">
+            <h1 className="text-xl font-semibold">
               <ClienteDoOrcamento cliente={o.cliente} />
             </h1>
-            <p className="text-sm text-texto-suave">
-              {[
-                o.veiculo && `${formatarPlaca(o.veiculo.placa)} — ${o.veiculo.marca} ${o.veiculo.modelo}`,
-                `Vendedor: ${o.vendedor.nome}${o.vendedor.ativo ? '' : ' (inativo)'}`,
-                `Tabela: ${o.tabela.nome}`,
-              ]
-                .filter(Boolean)
-                .join(' · ')}
-            </p>
+            <dl className="grid grid-cols-2 gap-x-6 gap-y-2 pt-1 sm:grid-cols-3 xl:grid-cols-5">
+              {atributosDoOrcamento(o).map((a) => (
+                <Dado key={a.rotulo} rotulo={a.rotulo}>
+                  {a.valor}
+                </Dado>
+              ))}
+            </dl>
           </div>
           <div className="flex flex-wrap gap-2">
             {editar && o.situacao === 'rascunho' && (
@@ -210,6 +242,7 @@ export function OrcamentoDetalhe() {
           </div>
         </div>
         <div className="mt-3 space-y-2">
+          <AvisoAprovacaoComercial aprovacao={o.aprovacaoComercial} />
           <Alerta>{(acao.isError && acao.error.message) || (erroRecalculo && erroRecalculo.message)}</Alerta>
           <Aviso>{avisos.length > 0 && `Preços recalculados para hoje: ${avisos.join(' ')}`}</Aviso>
         </div>
@@ -319,6 +352,13 @@ export function OrcamentoDetalhe() {
         <Janela titulo={confirmacao.titulo} aoFechar={() => setConfirmando(null)}>
           <div className="space-y-4">
             <TextoSuave>{confirmacao.texto}</TextoSuave>
+            {confirmando === 'emitir' && excedeAlcada && (
+              <Aviso>
+                O desconto total de {formatarPercentual(percentual)} está acima da sua alçada de{' '}
+                {formatarPercentual(alcada.percentual)}: o orçamento vai para aprovação comercial e só é emitido quando
+                aprovado (a validade passa a contar da aprovação).
+              </Aviso>
+            )}
             {confirmacao.motivo && (
               <Campo rotulo="Motivo (opcional)">
                 <AreaTexto rows={2} maxLength={500} value={motivo} onChange={(e) => setMotivo(e.target.value)} />

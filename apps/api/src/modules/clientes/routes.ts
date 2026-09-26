@@ -58,6 +58,26 @@ const totalVeiculos = sql<number>`(select count(*) from veiculos v where v.clien
   Number,
 );
 
+/**
+ * Busca de cliente por nome, CPF/CNPJ, telefone/WhatsApp ou placa de um veículo dele (lista de clientes e janela de
+ * escolha do orçamento). Usa as colunas de `clientes` sem apelido.
+ */
+export function buscaDeCliente(q: string) {
+  const digitos = q.replace(/\D/g, '');
+  const documento = normalizarDocumento(q);
+  // Placa sem hífen e em maiúsculas: no balcão o cliente chega com o carro, e a placa leva ao dono.
+  const placa = normalizarPlaca(q);
+  return or(
+    ilike(clientes.nome, `%${q}%`),
+    // Documento guardado sem pontuação e em maiúsculas (o CNPJ pode ter letras).
+    ...(documento ? [ilike(clientes.cpfCnpj, `%${documento}%`)] : []),
+    ...(digitos ? [ilike(clientes.telefone, `%${digitos}%`), ilike(clientes.whatsapp, `%${digitos}%`)] : []),
+    ...(placa.length >= 3
+      ? [sql`exists (select 1 from veiculos v where v.cliente_id = "clientes"."id" and v.placa like ${`%${placa}%`})`]
+      : []),
+  )!;
+}
+
 /** Dias até o próximo aniversário (função do banco, migração 0016), contando a partir de hoje em Brasília. */
 export const diasAteAniversario = () =>
   sql<number | null>`dias_ate_aniversario(${clientes.dataNascimento}, ${hojeIso()}::date)`;
@@ -366,23 +386,7 @@ export const clientesRoutes: FastifyPluginAsyncZod = async (app) => {
         pagina,
         porPagina,
       } = req.query;
-      const digitos = q?.replace(/\D/g, '');
-      const documento = q ? normalizarDocumento(q) : '';
-      // Placa sem hífen e em maiúsculas: no balcão o cliente chega com o carro, e a placa leva ao dono.
-      const placa = q ? normalizarPlaca(q) : '';
-      const busca = q
-        ? or(
-            ilike(clientes.nome, `%${q}%`),
-            // Documento guardado sem pontuação e em maiúsculas (o CNPJ pode ter letras).
-            ...(documento ? [ilike(clientes.cpfCnpj, `%${documento}%`)] : []),
-            ...(digitos ? [ilike(clientes.telefone, `%${digitos}%`), ilike(clientes.whatsapp, `%${digitos}%`)] : []),
-            ...(placa.length >= 3
-              ? [
-                  sql`exists (select 1 from veiculos v where v.cliente_id = "clientes"."id" and v.placa like ${`%${placa}%`})`,
-                ]
-              : []),
-          )
-        : undefined;
+      const busca = q ? buscaDeCliente(q) : undefined;
       const dias = diasAteAniversario();
       const filtro = and(
         busca,

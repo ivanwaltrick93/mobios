@@ -1,10 +1,11 @@
 import { hash } from '@node-rs/argon2';
-import { FUNCOES_PADRAO, NOME_FUNCAO_ADMIN, OPCOES_PADRAO, usuarioCriarSchema } from '@mobios/shared';
+import { ALCADA_MAXIMA, FUNCOES_PADRAO, NOME_FUNCAO_ADMIN, OPCOES_PADRAO, usuarioCriarSchema } from '@mobios/shared';
 import { count, sql } from 'drizzle-orm';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { gravarAcessos, gravarFuncoesDoUsuario } from '../lib/acessos.js';
 import type { Tx } from './client.js';
 import {
+  alcadasDesconto,
   cargosResponsavel,
   classificacoesServico,
   funcaoParametros,
@@ -35,6 +36,8 @@ export async function criarOficinaComAdmin(
 
     // Funções da oficina: Administrador (fixo) + padrões editáveis.
     const [funcaoAdmin] = await tx.insert(funcoes).values({ nome: NOME_FUNCAO_ADMIN, admin: true }).returning();
+    // Alçada de desconto inicial: Administrador 100%; as demais funções começam sem alçada (0%).
+    await tx.insert(alcadasDesconto).values({ funcaoId: funcaoAdmin!.id, percentual: ALCADA_MAXIMA });
     const parametros = await tx
       .select({ id: parametrosFuncao.id, codigo: parametrosFuncao.codigo })
       .from(parametrosFuncao);

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { aprovacaoDoDocumentoSchema } from './aprovacoes.js';
 import { formatarDataIso, hojeIso } from './formatos.js';
 import { horasParaMinutos } from './mascaras.js';
 import { FORMAS_PRECO_SERVICO, PRECO_MAXIMO, TIPOS_ITEM_PRECO } from './materiais.js';
@@ -17,12 +18,26 @@ export const formatarNumeroOrcamento = (numero: number) => `ORC-${String(numero)
 
 // ---------- Situação e validade ----------
 
-/** Situação gravada. "Vencido" não é gravado: é calculado pela validade (ver situacaoOrcamento). */
-export const STATUS_ORCAMENTO = ['rascunho', 'emitido', 'enviado', 'aprovado', 'recusado', 'cancelado'] as const;
+/**
+ * Situação gravada. "Vencido" não é gravado: é calculado pela validade (ver situacaoOrcamento).
+ * Aguardando/reprovado comercialmente: emissão com desconto acima da alçada (docs/modulos/APROVACAO_COMERCIAL.md).
+ */
+export const STATUS_ORCAMENTO = [
+  'rascunho',
+  'aguardando_aprovacao_comercial',
+  'reprovado_comercialmente',
+  'emitido',
+  'enviado',
+  'aprovado',
+  'recusado',
+  'cancelado',
+] as const;
 export type StatusOrcamento = (typeof STATUS_ORCAMENTO)[number];
 
 export const SITUACOES_ORCAMENTO = {
   rascunho: 'Rascunho',
+  aguardando_aprovacao_comercial: 'Aguardando aprovação comercial',
+  reprovado_comercialmente: 'Reprovado comercialmente',
   emitido: 'Emitido',
   enviado: 'Enviado',
   aprovado: 'Aprovado',
@@ -204,6 +219,11 @@ export const orcamentoInputSchema = z.object({
     .transform((v) => v || null),
   itens: z.array(itemOrcamentoInputSchema).max(MAXIMO_ITENS_ORCAMENTO, `No máximo ${MAXIMO_ITENS_ORCAMENTO} itens`),
   versao,
+  /**
+   * Gravação automática do rascunho (a tela grava a cada mudança): não registra "Alterado" no histórico, para não
+   * encher de eventos; "Descontos alterados" continua (rastro da aprovação comercial).
+   */
+  automatico: z.boolean().optional(),
 });
 export type OrcamentoInput = z.input<typeof orcamentoInputSchema>;
 export type OrcamentoDados = z.output<typeof orcamentoInputSchema>;
@@ -257,6 +277,11 @@ export const EVENTOS_ORCAMENTO = {
   recusado: 'Recusado',
   cancelado: 'Cancelado',
   nova_versao: 'Nova versão',
+  descontos_alterados: 'Descontos alterados',
+  aprovacao_comercial_solicitada: 'Enviado para aprovação comercial',
+  aprovado_comercialmente: 'Aprovado comercialmente',
+  reprovado_comercialmente: 'Reprovado comercialmente',
+  aprovacao_comercial_retirada: 'Pedido de aprovação comercial retirado',
 } as const;
 export type EventoOrcamento = keyof typeof EVENTOS_ORCAMENTO;
 
@@ -303,6 +328,8 @@ export const orcamentoSchema = orcamentoResumoSchema.extend({
   motivoRecusa: z.string().nullable(),
   canceladoEm: z.coerce.date().nullable(),
   motivoCancelamento: z.string().nullable(),
+  /** Aprovação comercial mais recente desta versão (null = nunca precisou). */
+  aprovacaoComercial: aprovacaoDoDocumentoSchema.nullable(),
   /** Versões do mesmo número (histórico), da mais nova para a mais antiga. */
   versoes: z.array(z.object({ id: z.uuid(), versaoOrcamento: z.number(), situacao, totalCentavos: z.number() })),
   eventos: z.array(
@@ -346,12 +373,16 @@ export const itemVendavelSchema = z.object({
   multiplo: z.number(),
   fracionada: z.boolean(),
   precoCentavos: z.number().nullable(),
+  /** Material: saldo livre somado dos depósitos (disponível − reservado); serviço: null. */
+  estoque: z.number().nullable(),
 });
 export type ItemVendavel = z.infer<typeof itemVendavelSchema>;
 
 export const itemVendavelQuerySchema = z.object({
   q: z.string().trim().min(1),
   tabelaPrecoId: z.uuid(),
+  /** Vazio = materiais e serviços. */
+  tipo: z.union([z.literal(''), z.enum(chaves(TIPOS_ITEM_PRECO))]).optional(),
 });
 
 /** Descrição curta da validade: "até 30/09/2026 (aprovável até 01/10/2026)". */
@@ -363,11 +394,26 @@ export const descreverValidade = (validadeAte: string) =>
 export const clienteParaOrcamentoSchema = z.object({
   id: z.uuid(),
   nome: z.string(),
+  tipo: z.enum(['PF', 'PJ']),
   cpfCnpj: z.string().nullable(),
+  telefone: z.string().nullable(),
+  whatsapp: z.string().nullable(),
+  /** Cidade/UF do endereço principal. */
+  cidade: z.string().nullable(),
+  placas: z.array(z.string()),
   ativo: z.boolean(),
   pendencias: z.array(z.string()),
 });
 export type ClienteParaOrcamento = z.infer<typeof clienteParaOrcamentoSchema>;
+
+/** Janela de escolha do cliente: abre listando (busca opcional), com filtros de situação e tipo. */
+export const clienteParaOrcamentoFiltroSchema = z.object({
+  q: z.string().trim().optional(),
+  ativo: z.enum(['true', 'false', '']).default('true'),
+  tipo: z.enum(['PF', 'PJ', '']).optional(),
+  pagina: z.coerce.number().int().min(1).default(1),
+  porPagina: z.coerce.number().int().min(1).max(50).default(20),
+});
 
 export const veiculoParaOrcamentoSchema = z.object({
   id: z.uuid(),
@@ -376,6 +422,60 @@ export const veiculoParaOrcamentoSchema = z.object({
   modelo: z.string(),
 });
 export type VeiculoParaOrcamento = z.infer<typeof veiculoParaOrcamentoSchema>;
+
+/**
+ * Contexto do cliente na tela do orçamento (card e "Visualizar cliente"): cadastro, veículos, os últimos orçamentos
+ * e o último aprovado pelo cliente. Para o vendedor, os orçamentos são só os dele (docs/modulos/ORCAMENTOS.md §5).
+ * Crédito e última compra não existem no MobiOS (virão com o Financeiro e as vendas).
+ */
+export const contextoClienteSchema = z.object({
+  id: z.uuid(),
+  nome: z.string(),
+  tipo: z.enum(['PF', 'PJ']),
+  cpfCnpj: z.string().nullable(),
+  rgIe: z.string().nullable(),
+  telefone: z.string().nullable(),
+  whatsapp: z.string().nullable(),
+  email: z.string().nullable(),
+  clienteDesde: z.string(),
+  ativo: z.boolean(),
+  pendencias: z.array(z.string()),
+  endereco: z
+    .object({
+      logradouro: z.string(),
+      numero: z.string(),
+      complemento: z.string().nullable(),
+      bairro: z.string(),
+      cidade: z.string(),
+      uf: z.string(),
+      cep: z.string(),
+    })
+    .nullable(),
+  veiculos: z.array(veiculoParaOrcamentoSchema),
+  ultimoAprovado: z
+    .object({
+      id: z.uuid(),
+      numero: z.number(),
+      versaoOrcamento: z.number(),
+      aprovadoEm: z.coerce.date(),
+      totalCentavos: z.number(),
+    })
+    .nullable(),
+  /** Quantos orçamentos (registros, contando as versões) o cliente tem no escopo de quem consulta. */
+  totalOrcamentos: z.number(),
+  /** Os 5 mais recentes. */
+  orcamentos: z.array(
+    z.object({
+      id: z.uuid(),
+      numero: z.number(),
+      versaoOrcamento: z.number(),
+      situacao,
+      totalCentavos: z.number(),
+      criadoEm: z.coerce.date(),
+    }),
+  ),
+});
+export type ContextoCliente = z.infer<typeof contextoClienteSchema>;
 
 export const vendedorParaOrcamentoSchema = z.object({
   id: z.uuid(),

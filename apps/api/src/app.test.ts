@@ -635,9 +635,17 @@ describe('clientes e veículos', () => {
     const { chamar } = await novaOficina('Oficina Frota');
     const ana = (await chamar('POST', '/api/clientes', cliente({ nome: 'Ana' }))).json();
     const bia = (await chamar('POST', '/api/clientes', cliente({ nome: 'Bia' }))).json();
-    const gol = (await chamar('POST', '/api/veiculos', veiculo(ana.id, { marca: 'Volkswagen', modelo: 'Gol' }))).json();
+    // Placas fixas: a busca de clientes também procura os dígitos do texto no telefone e no WhatsApp, e uma placa
+    // aleatória com dígitos contidos em (48) 3222-1000 ou (48) 99999-0000 (ex.: ABC1D00) traria também a Bia.
+    const gol = (
+      await chamar('POST', '/api/veiculos', veiculo(ana.id, { placa: 'GOL1A23', marca: 'Volkswagen', modelo: 'Gol' }))
+    ).json();
     const polo = (
-      await chamar('POST', '/api/veiculos', veiculo(ana.id, { marca: 'Volkswagen', modelo: 'Polo', principal: true }))
+      await chamar(
+        'POST',
+        '/api/veiculos',
+        veiculo(ana.id, { placa: 'POL4B56', marca: 'Volkswagen', modelo: 'Polo', principal: true }),
+      )
     ).json();
     const principais = async (id: string) =>
       (await chamar('GET', `/api/veiculos?clienteId=${id}`))
@@ -964,6 +972,7 @@ describe('funções e permissões configuráveis', () => {
     clientes: null,
     orcamentos: null,
     aprovar_orcamentos: null,
+    aprovacao_comercial: null,
     os: null,
     pecas_os: null,
     materiais: null,
@@ -992,6 +1001,7 @@ describe('funções e permissões configuráveis', () => {
         clientes: 'editar',
         orcamentos: 'editar',
         aprovar_orcamentos: 'editar',
+        aprovacao_comercial: 'editar',
         os: 'editar',
         pecas_os: 'editar',
         materiais: 'editar',
@@ -1608,6 +1618,10 @@ describe('isolamento entre oficinas (RLS)', () => {
       'orcamentos',
       'orcamento_itens',
       'orcamentos_eventos',
+      'alcadas_desconto',
+      'alcadas_desconto_eventos',
+      'aprovacoes_comerciais',
+      'aprovacoes_comerciais_eventos',
     ]) {
       const linhas = await db.execute(sql`select count(*)::int as n from ${sql.identifier(tabela)}`);
       expect(linhas[0]!.n, tabela).toBe(0);

@@ -114,13 +114,15 @@ Aplicação enterprise densa, inspirada em SAP Fiori, com identidade própria: f
 | `Avatar` (`sm` / `md` / `perfil` / `lg`), `Iniciais` | Foto do usuário em círculo; sem foto (ou para clientes), iniciais na cor principal |
 | `Placa` (`sm` / `md` / `lg`) | Placa do veículo desenhada no padrão Mercosul |
 | `Abas` | Abas de uma página (ex.: perfil do cliente), com contagem opcional |
-| `Etapas` + `useAssistente` (`lib/assistente.ts`) | Cadastro em etapas: cada etapa valida só os seus campos; na edição, etapas livres e "Salvar" sempre visível |
+| `Etapas` + `useAssistente` (`lib/assistente.ts`) | Cadastro em etapas: cada etapa valida só os seus campos; na edição, etapas livres e "Salvar" sempre visível. `detalhes`: linha de resumo sob cada etapa (ex.: jornada do orçamento: cliente escolhido, "3 itens · R$ 1.071,00") |
 | `Vazio` | Estado vazio com ícone, mensagem e ação (nunca uma tabela vazia) |
 | `CampoBusca` | Busca com lupa (dentro da `BarraFiltros` nas listas) |
 | `Paginacao` (`POR_PAGINA` = 20) | Anterior/Próxima, "Página X de Y" e total; usada em toda listagem |
 | `BotaoVisualizar` | Ação "Visualizar" das tabelas: ícone de olho com a dica "Visualizar". Com `para`, abre a página de detalhes; com `aoClicar`, abre os detalhes na própria linha |
 | `Detalhes` | Dados do registro só para leitura, abertos na linha da tabela (cadastros sem página própria: categorias, marcas, depósitos, vendedores) |
 | `Janela` | Janela sobre a página (`<dialog>` nativo) para consulta rápida sem sair da tela; fecha no X, com Esc ou clicando fora. Ex.: dados do usuário vinculado ao vendedor |
+| `Gaveta` | Gaveta lateral (Drawer, `<dialog>` nativo, até 576 px, presa à direita) para consultar sem abandonar um processo: a página fica visível ao fundo. Mesmo fechamento da `Janela`. Ex.: "Visualizar cliente" no orçamento |
+| `Dica` | Ícone ⓘ com texto de ajuda (Tooltip acessível): abre ao passar o mouse, no foco e ao tocar; fecha com Esc, ao sair ou tocando fora; posição fixa (não é cortada por tabelas). Ex.: "Unidade de cobrança: hora" na quantidade do serviço por hora. Prefira-o ao `title` quando a informação importa no celular |
 | `ImportarCsv` (em `components/ImportarCsv.tsx`) | Importação de planilha: colunas aceitas, modelo para baixar e resultado linha a linha |
 
 ## Padrões de tela

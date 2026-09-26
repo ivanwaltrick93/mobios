@@ -132,6 +132,13 @@ orcamentos (id, tenant_id, numero [seq. por oficina], versao_orcamento, orcament
 orcamento_itens (id, tenant_id, orcamento_id, ordem, tipo material|servico, material_id?|servico_id?, codigo, descricao,
                  unidade, multiplo, quantidade|tempo_minutos, preco_tabela, preco_unitario, desconto_percentual?, totais)
 orcamentos_eventos (id, tenant_id, orcamento_id, evento, detalhe, usuario_id, criado_em)   -- histórico
+alcadas_desconto (id, tenant_id, funcao_id [única], percentual [centésimos], ativa)   -- sem linha = 0%
+alcadas_desconto_eventos (id, tenant_id, funcao_id, percentual/ativa antes e depois, usuario_id, criado_em)
+aprovacoes_comerciais (id, tenant_id, tipo_documento, orcamento_id? [depois: pedido_venda_id?, os_id?], documento
+            numero/versao, cliente_nome, subtotal/desconto/total, percentual, solicitante + funcao + alcada, status
+            pendente|aprovada|reprovada|cancelada, decidido_por + funcao + alcada + em, justificativa, snapshot jsonb)
+aprovacoes_comerciais_eventos (id, tenant_id, aprovacao_id, evento, usuario_id, funcao, alcada, detalhe, criado_em)
+            -- aprovação comercial por alçada (docs/modulos/APROVACAO_COMERCIAL.md); eventos imutáveis (trigger)
 
 clientes (id, tenant_id, tipo PF|PJ, nome, cpf_cnpj, telefone, email, endereco jsonb, observacoes)
 veiculos (id, tenant_id, cliente_id, placa, marca, modelo, ano, cor, chassi, km_atual)

@@ -10,15 +10,21 @@ export function Etapas({
   aoIr,
   livre = false,
   comErro = [],
+  detalhes = [],
+  rotulo = 'Etapas',
 }: {
   titulos: string[];
+  /** Linha abaixo do título de cada etapa (ex.: o cliente escolhido, "3 itens · R$ 1.071,00"). */
+  detalhes?: (string | null | undefined)[];
+  /** Nome da lista para leitores de tela. */
+  rotulo?: string;
   atual: number;
   aoIr: (i: number) => void;
   livre?: boolean;
   comErro?: number[];
 }) {
   return (
-    <ol className="flex items-start">
+    <ol aria-label={rotulo} className="flex items-start">
       {titulos.map((titulo, i) => {
         const feita = !livre && i < atual;
         const clicavel = livre || i < atual;
@@ -48,7 +54,13 @@ export function Etapas({
                 className={`text-center text-xs ${i === atual ? 'font-semibold text-texto' : 'text-texto-suave'} max-sm:sr-only`}
               >
                 {titulo}
+                <span className="sr-only">{feita ? ' (concluída)' : i === atual ? ' (atual)' : ''}</span>
               </span>
+              {detalhes[i] && (
+                <span className="max-w-44 truncate text-center text-xs text-texto-suave max-sm:sr-only">
+                  {detalhes[i]}
+                </span>
+              )}
             </button>
             {i < titulos.length - 1 && (
               <span

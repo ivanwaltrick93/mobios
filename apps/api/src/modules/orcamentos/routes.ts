@@ -1,6 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import {
+  clienteParaOrcamentoFiltroSchema,
   clienteParaOrcamentoSchema,
+  contextoClienteSchema,
+  dentroDaAlcada,
   formatarDataIso,
   formatarMoeda,
   formatarNumeroOrcamento,
@@ -14,9 +17,13 @@ import {
   orcamentoResumoSchema,
   orcamentoSchema,
   pendenciasCliente,
+  percentualDeDesconto,
+  formatarPercentual,
   situacaoOrcamento,
+  SITUACOES_ORCAMENTO,
   somarDias,
   somarItens,
+  temAcesso,
   tabelaParaOrcamentoSchema,
   transicaoOrcamentoSchema,
   UNIDADES,
@@ -31,11 +38,14 @@ import {
   type OrcamentoDados,
   type SituacaoOrcamento,
 } from '@mobios/shared';
-import { and, asc, count, desc, eq, gte, ilike, lte, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gte, ilike, inArray, lte, or, sql, type SQL } from 'drizzle-orm';
+import type { FastifyRequest } from 'fastify';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { withTenant, type Tx } from '../../db/client.js';
 import {
+  aprovacoesComerciais,
+  clienteEnderecos,
   clientes,
   materiais,
   orcamentoItens,
@@ -47,9 +57,25 @@ import {
   veiculos,
   vendedores,
 } from '../../db/schema.js';
+import {
+  alcadaDoUsuario,
+  cancelarAprovacao,
+  pendenteDoDocumento,
+  solicitarAprovacao,
+} from '../../lib/aprovacao-comercial.js';
 import { buscaDeMaterial, buscaDeServico, nomeUsuario } from '../../lib/cadastro.js';
 import { ErroHttp, naoEncontrado } from '../../lib/erros.js';
-import { gravarItens, itensDoOrcamento, montarItens, precosDoDia, recalcularDoDia } from './regras.js';
+import { buscaDeCliente } from '../clientes/routes.js';
+import { snapshotDoOrcamento } from './aprovacao.js';
+import {
+  descreverDescontos,
+  gravarItens,
+  itensDoOrcamento,
+  montarItens,
+  precosDoDia,
+  recalcularDoDia,
+  registrar,
+} from './regras.js';
 
 type Gravado = typeof orcamentos.$inferSelect;
 
@@ -88,7 +114,36 @@ type BasePendencia = {
 };
 const pendencias = (c: BasePendencia) => pendenciasCliente(c, c.temEndereco, c.temResponsavel);
 
-async function carregar(tx: Tx, id: string, avisos: string[] = []): Promise<Orcamento> {
+/** Colunas da janela de escolha do cliente (lista e recentes), com a cidade principal e as placas. */
+const colunasClienteParaOrcamento = {
+  id: clientes.id,
+  nome: clientes.nome,
+  ativo: clientes.ativo,
+  ...colunasPendencia,
+  cidade: sql<string | null>`(select e.cidade || '/' || e.uf from cliente_enderecos e
+    where e.cliente_id = "clientes"."id" order by e.principal desc, e.criado_em limit 1)`,
+  placas: sql<string[]>`(select coalesce(array_agg(v.placa order by v.principal desc, v.placa), '{}')
+    from veiculos v where v.cliente_id = "clientes"."id")`,
+};
+const paraClienteParaOrcamento = (
+  c: BasePendencia & { id: string; nome: string; ativo: boolean; cidade: string | null; placas: string[] },
+) => ({
+  id: c.id,
+  nome: c.nome,
+  tipo: c.tipo,
+  cpfCnpj: c.cpfCnpj,
+  telefone: c.telefone,
+  whatsapp: c.whatsapp,
+  cidade: c.cidade,
+  placas: c.placas,
+  ativo: c.ativo,
+  pendencias: pendencias(c),
+});
+
+/**
+ * Orçamento completo. `dono`: vendedor que só enxerga os próprios (req.user.vendedorId); de outro vendedor, 404.
+ */
+async function carregar(tx: Tx, id: string, dono: string | null, avisos: string[] = []): Promise<Orcamento> {
   const hoje = hojeIso();
   const [o] = await tx
     .select({
@@ -130,7 +185,7 @@ async function carregar(tx: Tx, id: string, avisos: string[] = []): Promise<Orca
     .innerJoin(vendedores, eq(vendedores.id, orcamentos.vendedorId))
     .innerJoin(users, eq(users.id, vendedores.usuarioId))
     .innerJoin(tabelasPreco, eq(tabelasPreco.id, orcamentos.tabelaPrecoId))
-    .where(eq(orcamentos.id, id));
+    .where(and(eq(orcamentos.id, id), dono ? eq(orcamentos.vendedorId, dono) : undefined));
   if (!o) throw naoEncontrado('Orçamento');
 
   const itens = await itensDoOrcamento(tx, id);
@@ -153,8 +208,28 @@ async function carregar(tx: Tx, id: string, avisos: string[] = []): Promise<Orca
       totalCentavos: orcamentos.totalCentavos,
     })
     .from(orcamentos)
-    .where(eq(orcamentos.numero, o.numero))
+    .where(and(eq(orcamentos.numero, o.numero), dono ? eq(orcamentos.vendedorId, dono) : undefined))
     .orderBy(desc(orcamentos.versaoOrcamento));
+  const [aprovacao] = await tx
+    .select({
+      id: aprovacoesComerciais.id,
+      status: aprovacoesComerciais.status,
+      percentual: aprovacoesComerciais.percentual,
+      alcadaSolicitante: aprovacoesComerciais.alcadaSolicitante,
+      solicitanteId: aprovacoesComerciais.solicitanteId,
+      solicitante: nomeUsuario('aprovacoes_comerciais', 'solicitante_id'),
+      solicitanteFuncao: aprovacoesComerciais.solicitanteFuncao,
+      criadoEm: aprovacoesComerciais.criadoEm,
+      decisor: nomeUsuario('aprovacoes_comerciais', 'decidido_por'),
+      decisorFuncao: aprovacoesComerciais.decisorFuncao,
+      alcadaDecisor: aprovacoesComerciais.alcadaDecisor,
+      decididoEm: aprovacoesComerciais.decididoEm,
+      justificativa: aprovacoesComerciais.justificativa,
+    })
+    .from(aprovacoesComerciais)
+    .where(eq(aprovacoesComerciais.orcamentoId, id))
+    .orderBy(desc(aprovacoesComerciais.criadoEm))
+    .limit(1);
 
   const { cliente, veiculoId, veiculoPlaca, veiculoMarca, veiculoModelo, ...resto } = o;
   return {
@@ -169,21 +244,20 @@ async function carregar(tx: Tx, id: string, avisos: string[] = []): Promise<Orca
       quantidade: quantidade == null ? null : Number(quantidade),
       descontoPercentual: descontoPercentual == null ? null : descontoPercentual / 100,
     })),
+    aprovacaoComercial: aprovacao ? { ...aprovacao, solicitante: aprovacao.solicitante ?? '' } : null,
     eventos,
     versoes,
     avisos,
   };
 }
 
-/** Histórico. clock_timestamp: dois eventos da mesma transação ficam na ordem em que aconteceram. */
-const registrar = (tx: Tx, orcamentoId: string, evento: EventoOrcamento, usuarioId: string, detalhe?: string) =>
-  tx
-    .insert(orcamentosEventos)
-    .values({ orcamentoId, evento, usuarioId, detalhe: detalhe || null, criadoEm: sql`clock_timestamp()` });
-
 /** Lê o orçamento travando a linha até o fim da transação (transições e edição não se atropelam). */
-async function travar(tx: Tx, id: string): Promise<Gravado> {
-  const [o] = await tx.select().from(orcamentos).where(eq(orcamentos.id, id)).for('update');
+async function travar(tx: Tx, id: string, dono: string | null): Promise<Gravado> {
+  const [o] = await tx
+    .select()
+    .from(orcamentos)
+    .where(and(eq(orcamentos.id, id), dono ? eq(orcamentos.vendedorId, dono) : undefined))
+    .for('update');
   if (!o) throw naoEncontrado('Orçamento');
   return o;
 }
@@ -198,7 +272,10 @@ function exigirVersaoLida(o: Gravado, versao: number | undefined) {
 function exigirSituacao(o: Gravado, permitidas: SituacaoOrcamento[], acao: string) {
   const atual = situacaoOrcamento(o.status, o.validadeAte);
   if (!permitidas.includes(atual))
-    throw new ErroHttp(409, `Orçamento ${atual}: não é possível ${acao}. Recarregue a página.`);
+    throw new ErroHttp(
+      409,
+      `Orçamento ${SITUACOES_ORCAMENTO[atual].toLowerCase()}: não é possível ${acao}. Recarregue a página.`,
+    );
 }
 
 /** Rascunho aberto em outro dia precisa ser recalculado (POST /:id/recalcular) antes de mudar ou emitir. */
@@ -264,8 +341,19 @@ const resumoDoTotal = (itens: number, total: number) => `${itens} item(ns), tota
 /** Orçamentos (menu Orçamentos). Consultar: módulo Orçamentos; alterar: Editar; aprovar/recusar: Aprovar orçamentos. */
 export const orcamentosRoutes: FastifyPluginAsyncZod = async (app) => {
   app.addHook('onRequest', app.autenticar);
-  app.addHook('onRequest', app.exigirAcesso('orcamentos'));
-  const editar = { onRequest: app.exigirAcesso('orcamentos', 'editar') };
+  // Entra quem consulta orçamentos pela matriz, o Administrador e o vendedor ativo (este, só nos próprios).
+  app.addHook('onRequest', async (req) => {
+    if (!req.user.admin && !req.user.vendedorId && !temAcesso(req.user.acessos, 'orcamentos'))
+      throw new ErroHttp(403, 'Você não tem permissão para esta ação.');
+  });
+  // Alterar (criar, editar, emitir, enviar, nova versão, cancelar): só o Administrador e o vendedor, nos próprios.
+  // Os demais só consultam, mesmo com "Editar" em Orçamentos na matriz (decisão de 25/09/2026).
+  const editar = {
+    onRequest: async (req: FastifyRequest) => {
+      if (!req.user.admin && !req.user.vendedorId)
+        throw new ErroHttp(403, 'Só o Administrador e os vendedores criam e alteram orçamentos.');
+    },
+  };
   const aprovar = { onRequest: app.exigirAcesso('aprovar_orcamentos', 'editar') };
   const resposta = { 200: orcamentoSchema };
 
@@ -292,7 +380,12 @@ export const orcamentosRoutes: FastifyPluginAsyncZod = async (app) => {
             )
           : undefined,
         situacao ? filtroSituacao(situacao, hoje) : undefined,
-        vendedorId ? eq(orcamentos.vendedorId, vendedorId) : undefined,
+        // O vendedor só vê os próprios (o filtro dele vem fixo na tela).
+        req.user.vendedorId
+          ? eq(orcamentos.vendedorId, req.user.vendedorId)
+          : vendedorId
+            ? eq(orcamentos.vendedorId, vendedorId)
+            : undefined,
         desde ? gte(orcamentos.criadoEm, sql`${desde}::date::timestamp at time zone 'America/Sao_Paulo'`) : undefined,
         ate ? lte(orcamentos.criadoEm, sql`(${ate}::date + 1)::timestamp at time zone 'America/Sao_Paulo'`) : undefined,
       ];
@@ -333,41 +426,155 @@ export const orcamentosRoutes: FastifyPluginAsyncZod = async (app) => {
 
   // ---------- Apoio à tela (sem depender dos módulos Clientes, Preços ou da Equipe) ----------
 
+  /** Janela de escolha do cliente: lista paginada (abre sem busca), filtros de situação e tipo, placas do cliente. */
   app.get(
     '/apoio/clientes',
     {
       ...editar,
       schema: {
-        querystring: z.object({ q: z.string().trim().min(2) }),
-        response: { 200: z.array(clienteParaOrcamentoSchema) },
+        querystring: clienteParaOrcamentoFiltroSchema,
+        response: { 200: z.object({ itens: z.array(clienteParaOrcamentoSchema), total: z.number() }) },
       },
     },
     async (req) => {
-      const { q } = req.query;
-      const digitos = q.replace(/\D/g, '');
+      const { q, ativo, tipo, pagina, porPagina } = req.query;
+      const onde = and(
+        q ? buscaDeCliente(q) : undefined,
+        ativo ? eq(clientes.ativo, ativo === 'true') : undefined,
+        tipo ? eq(clientes.tipo, tipo) : undefined,
+      );
       return withTenant(req.user.tid, async (tx) => {
         const lista = await tx
-          .select({ id: clientes.id, nome: clientes.nome, ativo: clientes.ativo, ...colunasPendencia })
+          .select(colunasClienteParaOrcamento)
           .from(clientes)
-          .where(
-            or(
-              ilike(clientes.nome, `%${q}%`),
-              ...(digitos.length >= 3 ? [ilike(clientes.cpfCnpj, `${digitos}%`)] : []),
-              sql`exists (select 1 from veiculos v where v.cliente_id = "clientes"."id"
-                and v.placa = ${normalizarPlaca(q)})`,
-            ),
-          )
-          .orderBy(asc(clientes.nome))
-          .limit(10);
-        return lista.map((c) => ({
-          id: c.id,
-          nome: c.nome,
-          cpfCnpj: c.cpfCnpj,
-          ativo: c.ativo,
-          pendencias: pendencias(c),
-        }));
+          .where(onde)
+          .orderBy(asc(clientes.nome), asc(clientes.id))
+          .limit(porPagina)
+          .offset((pagina - 1) * porPagina);
+        const [{ total }] = (await tx.select({ total: count() }).from(clientes).where(onde)) as [{ total: number }];
+        return { itens: lista.map(paraClienteParaOrcamento), total };
       });
     },
+  );
+
+  /**
+   * Clientes recentes (janela de escolha, sem busca): os dos últimos orçamentos do vendedor logado ou, para o
+   * Administrador, da oficina. Até 5, do mais recente para o mais antigo; calculado dos orçamentos, sem cadastro à parte.
+   */
+  app.get(
+    '/apoio/clientes/recentes',
+    { ...editar, schema: { response: { 200: z.array(clienteParaOrcamentoSchema) } } },
+    async (req) =>
+      withTenant(req.user.tid, async (tx) => {
+        const ultimos = await tx
+          .select({ clienteId: orcamentos.clienteId, ultimo: sql`max(${orcamentos.criadoEm})` })
+          .from(orcamentos)
+          .where(req.user.vendedorId ? eq(orcamentos.vendedorId, req.user.vendedorId) : undefined)
+          .groupBy(orcamentos.clienteId)
+          .orderBy(desc(sql`max(${orcamentos.criadoEm})`))
+          .limit(5);
+        if (!ultimos.length) return [];
+        const lista = await tx
+          .select(colunasClienteParaOrcamento)
+          .from(clientes)
+          .where(
+            inArray(
+              clientes.id,
+              ultimos.map((u) => u.clienteId),
+            ),
+          );
+        const porId = new Map(lista.map((c) => [c.id, c]));
+        return ultimos.flatMap((u) => {
+          const c = porId.get(u.clienteId);
+          return c ? [paraClienteParaOrcamento(c)] : [];
+        });
+      }),
+  );
+
+  /**
+   * Contexto do cliente no orçamento ("Visualizar cliente"): cadastro, endereço principal, veículos, os 5 últimos
+   * orçamentos e o último aprovado. O vendedor vê só os orçamentos dele (os de outros não aparecem).
+   */
+  app.get(
+    '/apoio/clientes/:id/contexto',
+    { ...editar, schema: { params: idParamSchema, response: { 200: contextoClienteSchema } } },
+    async (req) =>
+      withTenant(req.user.tid, async (tx) => {
+        const [c] = await tx
+          .select({
+            id: clientes.id,
+            nome: clientes.nome,
+            rgIe: clientes.rgIe,
+            email: clientes.email,
+            clienteDesde: clientes.clienteDesde,
+            ativo: clientes.ativo,
+            ...colunasPendencia,
+          })
+          .from(clientes)
+          .where(eq(clientes.id, req.params.id));
+        if (!c) throw naoEncontrado('Cliente');
+        const [endereco] = await tx
+          .select({
+            logradouro: clienteEnderecos.logradouro,
+            numero: clienteEnderecos.numero,
+            complemento: clienteEnderecos.complemento,
+            bairro: clienteEnderecos.bairro,
+            cidade: clienteEnderecos.cidade,
+            uf: clienteEnderecos.uf,
+            cep: clienteEnderecos.cep,
+          })
+          .from(clienteEnderecos)
+          .where(eq(clienteEnderecos.clienteId, c.id))
+          .orderBy(desc(clienteEnderecos.principal), asc(clienteEnderecos.criadoEm))
+          .limit(1);
+        const listaVeiculos = await tx
+          .select({ id: veiculos.id, placa: veiculos.placa, marca: veiculos.marca, modelo: veiculos.modelo })
+          .from(veiculos)
+          .where(eq(veiculos.clienteId, c.id))
+          .orderBy(desc(veiculos.principal), asc(veiculos.placa));
+        const doCliente = and(
+          eq(orcamentos.clienteId, c.id),
+          req.user.vendedorId ? eq(orcamentos.vendedorId, req.user.vendedorId) : undefined,
+        );
+        const recentes = await tx
+          .select({
+            id: orcamentos.id,
+            numero: orcamentos.numero,
+            versaoOrcamento: orcamentos.versaoOrcamento,
+            situacao: situacaoSql(hojeIso()),
+            totalCentavos: orcamentos.totalCentavos,
+            criadoEm: orcamentos.criadoEm,
+          })
+          .from(orcamentos)
+          .where(doCliente)
+          .orderBy(desc(orcamentos.criadoEm), desc(orcamentos.versaoOrcamento))
+          .limit(5);
+        const [{ total }] = (await tx.select({ total: count() }).from(orcamentos).where(doCliente)) as [
+          { total: number },
+        ];
+        const [ultimoAprovado] = await tx
+          .select({
+            id: orcamentos.id,
+            numero: orcamentos.numero,
+            versaoOrcamento: orcamentos.versaoOrcamento,
+            aprovadoEm: orcamentos.aprovadoEm,
+            totalCentavos: orcamentos.totalCentavos,
+          })
+          .from(orcamentos)
+          .where(and(doCliente, eq(orcamentos.status, 'aprovado')))
+          .orderBy(desc(orcamentos.aprovadoEm))
+          .limit(1);
+        const { temEndereco: _e, temResponsavel: _r, ...cadastro } = c;
+        return {
+          ...cadastro,
+          pendencias: pendencias(c),
+          endereco: endereco ?? null,
+          veiculos: listaVeiculos,
+          ultimoAprovado: ultimoAprovado ? { ...ultimoAprovado, aprovadoEm: ultimoAprovado.aprovadoEm! } : null,
+          totalOrcamentos: total,
+          orcamentos: recentes,
+        };
+      }),
   );
 
   app.get(
@@ -420,32 +627,41 @@ export const orcamentosRoutes: FastifyPluginAsyncZod = async (app) => {
     '/apoio/itens',
     { ...editar, schema: { querystring: itemVendavelQuerySchema, response: { 200: z.array(itemVendavelSchema) } } },
     async (req) => {
-      const { q, tabelaPrecoId } = req.query;
+      const { q, tabelaPrecoId, tipo } = req.query;
       return withTenant(req.user.tid, async (tx) => {
-        const listaMateriais = await tx
-          .select({
-            id: materiais.id,
-            sku: materiais.sku,
-            descricao: materiais.descricao,
-            unidade: materiais.unidade,
-            multiplo: materiais.multiplo,
-          })
-          .from(materiais)
-          .where(and(eq(materiais.ativo, true), eq(materiais.permiteVenda, true), buscaDeMaterial(q)))
-          .orderBy(asc(materiais.descricao))
-          .limit(10);
-        const listaServicos = await tx
-          .select({
-            id: servicos.id,
-            codigo: servicos.codigo,
-            nome: servicos.nome,
-            formaPreco: servicos.formaPreco,
-            tempoMinutos: servicos.tempoMinutos,
-          })
-          .from(servicos)
-          .where(and(eq(servicos.ativo, true), buscaDeServico(q)))
-          .orderBy(asc(servicos.nome))
-          .limit(10);
+        // Filtro por tipo: a consulta do outro tipo nem roda.
+        const listaMateriais =
+          tipo === 'servico'
+            ? []
+            : await tx
+                .select({
+                  id: materiais.id,
+                  sku: materiais.sku,
+                  descricao: materiais.descricao,
+                  unidade: materiais.unidade,
+                  multiplo: materiais.multiplo,
+                  estoque: sql<number>`(select coalesce(sum(e.disponivel - e.reservado), 0)
+              from estoques e where e.material_id = "materiais"."id")`.mapWith(Number),
+                })
+                .from(materiais)
+                .where(and(eq(materiais.ativo, true), eq(materiais.permiteVenda, true), buscaDeMaterial(q)))
+                .orderBy(asc(materiais.descricao))
+                .limit(10);
+        const listaServicos =
+          tipo === 'material'
+            ? []
+            : await tx
+                .select({
+                  id: servicos.id,
+                  codigo: servicos.codigo,
+                  nome: servicos.nome,
+                  formaPreco: servicos.formaPreco,
+                  tempoMinutos: servicos.tempoMinutos,
+                })
+                .from(servicos)
+                .where(and(eq(servicos.ativo, true), buscaDeServico(q)))
+                .orderBy(asc(servicos.nome))
+                .limit(10);
         const itens: Omit<ItemVendavel, 'precoCentavos'>[] = [
           ...listaMateriais.map((m) => ({
             tipo: 'material' as const,
@@ -456,6 +672,7 @@ export const orcamentosRoutes: FastifyPluginAsyncZod = async (app) => {
             formaPreco: null,
             multiplo: m.multiplo,
             fracionada: UNIDADES[m.unidade].fracionada,
+            estoque: m.estoque,
           })),
           ...listaServicos.map((s) => ({
             tipo: 'servico' as const,
@@ -466,6 +683,7 @@ export const orcamentosRoutes: FastifyPluginAsyncZod = async (app) => {
             formaPreco: s.formaPreco,
             multiplo: s.formaPreco === 'hora' ? s.tempoMinutos! : 1,
             fracionada: false,
+            estoque: null,
           })),
         ];
         const precos = await precosDoDia(tx, itens, tabelaPrecoId, hojeIso());
@@ -477,7 +695,7 @@ export const orcamentosRoutes: FastifyPluginAsyncZod = async (app) => {
   // ---------- Orçamento ----------
 
   app.get('/:id', { schema: { params: idParamSchema, response: resposta } }, async (req) =>
-    withTenant(req.user.tid, (tx) => carregar(tx, req.params.id)),
+    withTenant(req.user.tid, (tx) => carregar(tx, req.params.id, req.user.vendedorId)),
   );
 
   /** Novo rascunho (versão 1). O número vem do contador da oficina, na mesma transação. */
@@ -485,15 +703,17 @@ export const orcamentosRoutes: FastifyPluginAsyncZod = async (app) => {
     '/',
     { ...editar, schema: { body: orcamentoInputSchema, response: { 201: orcamentoSchema } } },
     async (req, reply) => {
+      // O vendedor não escolhe: o orçamento fica no nome dele.
+      const dados = req.user.vendedorId ? { ...req.body, vendedorId: req.user.vendedorId } : req.body;
       const orcamento = await withTenant(req.user.tid, async (tx) => {
         const hoje = hojeIso();
-        const tabelaPrecoId = await validarCabecalho(tx, req.body);
-        const { linhas, avisos } = await montarItens(tx, req.body.itens, [], tabelaPrecoId, hoje, false);
+        const tabelaPrecoId = await validarCabecalho(tx, dados);
+        const { linhas, avisos } = await montarItens(tx, dados.itens, [], tabelaPrecoId, hoje, false);
         const totais = somarItens(linhas);
         const [{ id }] = (await tx
           .insert(orcamentos)
           .values({
-            ...cabecalho(req.body, tabelaPrecoId),
+            ...cabecalho(dados, tabelaPrecoId),
             ...totais,
             precosEm: hoje,
             criadoPor: req.user.sub,
@@ -502,7 +722,9 @@ export const orcamentosRoutes: FastifyPluginAsyncZod = async (app) => {
           .returning({ id: orcamentos.id })) as [{ id: string }];
         await gravarItens(tx, id, linhas);
         await registrar(tx, id, 'criado', req.user.sub, resumoDoTotal(linhas.length, totais.totalCentavos));
-        return carregar(tx, id, avisos);
+        const descontos = descreverDescontos([], linhas);
+        if (descontos) await registrar(tx, id, 'descontos_alterados', req.user.sub, descontos);
+        return carregar(tx, id, req.user.vendedorId, avisos);
       });
       return reply.code(201).send(orcamento);
     },
@@ -517,31 +739,25 @@ export const orcamentosRoutes: FastifyPluginAsyncZod = async (app) => {
     { ...editar, schema: { params: idParamSchema, body: orcamentoInputSchema, response: resposta } },
     async (req) =>
       withTenant(req.user.tid, async (tx) => {
-        const atual = await travar(tx, req.params.id);
+        const atual = await travar(tx, req.params.id, req.user.vendedorId);
         exigirVersaoLida(atual, req.body.versao);
         exigirSituacao(atual, ['rascunho'], 'alterar');
         exigirPrecosDoDia(atual);
+        const dados = req.user.vendedorId ? { ...req.body, vendedorId: req.user.vendedorId } : req.body;
         // O cliente é o do orçamento original: a partir da versão 2 (já foi emitido) não muda.
-        if (atual.versaoOrcamento > 1 && req.body.clienteId !== atual.clienteId)
+        if (atual.versaoOrcamento > 1 && dados.clienteId !== atual.clienteId)
           throw new ErroHttp(400, 'O cliente não pode ser trocado numa nova versão do orçamento.', {
             clienteId: 'O cliente não muda a partir da versão 2',
           });
-        const tabelaPrecoId = await validarCabecalho(tx, req.body, atual);
+        const tabelaPrecoId = await validarCabecalho(tx, dados, atual);
         const trocouTabela = tabelaPrecoId !== atual.tabelaPrecoId;
         const gravados = await itensDoOrcamento(tx, atual.id);
-        const { linhas, avisos } = await montarItens(
-          tx,
-          req.body.itens,
-          gravados,
-          tabelaPrecoId,
-          hojeIso(),
-          trocouTabela,
-        );
+        const { linhas, avisos } = await montarItens(tx, dados.itens, gravados, tabelaPrecoId, hojeIso(), trocouTabela);
         const totais = somarItens(linhas);
         await tx
           .update(orcamentos)
           .set({
-            ...cabecalho(req.body, tabelaPrecoId),
+            ...cabecalho(dados, tabelaPrecoId),
             ...totais,
             atualizadoPor: req.user.sub,
             versao: atual.versao + 1,
@@ -561,8 +777,12 @@ export const orcamentosRoutes: FastifyPluginAsyncZod = async (app) => {
             [`Tabela ${nova!.nome}: itens ao preço cheio.`, ...avisos].join(' '),
           );
         }
-        await registrar(tx, atual.id, 'alterado', req.user.sub, resumoDoTotal(linhas.length, totais.totalCentavos));
-        return carregar(tx, atual.id, avisos);
+        if (!dados.automatico)
+          await registrar(tx, atual.id, 'alterado', req.user.sub, resumoDoTotal(linhas.length, totais.totalCentavos));
+        // Na troca de tabela a negociação é desfeita, e o evento tabela_trocada já conta isso.
+        const descontos = trocouTabela ? null : descreverDescontos(gravados, linhas);
+        if (descontos) await registrar(tx, atual.id, 'descontos_alterados', req.user.sub, descontos);
+        return carregar(tx, atual.id, req.user.vendedorId, avisos);
       }),
   );
 
@@ -572,9 +792,9 @@ export const orcamentosRoutes: FastifyPluginAsyncZod = async (app) => {
    */
   app.post('/:id/recalcular', { ...editar, schema: { params: idParamSchema, response: resposta } }, async (req) =>
     withTenant(req.user.tid, async (tx) => {
-      const atual = await travar(tx, req.params.id);
+      const atual = await travar(tx, req.params.id, req.user.vendedorId);
       const hoje = hojeIso();
-      if (atual.status !== 'rascunho' || atual.precosEm >= hoje) return carregar(tx, atual.id);
+      if (atual.status !== 'rascunho' || atual.precosEm >= hoje) return carregar(tx, atual.id, req.user.vendedorId);
       const gravados = await itensDoOrcamento(tx, atual.id);
       const { linhas, avisos } = await recalcularDoDia(tx, gravados, atual.tabelaPrecoId, hoje);
       const totais = somarItens(linhas);
@@ -590,17 +810,21 @@ export const orcamentosRoutes: FastifyPluginAsyncZod = async (app) => {
         req.user.sub,
         avisos.length ? avisos.join(' ') : `Preços de ${formatarDataIso(hoje)}: nenhum mudou.`,
       );
-      return carregar(tx, atual.id, avisos);
+      return carregar(tx, atual.id, req.user.vendedorId, avisos);
     }),
   );
 
-  /** Emissão: conteúdo congelado. Validade vazia = 7 dias; de hoje até no máximo 30 dias. */
+  /**
+   * Emissão: conteúdo congelado. Validade vazia = 7 dias; de hoje até no máximo 30 dias. Desconto acima da alçada
+   * de quem emite: vai para "aguardando aprovação comercial" (docs/modulos/APROVACAO_COMERCIAL.md) e só é emitido
+   * quando aprovado, com a validade contando da aprovação.
+   */
   app.post(
     '/:id/emitir',
     { ...editar, schema: { params: idParamSchema, body: transicaoOrcamentoSchema, response: resposta } },
     async (req) =>
       withTenant(req.user.tid, async (tx) => {
-        const atual = await travar(tx, req.params.id);
+        const atual = await travar(tx, req.params.id, req.user.vendedorId);
         exigirVersaoLida(atual, req.body.versao);
         exigirSituacao(atual, ['rascunho'], 'emitir');
         exigirPrecosDoDia(atual);
@@ -629,6 +853,40 @@ export const orcamentosRoutes: FastifyPluginAsyncZod = async (app) => {
             `A validade vai no máximo até ${formatarDataIso(maxima)} (${VALIDADE_MAXIMA_DIAS} dias).`,
             { validadeAte: `No máximo ${formatarDataIso(maxima)}` },
           );
+
+        const percentual = percentualDeDesconto(atual.subtotalCentavos, atual.descontoCentavos);
+        const alcada = await alcadaDoUsuario(tx, req.user.sub);
+        if (!dentroDaAlcada(percentual, alcada.percentual)) {
+          const orcamento = await carregar(tx, atual.id, null);
+          const validadeDias = (Date.parse(validadeAte) - Date.parse(hoje)) / 86_400_000;
+          await solicitarAprovacao(tx, {
+            tipoDocumento: 'orcamento',
+            documentoId: atual.id,
+            documentoNumero: formatarNumeroOrcamento(atual.numero),
+            documentoVersao: atual.versaoOrcamento,
+            clienteNome: orcamento.cliente.nome,
+            subtotalCentavos: atual.subtotalCentavos,
+            descontoCentavos: atual.descontoCentavos,
+            totalCentavos: atual.totalCentavos,
+            percentual,
+            solicitanteId: req.user.sub,
+            alcada,
+            snapshot: snapshotDoOrcamento(orcamento, validadeDias),
+          });
+          await tx
+            .update(orcamentos)
+            .set({ status: 'aguardando_aprovacao_comercial', atualizadoPor: req.user.sub, versao: atual.versao + 1 })
+            .where(eq(orcamentos.id, atual.id));
+          await registrar(
+            tx,
+            atual.id,
+            'aprovacao_comercial_solicitada',
+            req.user.sub,
+            `Desconto de ${formatarPercentual(percentual)} excede a alçada de ${formatarPercentual(alcada.percentual)}` +
+              `${alcada.funcao ? ` (${alcada.funcao})` : ''}.`,
+          );
+          return carregar(tx, atual.id, req.user.vendedorId);
+        }
         await tx
           .update(orcamentos)
           .set({
@@ -641,7 +899,7 @@ export const orcamentosRoutes: FastifyPluginAsyncZod = async (app) => {
           })
           .where(eq(orcamentos.id, atual.id));
         await registrar(tx, atual.id, 'emitido', req.user.sub, `Válido até ${formatarDataIso(validadeAte)}.`);
-        return carregar(tx, atual.id);
+        return carregar(tx, atual.id, req.user.vendedorId);
       }),
   );
 
@@ -655,6 +913,8 @@ export const orcamentosRoutes: FastifyPluginAsyncZod = async (app) => {
       evento: EventoOrcamento;
       valores: (usuarioId: string, motivo: string | null) => Partial<typeof orcamentos.$inferInsert>;
       detalhe?: (motivo: string | null) => string | undefined;
+      /** Efeito extra na mesma transação (ex.: cancelar a aprovação comercial pendente). */
+      depois?: (tx: Tx, atual: Gravado, usuarioId: string) => Promise<void>;
     },
   ) =>
     app.post(
@@ -662,7 +922,7 @@ export const orcamentosRoutes: FastifyPluginAsyncZod = async (app) => {
       { ...opcoes, schema: { params: idParamSchema, body: transicaoOrcamentoSchema, response: resposta } },
       async (req) =>
         withTenant(req.user.tid, async (tx) => {
-          const atual = await travar(tx, req.params.id);
+          const atual = await travar(tx, req.params.id, req.user.vendedorId);
           exigirVersaoLida(atual, req.body.versao);
           exigirSituacao(atual, regra.de, regra.acao);
           await tx
@@ -674,7 +934,8 @@ export const orcamentosRoutes: FastifyPluginAsyncZod = async (app) => {
             })
             .where(eq(orcamentos.id, atual.id));
           await registrar(tx, atual.id, regra.evento, req.user.sub, regra.detalhe?.(req.body.motivo));
-          return carregar(tx, atual.id);
+          await regra.depois?.(tx, atual, req.user.sub);
+          return carregar(tx, atual.id, req.user.vendedorId);
         }),
     );
 
@@ -704,7 +965,7 @@ export const orcamentosRoutes: FastifyPluginAsyncZod = async (app) => {
     detalhe: (motivo) => motivo ?? undefined,
   });
   transicao('/:id/cancelar', editar, {
-    de: ['rascunho', 'emitido', 'enviado'],
+    de: ['rascunho', 'aguardando_aprovacao_comercial', 'reprovado_comercialmente', 'emitido', 'enviado'],
     acao: 'cancelar',
     evento: 'cancelado',
     valores: (usuarioId, motivo) => ({
@@ -714,10 +975,40 @@ export const orcamentosRoutes: FastifyPluginAsyncZod = async (app) => {
       motivoCancelamento: motivo,
     }),
     detalhe: (motivo) => motivo ?? undefined,
+    depois: async (tx, atual, usuarioId) => {
+      const pendente = await pendenteDoDocumento(tx, 'orcamento', atual.id);
+      if (pendente) await cancelarAprovacao(tx, pendente, usuarioId, 'Orçamento cancelado.');
+    },
   });
 
   /**
-   * Nova versão de um orçamento emitido ou enviado: outro registro, mesmo número, versão + 1, ligado ao anterior,
+   * Retira o pedido de aprovação comercial: só quem pediu. O orçamento volta a rascunho para corrigir o desconto
+   * (e, se os preços forem de outro dia, é recalculado ao abrir).
+   */
+  app.post(
+    '/:id/retirar-aprovacao',
+    { ...editar, schema: { params: idParamSchema, body: transicaoOrcamentoSchema, response: resposta } },
+    async (req) =>
+      withTenant(req.user.tid, async (tx) => {
+        const atual = await travar(tx, req.params.id, req.user.vendedorId);
+        exigirVersaoLida(atual, req.body.versao);
+        exigirSituacao(atual, ['aguardando_aprovacao_comercial'], 'retirar o pedido de aprovação');
+        const pendente = await pendenteDoDocumento(tx, 'orcamento', atual.id);
+        if (!pendente) throw new ErroHttp(409, 'Não há pedido de aprovação pendente. Recarregue a página.');
+        if (pendente.solicitanteId !== req.user.sub)
+          throw new ErroHttp(403, 'Só quem pediu a aprovação comercial pode retirá-la.');
+        await cancelarAprovacao(tx, pendente, req.user.sub, 'Pedido retirado pelo solicitante.');
+        await tx
+          .update(orcamentos)
+          .set({ status: 'rascunho', atualizadoPor: req.user.sub, versao: atual.versao + 1 })
+          .where(eq(orcamentos.id, atual.id));
+        await registrar(tx, atual.id, 'aprovacao_comercial_retirada', req.user.sub, 'Voltou a rascunho.');
+        return carregar(tx, atual.id, req.user.vendedorId);
+      }),
+  );
+
+  /**
+   * Nova versão de um orçamento emitido, enviado ou reprovado comercialmente: outro registro, mesmo número, versão + 1, ligado ao anterior,
    * que é cancelado na mesma transação. Nasce rascunho com os mesmos itens e preços (recalculados ao abrir, se de
    * outro dia) e validade em branco.
    */
@@ -729,9 +1020,9 @@ export const orcamentosRoutes: FastifyPluginAsyncZod = async (app) => {
     },
     async (req, reply) => {
       const nova = await withTenant(req.user.tid, async (tx) => {
-        const atual = await travar(tx, req.params.id);
+        const atual = await travar(tx, req.params.id, req.user.vendedorId);
         exigirVersaoLida(atual, req.body.versao);
-        exigirSituacao(atual, ['emitido', 'enviado'], 'gerar uma nova versão');
+        exigirSituacao(atual, ['emitido', 'enviado', 'reprovado_comercialmente'], 'gerar uma nova versão');
         const proxima = atual.versaoOrcamento + 1;
         await tx
           .update(orcamentos)
@@ -778,7 +1069,7 @@ export const orcamentosRoutes: FastifyPluginAsyncZod = async (app) => {
           req.user.sub,
           `Gerada a partir da versão ${atual.versaoOrcamento} (${formatarNumeroOrcamento(atual.numero)}).`,
         );
-        return carregar(tx, id);
+        return carregar(tx, id, req.user.vendedorId);
       });
       return reply.code(201).send(nova);
     },

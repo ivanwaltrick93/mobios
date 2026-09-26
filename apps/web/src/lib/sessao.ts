@@ -18,3 +18,19 @@ export function usePode() {
 
 /** Usuários, funções e configurações são exclusivos da função Administrador. */
 export const useAdmin = () => !!useSessao().data?.usuario.admin;
+
+/**
+ * Papel no módulo de orçamentos (docs/modulos/ORCAMENTOS.md §5): o Administrador vê e altera todos; o vendedor ativo,
+ * só os próprios (com o vendedor fixo nele); os demais só consultam. A API aplica as mesmas regras.
+ */
+export function usePerfilOrcamento() {
+  const sessao = useSessao().data;
+  const vendedorId = sessao?.vendedorId ?? null;
+  const admin = !!sessao?.usuario.admin;
+  return {
+    vendedorId,
+    podeVer: admin || !!vendedorId || temAcesso(sessao?.acessos, 'orcamentos'),
+    podeAlterar: admin || !!vendedorId,
+    podeAprovar: temAcesso(sessao?.acessos, 'aprovar_orcamentos', 'editar'),
+  };
+}

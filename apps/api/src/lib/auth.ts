@@ -17,7 +17,7 @@ export type Token = { sub: string; tid: string };
 declare module '@fastify/jwt' {
   interface FastifyJWT {
     payload: Token;
-    user: Token & { admin: boolean; acessos: Acessos };
+    user: Token & { admin: boolean; acessos: Acessos; vendedorId: string | null };
   }
 }
 
@@ -53,7 +53,13 @@ export const authPlugin = fp(async (app) => {
     // Lido do banco a cada requisição: desativar alguém ou mudar funções e permissões vale na hora.
     const acesso = await withTenant(token.tid, (tx) => carregarAcesso(tx, token.sub));
     if (!acesso?.ativo) throw new ErroHttp(401, 'Acesso desativado. Fale com o administrador.');
-    req.user = { sub: token.sub, tid: token.tid, admin: acesso.admin, acessos: acesso.acessos };
+    req.user = {
+      sub: token.sub,
+      tid: token.tid,
+      admin: acesso.admin,
+      acessos: acesso.acessos,
+      vendedorId: acesso.vendedorId,
+    };
   });
 
   // Usar depois de `autenticar`. Níveis configurados em Configurações → Funções e permissões.

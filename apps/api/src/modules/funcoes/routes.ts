@@ -134,7 +134,7 @@ export const funcoesRoutes: FastifyPluginAsyncZod = async (app) => {
         funcoes,
         req.params.id,
         'Função',
-        'Esta função está ligada a usuários (ativos ou desativados). Ela pode apenas ser inativada.',
+        'Esta função está ligada a usuários (ativos ou desativados) ou tem histórico de alçada. Ela pode apenas ser inativada.',
       );
     });
     return reply.code(204).send();

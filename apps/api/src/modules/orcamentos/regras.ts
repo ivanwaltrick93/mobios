@@ -7,16 +7,21 @@ import {
   formatarCodigoServico,
   formatarHoras,
   formatarMoeda,
+  formatarPercentual,
   formatarQuantidade,
   paraMilesimos,
+  percentualDeDesconto,
+  somarItens,
   UNIDADES,
+  type CalculoItem,
   type FormaPrecoServico,
+  type EventoOrcamento,
   type ItemOrcamentoDados,
   type TipoItemPreco,
 } from '@mobios/shared';
 import { eq, inArray, sql } from 'drizzle-orm';
 import type { Tx } from '../../db/client.js';
-import { materiais, orcamentoItens, servicos } from '../../db/schema.js';
+import { materiais, orcamentoItens, orcamentosEventos, servicos } from '../../db/schema.js';
 import { ErroHttp } from '../../lib/erros.js';
 
 // Regras dos itens do orçamento: preço do dia na tabela, quantidade vendável, negociação e recálculo.
@@ -321,3 +326,37 @@ export async function gravarItens(tx: Tx, orcamentoId: string, linhas: LinhaItem
 
 export const itensDoOrcamento = (tx: Tx, orcamentoId: string) =>
   tx.select().from(orcamentoItens).where(eq(orcamentoItens.orcamentoId, orcamentoId)).orderBy(orcamentoItens.ordem);
+
+/** Histórico. clock_timestamp: dois eventos da mesma transação ficam na ordem em que aconteceram. */
+export const registrar = (tx: Tx, orcamentoId: string, evento: EventoOrcamento, usuarioId: string, detalhe?: string) =>
+  tx
+    .insert(orcamentosEventos)
+    .values({ orcamentoId, evento, usuarioId, detalhe: detalhe || null, criadoEm: sql`clock_timestamp()` });
+
+type PrecoDaLinha = {
+  id: string;
+  codigo: string;
+  descricao: string;
+  precoTabelaCentavos: number;
+  precoUnitarioCentavos: number;
+};
+
+const percentualDaLinha = (l: PrecoDaLinha) =>
+  percentualDeDesconto(l.precoTabelaCentavos, l.precoTabelaCentavos - l.precoUnitarioCentavos);
+const rotuloDesconto = (centesimos: number) => (centesimos ? formatarPercentual(centesimos) : 'sem desconto');
+
+/**
+ * Quem mexeu no desconto e quando (rastreabilidade da aprovação comercial): descreve os itens cujo desconto mudou
+ * entre o que estava gravado e o que foi salvo, e o desconto total. null = nenhum desconto mudou.
+ */
+export function descreverDescontos(antes: PrecoDaLinha[], depois: (PrecoDaLinha & CalculoItem)[]): string | null {
+  const anteriores = new Map(antes.map((l) => [l.id, percentualDaLinha(l)]));
+  const mudancas = depois.flatMap((l) => {
+    const de = anteriores.get(l.id) ?? 0;
+    const para = percentualDaLinha(l);
+    return de === para ? [] : [`${nomeDoItem(l)}: ${rotuloDesconto(de)} → ${rotuloDesconto(para)}`];
+  });
+  if (!mudancas.length) return null;
+  const totais = somarItens(depois);
+  return `${mudancas.join('; ')}. Desconto total: ${rotuloDesconto(percentualDeDesconto(totais.subtotalCentavos, totais.descontoCentavos))}.`;
+}

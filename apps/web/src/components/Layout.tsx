@@ -1,6 +1,7 @@
 import { temAcesso, type ModuloId } from '@mobios/shared';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
+  BadgeCheck,
   BarChart3,
   ChevronDown,
   ChevronRight,
@@ -41,6 +42,8 @@ type ItemMenu = {
   icone: LucideIcon;
   modulo?: ModuloId;
   somenteAdmin?: boolean;
+  /** Também aparece para o vendedor ativo, mesmo sem o módulo na matriz (ex.: Orçamentos). */
+  paraVendedor?: boolean;
   /** Submenu que abre e fecha (collapse) no menu lateral. Filho com `modulo` só aparece para quem o acessa. */
   filhos?: { para: string; rotulo: string; modulo?: ModuloId }[];
 };
@@ -57,7 +60,8 @@ const menu: ItemMenu[] = [
       { para: '/veiculos', rotulo: 'Veículos' },
     ],
   },
-  { para: '/orcamentos', rotulo: 'Orçamentos', icone: FileText, modulo: 'orcamentos' },
+  { para: '/orcamentos', rotulo: 'Orçamentos', icone: FileText, modulo: 'orcamentos', paraVendedor: true },
+  { para: '/aprovacoes-comerciais', rotulo: 'Aprovações comerciais', icone: BadgeCheck, modulo: 'aprovacao_comercial' },
   {
     para: '/materiais',
     rotulo: 'Ofertas',
@@ -105,6 +109,7 @@ const configuracoes: ItemMenu = {
   filhos: [
     { para: '/configuracoes', rotulo: 'Aparência e logo' },
     { para: '/configuracoes/funcoes', rotulo: 'Funções e permissões' },
+    { para: '/configuracoes/alcadas', rotulo: 'Alçadas de desconto' },
     ...PAGINAS_LISTAS.map(({ para, rotulo }) => ({ para, rotulo })),
   ],
 };
@@ -159,7 +164,11 @@ export function Layout() {
   const visivel = (modulo?: ModuloId) => !modulo || temAcesso(sessao.data.acessos, modulo);
   const permitidos = (itens: ItemMenu[]) =>
     itens
-      .filter((item) => (item.somenteAdmin ? usuario.admin : visivel(item.modulo)))
+      .filter((item) =>
+        item.somenteAdmin
+          ? usuario.admin
+          : visivel(item.modulo) || (item.paraVendedor === true && !!sessao.data.vendedorId),
+      )
       .map((item) => ({ ...item, filhos: item.filhos?.filter((f) => visivel(f.modulo)) }))
       // Grupo sem nenhum filho acessível some do menu.
       .filter((item) => !item.filhos || item.filhos.length > 0);

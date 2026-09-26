@@ -8,6 +8,9 @@ import { ErroApi } from './lib/api';
 import { PAGINAS_LISTAS } from './lib/cadastro';
 import '@fontsource-variable/inter';
 import './index.css';
+import { Alcadas } from './pages/Alcadas';
+import { AprovacaoComercialDetalhe } from './pages/AprovacaoComercialDetalhe';
+import { AprovacoesComerciais } from './pages/AprovacoesComerciais';
 import { Categorias } from './pages/Categorias';
 import { Depositos } from './pages/Depositos';
 import { EditarMaterial } from './pages/EditarMaterial';
@@ -83,6 +86,8 @@ const router = createBrowserRouter([
       { path: '/orcamentos/novo', element: <NovoOrcamento /> },
       { path: '/orcamentos/:id', element: <OrcamentoDetalhe /> },
       { path: '/orcamentos/:id/editar', element: <EditarOrcamento /> },
+      { path: '/aprovacoes-comerciais', element: <AprovacoesComerciais /> },
+      { path: '/aprovacoes-comerciais/:id', element: <AprovacaoComercialDetalhe /> },
       { path: '/materiais', element: <Materiais /> },
       { path: '/materiais/novo', element: <NovoMaterial /> },
       { path: '/materiais/categorias', element: <Categorias /> },
@@ -106,6 +111,7 @@ const router = createBrowserRouter([
       { path: '/perfil', element: <Perfil /> },
       { path: '/configuracoes', element: <Configuracoes /> },
       { path: '/configuracoes/funcoes', element: <Funcoes /> },
+      { path: '/configuracoes/alcadas', element: <Alcadas /> },
       ...PAGINAS_LISTAS.map(({ lista, para }) => ({
         path: para,
         element: <ListaConfiguracao key={lista} lista={lista} />,

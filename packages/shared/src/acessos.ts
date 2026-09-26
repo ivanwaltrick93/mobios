@@ -39,6 +39,15 @@ export const MODULOS = [
     descricao: 'Editar = registrar a aprovação ou a recusa do cliente em orçamentos emitidos.',
   },
   {
+    id: 'aprovacao_comercial',
+    nome: 'Aprovação comercial',
+    niveis: ['consultar', 'editar'],
+    disponivel: true,
+    descricao:
+      'Consultar = ver as aprovações comerciais e o histórico. Editar = aprovar e reprovar descontos até a alçada ' +
+      'da função (Configurações → Alçadas de desconto).',
+  },
+  {
     id: 'os',
     nome: 'Ordem de Serviço',
     niveis: ['consultar', 'editar'],

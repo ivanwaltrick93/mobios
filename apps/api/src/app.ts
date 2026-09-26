@@ -21,6 +21,8 @@ import { funcoesRoutes } from './modules/funcoes/routes.js';
 import { opcoesRoutes } from './modules/opcoes/routes.js';
 import { painelRoutes } from './modules/painel/routes.js';
 import { publicoRoutes } from './modules/publico/routes.js';
+import { alcadasRoutes } from './modules/alcadas/routes.js';
+import { aprovacoesComerciaisRoutes } from './modules/aprovacoes-comerciais/routes.js';
 import { relatoriosRoutes } from './modules/relatorios/routes.js';
 import { usuariosRoutes } from './modules/usuarios/routes.js';
 import { veiculosRoutes } from './modules/veiculos/routes.js';
@@ -61,6 +63,8 @@ export async function criarApp() {
   await app.register(vendedoresRoutes, { prefix: '/api/vendedores' });
   await app.register(servicosRoutes, { prefix: '/api/servicos' });
   await app.register(orcamentosRoutes, { prefix: '/api/orcamentos' });
+  await app.register(aprovacoesComerciaisRoutes, { prefix: '/api/aprovacoes-comerciais' });
+  await app.register(alcadasRoutes, { prefix: '/api/alcadas' });
 
   return app;
 }

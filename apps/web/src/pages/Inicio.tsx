@@ -46,6 +46,8 @@ const atalhos: Atalho[] = [
 /** Cor de cada situação no gráfico (tokens do style guide). */
 const COR_SITUACAO: Record<SituacaoOrcamento, string> = {
   rascunho: 'var(--cor-borda-forte)',
+  aguardando_aprovacao_comercial: 'var(--cor-alerta)',
+  reprovado_comercialmente: 'var(--cor-perigo)',
   emitido: 'var(--cor-info)',
   enviado: 'var(--cor-primaria)',
   aprovado: 'var(--cor-sucesso)',

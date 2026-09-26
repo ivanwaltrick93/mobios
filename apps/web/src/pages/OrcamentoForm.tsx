@@ -1,121 +1,74 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
-  arredondarMinutos,
-  arredondarQuantidade,
-  calcularItem,
-  descontoPorPercentual,
   formatarDataIso,
-  formatarHoras,
   formatarMoeda,
   formatarNumeroOrcamento,
   formatarPlaca,
-  formatarQuantidade,
   hojeIso,
-  horasParaMinutos,
-  mascaraHoras,
-  mascaraMoeda,
-  mascaraPercentual,
-  mascaraQuantidade,
-  moedaParaCentavos,
   orcamentoInputSchema,
-  paraMilesimos,
-  percentualParaNumero,
-  quantidadeParaNumero,
   somarDias,
-  somarItens,
-  TIPOS_ITEM_PRECO,
   VALIDADE_MAXIMA_DIAS,
   VALIDADE_PADRAO_DIAS,
-  type ClienteParaOrcamento,
-  type ItemOrcamento,
-  type ItemOrcamentoInput,
-  type ItemVendavel,
   type Orcamento,
   type VeiculoParaOrcamento,
 } from '@mobios/shared';
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Minus, Plus, Search, Trash2 } from 'lucide-react';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { ArrowLeft, ArrowRight, CheckCircle2, Loader2, RotateCw, Search, TriangleAlert } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useForm } from 'react-hook-form';
-import { useNavigate, useParams } from 'react-router';
+import { useBlocker, useNavigate, useParams } from 'react-router';
 import type { z } from 'zod';
-import { ClienteDoOrcamento, Totais } from '../components/Orcamento';
+import { CardCliente } from '../components/ContextoCliente';
+import { JanelaEscolhaCliente } from '../components/EscolhaCliente';
+import { Etapas } from '../components/Etapas';
+import {
+  contarItens,
+  itemParaApi,
+  ItensOrcamento,
+  linhaDoItem,
+  linhaValida,
+  precoDaLinha,
+  type FiltroTipoItem,
+  type LinhaTela,
+} from '../components/ItensOrcamento';
+import { atributosDoOrcamento, SeloSituacao } from '../components/Orcamento';
+import { FaixaResumo, RevisaoOrcamento, totaisDasLinhas } from '../components/ResumoOrcamento';
 import {
   Alerta,
   AreaTexto,
   Aviso,
   Botao,
-  BotaoLink,
-  Cabecalho,
+  CabecalhoObjeto,
+  CabecalhoPagina,
   Campo,
   Cartao,
+  Confirmacao,
   Input,
   Janela,
-  Linha,
-  LinhaVazia,
   Secao,
   Select,
-  Selo,
-  Tabela,
-  Td,
   TextoSuave,
-  Th,
-  Titulo,
 } from '../components/ui';
 import { api } from '../lib/api';
 import { aplicarErrosDaApi } from '../lib/formulario';
 import { useOrcamento, useTabelasOrcamento, useVendedoresOrcamento } from '../lib/orcamentos';
-import { usePode } from '../lib/sessao';
+import { usePerfilOrcamento } from '../lib/sessao';
 
-const cabecalhoSchema = orcamentoInputSchema.omit({ itens: true, versao: true });
+const cabecalhoSchema = orcamentoInputSchema.omit({ itens: true, versao: true, automatico: true });
 type Entrada = z.input<typeof cabecalhoSchema>;
 type Saida = z.output<typeof cabecalhoSchema>;
 
 // ---------- Cabeçalho (cliente, veículo, vendedor, tabela, validade, observações) ----------
 
-/** Busca de cliente do orçamento (nome, CPF/CNPJ ou placa). Inativo ou incompleto aparece com o alerta. */
-function BuscaClienteOrcamento({ aoEscolher }: { aoEscolher: (c: ClienteParaOrcamento) => void }) {
-  const [busca, setBusca] = useState('');
-  const pronto = busca.trim().length >= 2;
-  const resultados = useQuery({
-    queryKey: ['orcamentos', 'apoio', 'clientes', busca],
-    queryFn: () =>
-      api<ClienteParaOrcamento[]>(`/orcamentos/apoio/clientes?${new URLSearchParams({ q: busca.trim() })}`),
-    enabled: pronto,
-    placeholderData: keepPreviousData,
+const useVeiculosCliente = (clienteId: string | undefined) =>
+  useQuery({
+    queryKey: ['orcamentos', 'apoio', 'veiculos', clienteId],
+    queryFn: () => api<VeiculoParaOrcamento[]>(`/orcamentos/apoio/clientes/${clienteId}/veiculos`),
+    enabled: !!clienteId,
   });
-  return (
-    <div>
-      <div className="relative">
-        <Search className="pointer-events-none absolute top-2.5 left-3 size-4 text-texto-suave" aria-hidden />
-        <Input
-          autoFocus
-          className="pl-9"
-          aria-label="Buscar cliente"
-          placeholder="Nome, CPF/CNPJ ou placa (ao menos 2 letras)"
-          value={busca}
-          onChange={(e) => setBusca(e.target.value)}
-        />
-      </div>
-      {pronto && (
-        <ul className="mt-2 divide-y divide-borda">
-          {resultados.data?.map((c) => (
-            <li key={c.id}>
-              <button
-                type="button"
-                className="w-full px-2 py-3 text-left hover:bg-superficie-alt"
-                onClick={() => aoEscolher(c)}
-              >
-                <ClienteDoOrcamento cliente={c} />
-              </button>
-            </li>
-          ))}
-          {resultados.data?.length === 0 && <TextoSuave className="py-3">Nenhum cliente encontrado.</TextoSuave>}
-        </ul>
-      )}
-    </div>
-  );
-}
+
+/** Cliente escolhido: o suficiente para mostrar o nome com o alerta; o resto vem do contexto (CardCliente). */
+type ClienteEscolhido = { id: string; nome: string; ativo: boolean; pendencias: string[] };
 
 function CamposCabecalho({
   form,
@@ -126,8 +79,8 @@ function CamposCabecalho({
   clienteFixo = false,
 }: {
   form: ReturnType<typeof useForm<Entrada, unknown, Saida>>;
-  cliente: ClienteParaOrcamento | null;
-  aoTrocarCliente: (c: ClienteParaOrcamento | null) => void;
+  cliente: ClienteEscolhido | null;
+  aoTrocarCliente: (c: ClienteEscolhido) => void;
   aoMudarTabela: (id: string) => void;
   vendedorAtualId?: string;
   /** Nova versão (2 em diante): o cliente é o do orçamento original. */
@@ -135,38 +88,55 @@ function CamposCabecalho({
 }) {
   const vendedores = useVendedoresOrcamento();
   const tabelas = useTabelasOrcamento();
-  const veiculos = useQuery({
-    queryKey: ['orcamentos', 'apoio', 'veiculos', cliente?.id],
-    queryFn: () => api<VeiculoParaOrcamento[]>(`/orcamentos/apoio/clientes/${cliente!.id}/veiculos`),
-    enabled: !!cliente,
-  });
+  // Vendedor logado: o orçamento fica no nome dele (a API garante); só o Administrador escolhe.
+  const { vendedorId: vendedorFixo } = usePerfilOrcamento();
+  const [escolhendo, setEscolhendo] = useState(false);
+  const veiculos = useVeiculosCliente(cliente?.id);
   const erros = form.formState.errors;
   const hoje = hojeIso();
 
+  const semVeiculo = !form.watch('veiculoId');
+
   return (
-    <div className="space-y-5">
-      <Secao
-        titulo="Cliente"
-        acao={
-          cliente &&
-          (clienteFixo ? (
-            <span className="text-xs text-texto-suave">O cliente não muda a partir da versão 2</span>
-          ) : (
-            <BotaoLink onClick={() => aoTrocarCliente(null)}>Trocar cliente</BotaoLink>
-          ))
-        }
-      >
+    <div className="space-y-4">
+      <Secao titulo="Cliente">
         {cliente ? (
-          <ClienteDoOrcamento cliente={cliente} />
+          <CardCliente
+            cliente={cliente}
+            acao={
+              clienteFixo ? (
+                <span className="text-xs text-texto-suave">O cliente não muda a partir da versão 2</span>
+              ) : (
+                <Botao type="button" variante="secundario" onClick={() => setEscolhendo(true)}>
+                  Alterar
+                </Botao>
+              )
+            }
+          />
         ) : (
-          <>
-            <BuscaClienteOrcamento aoEscolher={aoTrocarCliente} />
-            {erros.clienteId && <span className="text-xs text-perigo">Escolha o cliente</span>}
-          </>
+          <div className="space-y-1">
+            <Botao type="button" variante="secundario" onClick={() => setEscolhendo(true)}>
+              <Search className="mr-1.5 size-4" aria-hidden /> Selecionar cliente
+            </Botao>
+            {erros.clienteId && <span className="block text-xs text-perigo">Escolha o cliente</span>}
+          </div>
+        )}
+        {escolhendo && (
+          <JanelaEscolhaCliente
+            aoFechar={() => setEscolhendo(false)}
+            aoEscolher={(c) => {
+              setEscolhendo(false);
+              aoTrocarCliente(c);
+            }}
+          />
         )}
         {cliente && (
-          <div className="grid gap-4 md:grid-cols-2">
-            <Campo rotulo="Veículo" dica="Opcional (ex.: venda de peça no balcão)" erro={erros.veiculoId}>
+          <div className="max-w-md">
+            <Campo
+              rotulo="Veículo"
+              dica={semVeiculo ? 'Venda de peça sem aplicação em veículo' : undefined}
+              erro={erros.veiculoId}
+            >
               <Select {...form.register('veiculoId')}>
                 <option value="">Sem veículo</option>
                 {veiculos.data?.map((v) => (
@@ -179,20 +149,28 @@ function CamposCabecalho({
           </div>
         )}
       </Secao>
-      <Secao titulo="Venda">
-        <div className="grid gap-4 md:grid-cols-3">
+      <Secao titulo="Dados comerciais">
+        <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
           <Campo rotulo="Vendedor *" erro={erros.vendedorId}>
-            <Select {...form.register('vendedorId')}>
-              <option value="">Escolha…</option>
-              {vendedores.data
-                ?.filter((v) => v.ativo || v.id === vendedorAtualId)
-                .map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {v.nome}
-                    {v.ativo ? '' : ' (inativo)'}
-                  </option>
-                ))}
-            </Select>
+            {vendedorFixo ? (
+              <Input
+                disabled
+                aria-label="Vendedor"
+                value={vendedores.data?.find((v) => v.id === vendedorFixo)?.nome ?? ''}
+              />
+            ) : (
+              <Select {...form.register('vendedorId')}>
+                <option value="">Escolha…</option>
+                {vendedores.data
+                  ?.filter((v) => v.ativo || v.id === vendedorAtualId)
+                  .map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.nome}
+                      {v.ativo ? '' : ' (inativo)'}
+                    </option>
+                  ))}
+              </Select>
+            )}
           </Campo>
           <Campo rotulo="Tabela de preço *" erro={erros.tabelaPrecoId}>
             <Select value={String(form.watch('tabelaPrecoId') ?? '')} onChange={(e) => aoMudarTabela(e.target.value)}>
@@ -206,7 +184,7 @@ function CamposCabecalho({
           </Campo>
           <Campo
             rotulo="Validade"
-            dica={`Vazio = ${VALIDADE_PADRAO_DIAS} dias a partir da emissão; no máximo ${VALIDADE_MAXIMA_DIAS} dias`}
+            dica={`Vazio = ${VALIDADE_PADRAO_DIAS} dias a partir da emissão · máximo ${VALIDADE_MAXIMA_DIAS} dias`}
             erro={erros.validadeAte}
           >
             <Input
@@ -217,9 +195,16 @@ function CamposCabecalho({
             />
           </Campo>
         </div>
-        <Campo rotulo="Observações" erro={erros.observacoes}>
-          <AreaTexto rows={2} maxLength={2000} {...form.register('observacoes')} />
-        </Campo>
+      </Secao>
+      <Secao titulo="Observações">
+        <AreaTexto
+          rows={2}
+          maxLength={2000}
+          aria-label="Observações"
+          placeholder="Adicione uma observação comercial…"
+          {...form.register('observacoes')}
+        />
+        {erros.observacoes?.message && <span className="text-xs text-perigo">{erros.observacoes.message}</span>}
       </Secao>
     </div>
   );
@@ -234,16 +219,70 @@ const valoresDoOrcamento = (o?: Orcamento): Entrada => ({
   observacoes: o?.observacoes ?? '',
 });
 
-/** Novo orçamento: primeiro o cabeçalho (cria o rascunho); os itens são incluídos em seguida, na edição. */
+// ---------- Jornada: Cliente → Produtos e serviços → Revisão → Finalizar ----------
+
+const ETAPAS = ['Cliente', 'Produtos e serviços', 'Revisão'];
+const CLIENTE = 0;
+const PRODUTOS = 1;
+const REVISAO = 2;
+/** Campos validados ao sair da etapa Cliente. */
+const CAMPOS_CLIENTE = ['clienteId', 'veiculoId', 'vendedorId', 'tabelaPrecoId', 'validadeAte', 'observacoes'] as const;
+/** Espera depois da última digitação antes de gravar (incluir e remover item gravam na hora). */
+const ESPERA_GRAVACAO_MS = 800;
+
+/** Barra de ações de cada etapa (voltar à esquerda, avançar à direita). */
+const BarraAcoes = ({ children }: { children: ReactNode }) => (
+  <div className="flex flex-wrap items-center justify-end gap-2 rounded-lg border border-borda bg-superficie px-4 py-3 shadow-sm">
+    {children}
+  </div>
+);
+
+const detalhesDasEtapas = (cliente: string | null | undefined, linhas: LinhaTela[]) => [
+  cliente ?? 'Identifique o cliente',
+  linhas.length
+    ? `${contarItens(linhas.length)} · ${formatarMoeda(totaisDasLinhas(linhas).totalCentavos)}`
+    : 'Adicione os itens',
+  'Confira e finalize',
+];
+
+/** Pede confirmação ao sair (navegação do app e fechar/recarregar a aba) enquanto `ativo`. */
+function useConfirmarSaida(ativo: boolean, liberado: { current: boolean }, mensagem: string) {
+  const bloqueio = useBlocker(
+    ({ currentLocation, nextLocation }) =>
+      ativo && !liberado.current && currentLocation.pathname !== nextLocation.pathname,
+  );
+  useEffect(() => {
+    if (!ativo) return;
+    const avisar = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener('beforeunload', avisar);
+    return () => window.removeEventListener('beforeunload', avisar);
+  }, [ativo]);
+  return bloqueio.state === 'blocked' ? (
+    <Confirmacao
+      titulo="Sair do orçamento?"
+      mensagem={mensagem}
+      rotuloConfirmar="Sair assim mesmo"
+      perigo
+      aoConfirmar={() => bloqueio.proceed()}
+      aoFechar={() => bloqueio.reset()}
+    />
+  ) : null;
+}
+
+/**
+ * Novo orçamento, etapa Cliente. "Continuar para produtos" cria o rascunho (POST) e abre a edição dele, onde a
+ * jornada continua com gravação automática: a partir daí, atualizar a página ou voltar ao orçamento recupera tudo.
+ */
 export function NovoOrcamento() {
-  const pode = usePode();
+  const perfil = usePerfilOrcamento();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const tabelas = useTabelasOrcamento(pode('orcamentos', 'editar'));
-  const [cliente, setCliente] = useState<ClienteParaOrcamento | null>(null);
+  const tabelas = useTabelasOrcamento(perfil.podeAlterar);
+  const [cliente, setCliente] = useState<ClienteEscolhido | null>(null);
   const form = useForm<Entrada, unknown, Saida>({
     resolver: zodResolver(cabecalhoSchema),
-    defaultValues: valoresDoOrcamento(),
+    // O vendedor logado já vem como vendedor do orçamento.
+    defaultValues: { ...valoresDoOrcamento(), vendedorId: perfil.vendedorId ?? '' },
     mode: 'onTouched',
   });
   // A tabela padrão da oficina já vem escolhida.
@@ -251,20 +290,29 @@ export function NovoOrcamento() {
   useEffect(() => {
     if (padraoId && !form.getValues('tabelaPrecoId')) form.setValue('tabelaPrecoId', padraoId);
   }, [padraoId, form]);
+  const criando = useRef(false);
   const criar = useMutation({
     mutationFn: (dados: Saida) => api<Orcamento>('/orcamentos', { method: 'POST', body: { ...dados, itens: [] } }),
+    onMutate: () => {
+      criando.current = true;
+    },
+    onError: () => {
+      criando.current = false;
+    },
     onSuccess: (o) => {
-      queryClient.invalidateQueries({ queryKey: ['orcamentos'] });
-      navigate(`/orcamentos/${o.id}/editar`);
+      queryClient.setQueryData(['orcamentos', o.id], o);
+      queryClient.invalidateQueries({ queryKey: ['orcamentos', 'lista'] });
+      navigate(`/orcamentos/${o.id}/editar`, { replace: true });
     },
   });
-  const trocarCliente = (c: ClienteParaOrcamento | null) => {
-    setCliente(c);
-    form.setValue('clienteId', c?.id ?? '', { shouldValidate: !!c });
-    form.setValue('veiculoId', '');
-  };
+  const confirmacaoSaida = useConfirmarSaida(
+    !!cliente,
+    criando,
+    'O orçamento ainda não foi criado. Se sair agora, o que foi preenchido será perdido.',
+  );
+  const continuar = form.handleSubmit((dados) => criar.mutate(dados));
 
-  if (!pode('orcamentos', 'editar')) return <Alerta>Você não tem permissão para criar orçamentos.</Alerta>;
+  if (!perfil.podeAlterar) return <Alerta>Só o Administrador e os vendedores criam orçamentos.</Alerta>;
   if (tabelas.data?.length === 0)
     return (
       <Alerta>
@@ -274,514 +322,354 @@ export function NovoOrcamento() {
     );
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
-      <Titulo>Novo orçamento</Titulo>
-      <Cartao>
-        <form className="space-y-5" noValidate onSubmit={form.handleSubmit((d) => criar.mutate(d))}>
-          <Alerta>{criar.isError && aplicarErrosDaApi(criar.error, form.setError)}</Alerta>
-          <CamposCabecalho
-            form={form}
-            cliente={cliente}
-            aoTrocarCliente={trocarCliente}
-            aoMudarTabela={(id) => form.setValue('tabelaPrecoId', id)}
-          />
-          <div className="flex gap-2">
-            <Botao type="submit" disabled={criar.isPending}>
-              {criar.isPending ? 'Criando…' : 'Criar e incluir itens'}
-            </Botao>
-            <Botao type="button" variante="secundario" onClick={() => navigate(-1)}>
-              Cancelar
-            </Botao>
-          </div>
-        </form>
-      </Cartao>
-    </div>
-  );
-}
-
-// ---------- Itens do rascunho ----------
-
-/** Item na tela: quantidade, horas e negociação como texto (como a pessoa digita). */
-type LinhaTela = {
-  chave: string;
-  id?: string;
-  tipo: ItemOrcamento['tipo'];
-  itemId: string;
-  codigo: string;
-  descricao: string;
-  unidade: string;
-  formaPreco: ItemOrcamento['formaPreco'];
-  multiplo: number;
-  fracionada: boolean;
-  precoTabelaCentavos: number;
-  quantidade: string;
-  horas: string;
-  modo: 'percentual' | 'preco';
-  percentual: string;
-  preco: string;
-  nota?: string;
-};
-
-const linhaDoItem = (i: ItemOrcamento): LinhaTela => ({
-  chave: i.id,
-  id: i.id,
-  tipo: i.tipo,
-  itemId: (i.materialId ?? i.servicoId)!,
-  codigo: i.codigo,
-  descricao: i.descricao,
-  unidade: i.unidade,
-  formaPreco: i.formaPreco,
-  multiplo: i.multiplo,
-  fracionada: i.fracionada,
-  precoTabelaCentavos: i.precoTabelaCentavos,
-  quantidade: i.quantidade != null ? formatarQuantidade(i.quantidade) : '',
-  horas: i.tempoMinutos != null ? formatarHoras(i.tempoMinutos) : '',
-  modo: i.descontoPercentual == null && i.precoUnitarioCentavos < i.precoTabelaCentavos ? 'preco' : 'percentual',
-  percentual: i.descontoPercentual ? String(i.descontoPercentual).replace('.', ',') : '',
-  preco:
-    i.descontoPercentual == null && i.precoUnitarioCentavos < i.precoTabelaCentavos
-      ? mascaraMoeda(String(i.precoUnitarioCentavos))
-      : '',
-});
-
-const linhaNova = (v: ItemVendavel): LinhaTela => ({
-  chave: crypto.randomUUID(),
-  tipo: v.tipo,
-  itemId: v.id,
-  codigo: v.codigo,
-  descricao: v.descricao,
-  unidade: v.unidade,
-  formaPreco: v.formaPreco,
-  multiplo: v.multiplo,
-  fracionada: v.fracionada,
-  precoTabelaCentavos: v.precoCentavos!,
-  // Começa pela menor quantidade vendável: o múltiplo (caixa master) ou as horas do serviço.
-  quantidade: v.formaPreco === 'hora' ? '' : formatarQuantidade(v.formaPreco ? 1 : v.multiplo),
-  horas: v.formaPreco === 'hora' ? formatarHoras(v.multiplo) : '',
-  modo: 'percentual',
-  percentual: '',
-  preco: '',
-});
-
-/** Preço negociado da linha (só material) e erro, se o preço digitado passar do de tabela. */
-function precoDaLinha(l: LinhaTela): { unitario: number; percentual: number | null; erro?: string } {
-  if (l.tipo === 'servico') return { unitario: l.precoTabelaCentavos, percentual: null };
-  if (l.modo === 'percentual') {
-    const p = percentualParaNumero(l.percentual);
-    if (!p) return { unitario: l.precoTabelaCentavos, percentual: null };
-    const centesimos = Math.round(p * 100);
-    return {
-      unitario: l.precoTabelaCentavos - descontoPorPercentual(l.precoTabelaCentavos, centesimos),
-      percentual: p,
-    };
-  }
-  const preco = moedaParaCentavos(l.preco);
-  if (preco == null) return { unitario: l.precoTabelaCentavos, percentual: null };
-  if (preco > l.precoTabelaCentavos) return { unitario: preco, percentual: null, erro: 'Acima do preço da tabela' };
-  return { unitario: preco, percentual: null };
-}
-
-const quantidadeDaLinha = (l: LinhaTela) =>
-  l.formaPreco === 'hora'
-    ? { tempoMinutos: horasParaMinutos(l.horas) || 0 }
-    : { quantidadeMilesimos: paraMilesimos(quantidadeParaNumero(l.quantidade) ?? 0) };
-
-const calculoDaLinha = (l: LinhaTela) =>
-  calcularItem(l.precoTabelaCentavos, precoDaLinha(l).unitario, quantidadeDaLinha(l));
-
-/** O que a API recebe: o id do item gravado (mantém o preço guardado) e a negociação (só material). */
-function itemParaApi(l: LinhaTela): ItemOrcamentoInput {
-  const negociacao = precoDaLinha(l);
-  return {
-    id: l.id,
-    tipo: l.tipo,
-    ...(l.tipo === 'material' ? { materialId: l.itemId } : { servicoId: l.itemId }),
-    ...(l.formaPreco === 'hora' ? { tempoMinutos: l.horas } : { quantidade: quantidadeParaNumero(l.quantidade) ?? 0 }),
-    ...(l.tipo === 'material' &&
-      (l.modo === 'percentual'
-        ? { descontoPercentual: negociacao.percentual }
-        : { precoUnitarioCentavos: moedaParaCentavos(l.preco) })),
-  };
-}
-
-/**
- * Passo do seletor: o múltiplo de venda do material, as horas do serviço (valor-hora) ou 1 (preço fechado).
- * Sobe ou desce para o próximo múltiplo; nunca abaixo de um múltiplo (para tirar o item, use a lixeira).
- */
-function darPasso(l: LinhaTela, direcao: 1 | -1): LinhaTela {
-  const proximo = (atual: number, passo: number) =>
-    direcao > 0 ? (Math.floor(atual / passo) + 1) * passo : Math.max(passo, (Math.ceil(atual / passo) - 1) * passo);
-  if (l.formaPreco === 'hora')
-    return { ...l, horas: formatarHoras(proximo(horasParaMinutos(l.horas) || 0, l.multiplo)), nota: undefined };
-  const atual = paraMilesimos(quantidadeParaNumero(l.quantidade) ?? 0);
-  return { ...l, quantidade: formatarQuantidade(proximo(atual, l.multiplo * 1000) / 1000), nota: undefined };
-}
-
-const podeDiminuir = (l: LinhaTela) =>
-  l.formaPreco === 'hora'
-    ? (horasParaMinutos(l.horas) || 0) > l.multiplo
-    : paraMilesimos(quantidadeParaNumero(l.quantidade) ?? 0) > l.multiplo * 1000;
-
-const BotaoPasso = ({
-  rotulo,
-  aoClicar,
-  disabled,
-  children,
-}: {
-  rotulo: string;
-  aoClicar: () => void;
-  disabled?: boolean;
-  children: ReactNode;
-}) => (
-  <button
-    type="button"
-    title={rotulo}
-    aria-label={rotulo}
-    disabled={disabled}
-    onClick={aoClicar}
-    className="rounded-md border border-borda-forte p-2 text-texto-suave hover:bg-superficie-alt hover:text-texto disabled:opacity-40"
-  >
-    {children}
-  </button>
-);
-
-/** Arredonda ao sair do campo e explica por quê (a API faz o mesmo ao salvar). */
-function arredondar(l: LinhaTela): LinhaTela {
-  if (l.formaPreco === 'hora') {
-    const minutos = horasParaMinutos(l.horas);
-    if (!minutos) return l;
-    const certo = arredondarMinutos(minutos, l.multiplo);
-    return certo === minutos
-      ? { ...l, nota: undefined }
-      : {
-          ...l,
-          horas: formatarHoras(certo),
-          nota: `Arredondado para ${formatarHoras(certo)} (múltiplo de ${formatarHoras(l.multiplo)})`,
-        };
-  }
-  const q = quantidadeParaNumero(l.quantidade);
-  if (!q) return l;
-  const certo = arredondarQuantidade(q, l.multiplo, l.fracionada);
-  if (certo === q) return { ...l, nota: undefined };
-  return {
-    ...l,
-    quantidade: formatarQuantidade(certo),
-    nota:
-      l.multiplo > 1
-        ? `Arredondado para ${formatarQuantidade(certo)} (múltiplo de venda ${l.multiplo})`
-        : `Arredondado para ${formatarQuantidade(certo)} (só inteiro)`,
-  };
-}
-
-/** Busca de material ou serviço com o preço de hoje na tabela. Sem preço: aparece, mas não entra. */
-function BuscaItem({ tabelaPrecoId, aoEscolher }: { tabelaPrecoId: string; aoEscolher: (i: ItemVendavel) => void }) {
-  const [busca, setBusca] = useState('');
-  const pronto = busca.trim().length >= 2;
-  const resultados = useQuery({
-    queryKey: ['orcamentos', 'apoio', 'itens', tabelaPrecoId, busca],
-    queryFn: () =>
-      api<ItemVendavel[]>(`/orcamentos/apoio/itens?${new URLSearchParams({ q: busca.trim(), tabelaPrecoId })}`),
-    enabled: pronto,
-    placeholderData: keepPreviousData,
-  });
-  return (
-    <div>
-      <div className="relative">
-        <Search className="pointer-events-none absolute top-2.5 left-3 size-4 text-texto-suave" aria-hidden />
-        <Input
-          className="pl-9"
-          aria-label="Incluir material ou serviço"
-          placeholder="Incluir material ou serviço: SKU, código ou descrição (ao menos 2 letras)"
-          value={busca}
-          onChange={(e) => setBusca(e.target.value)}
+    <div className="mx-auto max-w-6xl space-y-4">
+      <CabecalhoPagina titulo="Novo orçamento" subtitulo="Monte a proposta: cliente, produtos e serviços, revisão." />
+      <Cartao className="px-4 py-3">
+        <Etapas
+          rotulo="Etapas do orçamento"
+          titulos={ETAPAS}
+          detalhes={detalhesDasEtapas(cliente?.nome, [])}
+          atual={CLIENTE}
+          aoIr={() => undefined}
         />
-      </div>
-      {pronto && (
-        <ul className="mt-2 max-h-72 divide-y divide-borda overflow-y-auto rounded-md border border-borda">
-          {resultados.data?.map((i) => (
-            <li key={`${i.tipo}:${i.id}`}>
-              <button
-                type="button"
-                disabled={i.precoCentavos == null}
-                className="flex w-full flex-wrap items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-superficie-alt disabled:cursor-not-allowed disabled:opacity-60"
-                onClick={() => {
-                  aoEscolher(i);
-                  setBusca('');
-                }}
-              >
-                <span className="flex items-center gap-2">
-                  <Selo tom={i.tipo === 'servico' ? 'primario' : 'neutro'}>{TIPOS_ITEM_PRECO[i.tipo]}</Selo>
-                  <span className="font-mono text-xs">{i.codigo}</span>
-                  {i.descricao}
-                </span>
-                <span className={i.precoCentavos == null ? 'text-xs text-perigo' : 'font-medium'}>
-                  {i.precoCentavos == null
-                    ? 'Sem preço nesta tabela: não pode ser vendido'
-                    : `${formatarMoeda(i.precoCentavos)}${i.formaPreco === 'hora' ? '/hora' : ''}`}
-                </span>
-              </button>
-            </li>
-          ))}
-          {resultados.data?.length === 0 && <TextoSuave className="px-3 py-2">Nada encontrado.</TextoSuave>}
-        </ul>
-      )}
+      </Cartao>
+      <Cartao className="p-4 sm:p-5">
+        <CamposCabecalho
+          form={form}
+          cliente={cliente}
+          aoTrocarCliente={(c) => {
+            setCliente(c);
+            form.setValue('clienteId', c.id, { shouldValidate: true });
+            form.setValue('veiculoId', '');
+          }}
+          aoMudarTabela={(id) => form.setValue('tabelaPrecoId', id)}
+        />
+      </Cartao>
+      <Alerta>{criar.isError && aplicarErrosDaApi(criar.error, form.setError)}</Alerta>
+      <BarraAcoes>
+        <span className="mr-auto text-xs text-texto-suave">
+          Ao continuar, o rascunho é criado e cada alteração passa a ser salva automaticamente.
+        </span>
+        <Botao type="button" variante="secundario" onClick={() => navigate(-1)}>
+          Cancelar
+        </Botao>
+        <Botao type="button" disabled={criar.isPending} onClick={() => void continuar()}>
+          {criar.isPending ? 'Criando…' : 'Continuar para produtos'}
+          {!criar.isPending && <ArrowRight className="ml-1.5 size-4" aria-hidden />}
+        </Botao>
+      </BarraAcoes>
+      {confirmacaoSaida}
     </div>
   );
 }
 
-function TabelaItens({
-  linhas,
-  aoMudar,
-  aoRemover,
-}: {
-  linhas: LinhaTela[];
-  aoMudar: (chave: string, mudanca: (l: LinhaTela) => LinhaTela) => void;
-  aoRemover: (chave: string) => void;
-}) {
+type Gravacao =
+  | { estado: 'salvo'; em: Date | null }
+  | { estado: 'salvando' }
+  | { estado: 'invalido'; motivo: string }
+  | { estado: 'erro'; motivo: string };
+
+/** Estado da gravação automática, ao lado do resumo. */
+function SituacaoGravacao({ gravacao, aoTentar }: { gravacao: Gravacao; aoTentar: () => void }) {
+  const base = 'flex items-center gap-1.5 text-xs';
+  if (gravacao.estado === 'salvando')
+    return (
+      <span role="status" className={`${base} text-texto-suave`}>
+        <Loader2 className="size-3.5 animate-spin" aria-hidden /> Salvando…
+      </span>
+    );
+  if (gravacao.estado === 'erro')
+    return (
+      <span role="alert" className={`${base} text-perigo`}>
+        <TriangleAlert className="size-3.5" aria-hidden /> Não foi possível salvar: {gravacao.motivo}
+        <button type="button" onClick={aoTentar} className="inline-flex items-center gap-1 font-medium underline">
+          <RotateCw className="size-3.5" aria-hidden /> Tentar de novo
+        </button>
+      </span>
+    );
+  if (gravacao.estado === 'invalido')
+    return (
+      <span role="status" className={`${base} text-alerta`}>
+        <TriangleAlert className="size-3.5" aria-hidden /> {gravacao.motivo}
+      </span>
+    );
   return (
-    <Tabela>
-      <Cabecalho>
-        <Th>Item</Th>
-        <Th>Quantidade</Th>
-        <Th className="text-right">Preço de tabela</Th>
-        <Th>Negociação</Th>
-        <Th className="text-right">Total</Th>
-        <Th />
-      </Cabecalho>
-      <tbody>
-        {linhas.length === 0 && <LinhaVazia colunas={6}>Nenhum item. Use a busca acima para incluir.</LinhaVazia>}
-        {linhas.map((l) => {
-          const negociacao = precoDaLinha(l);
-          const calculo = calculoDaLinha(l);
-          const mudar = (mudanca: Partial<LinhaTela>) => aoMudar(l.chave, (x) => ({ ...x, ...mudanca }));
-          return (
-            <Linha key={l.chave}>
-              <Td>
-                <div className="font-mono text-xs text-texto-suave">{l.codigo}</div>
-                <div className="font-medium">{l.descricao}</div>
-              </Td>
-              <Td className="min-w-32">
-                <div className="flex items-center gap-1">
-                  <BotaoPasso
-                    rotulo={`Diminuir ${l.descricao}`}
-                    disabled={!podeDiminuir(l)}
-                    aoClicar={() => aoMudar(l.chave, (x) => darPasso(x, -1))}
-                  >
-                    <Minus className="size-4" aria-hidden />
-                  </BotaoPasso>
-                  {l.formaPreco === 'hora' ? (
-                    <Input
-                      aria-label={`Horas de ${l.descricao}`}
-                      className="w-20 text-center"
-                      inputMode="numeric"
-                      placeholder="0:00"
-                      value={l.horas}
-                      onChange={(e) => mudar({ horas: mascaraHoras(e.target.value), nota: undefined })}
-                      onBlur={() => aoMudar(l.chave, arredondar)}
-                    />
-                  ) : (
-                    <Input
-                      aria-label={`Quantidade de ${l.descricao}`}
-                      className="w-20 text-center"
-                      inputMode="decimal"
-                      value={l.quantidade}
-                      onChange={(e) =>
-                        mudar({ quantidade: mascaraQuantidade(e.target.value, l.fracionada), nota: undefined })
-                      }
-                      onBlur={() => aoMudar(l.chave, arredondar)}
-                    />
-                  )}
-                  <BotaoPasso
-                    rotulo={`Aumentar ${l.descricao}`}
-                    aoClicar={() => aoMudar(l.chave, (x) => darPasso(x, 1))}
-                  >
-                    <Plus className="size-4" aria-hidden />
-                  </BotaoPasso>
-                  <span className="text-xs text-texto-suave">{l.formaPreco === 'hora' ? 'h' : l.unidade}</span>
-                </div>
-                {l.multiplo > 1 && l.formaPreco !== 'hora' && (
-                  <span className="mt-1 block text-xs text-texto-suave">Múltiplo de {l.multiplo}</span>
-                )}
-                {l.formaPreco === 'hora' && (
-                  <span className="mt-1 block text-xs text-texto-suave">Múltiplo de {formatarHoras(l.multiplo)}</span>
-                )}
-                {l.nota && <span className="mt-1 block text-xs text-alerta">{l.nota}</span>}
-              </Td>
-              <Td className="whitespace-nowrap text-right">
-                {formatarMoeda(l.precoTabelaCentavos)}
-                {l.formaPreco === 'hora' ? '/hora' : ''}
-              </Td>
-              <Td className="min-w-52">
-                {l.tipo === 'servico' ? (
-                  <TextoSuave className="text-xs">Serviço não tem negociação</TextoSuave>
-                ) : (
-                  <div className="flex items-start gap-1.5">
-                    <Select
-                      aria-label={`Forma de negociação de ${l.descricao}`}
-                      className="w-24"
-                      value={l.modo}
-                      onChange={(e) => mudar({ modo: e.target.value as LinhaTela['modo'], percentual: '', preco: '' })}
-                    >
-                      <option value="percentual">%</option>
-                      <option value="preco">R$</option>
-                    </Select>
-                    <div>
-                      {l.modo === 'percentual' ? (
-                        <Input
-                          aria-label={`Desconto em % de ${l.descricao}`}
-                          inputMode="decimal"
-                          placeholder="0"
-                          value={l.percentual}
-                          onChange={(e) => mudar({ percentual: mascaraPercentual(e.target.value) })}
-                        />
-                      ) : (
-                        <Input
-                          aria-label={`Preço negociado de ${l.descricao}`}
-                          inputMode="numeric"
-                          placeholder={mascaraMoeda(String(l.precoTabelaCentavos))}
-                          value={l.preco}
-                          onChange={(e) => mudar({ preco: mascaraMoeda(e.target.value) })}
-                        />
-                      )}
-                      {negociacao.erro ? (
-                        <span className="mt-1 block text-xs text-perigo">{negociacao.erro}</span>
-                      ) : (
-                        negociacao.unitario < l.precoTabelaCentavos && (
-                          <span className="mt-1 block text-xs text-texto-suave">
-                            Sai por {formatarMoeda(negociacao.unitario)}
-                          </span>
-                        )
-                      )}
-                    </div>
-                  </div>
-                )}
-              </Td>
-              <Td className="whitespace-nowrap text-right font-semibold">
-                {calculo.descontoCentavos > 0 && (
-                  <s className="block text-xs font-normal text-texto-suave">{formatarMoeda(calculo.brutoCentavos)}</s>
-                )}
-                {formatarMoeda(calculo.totalCentavos)}
-              </Td>
-              <Td className="text-right">
-                <button
-                  type="button"
-                  title="Remover item"
-                  aria-label={`Remover ${l.descricao}`}
-                  className="rounded-md p-1.5 text-texto-suave hover:bg-superficie-alt hover:text-perigo"
-                  onClick={() => aoRemover(l.chave)}
-                >
-                  <Trash2 className="size-4" aria-hidden />
-                </button>
-              </Td>
-            </Linha>
-          );
-        })}
-      </tbody>
-    </Tabela>
+    <span role="status" className={`${base} text-sucesso`}>
+      <CheckCircle2 className="size-3.5" aria-hidden />
+      {gravacao.em ? `Salvo às ${gravacao.em.toLocaleTimeString('pt-BR', { timeStyle: 'short' })}` : 'Salvo'}
+    </span>
   );
 }
 
-// ---------- Edição do rascunho ----------
+/** O que a gravação automática compara para saber se há mudança (sem os ids, que chegam depois de gravar). */
+const assinaturaDe = (cabecalho: Entrada, linhas: LinhaTela[]) =>
+  JSON.stringify({ cabecalho, itens: linhas.map((l) => ({ ...itemParaApi(l), id: undefined, chave: l.chave })) });
 
 /**
- * Edição do rascunho: cabeçalho e itens. "Salvar orçamento" grava e vai ao resumo (`sair`); trocar a tabela com
- * itens pede confirmação, recalcula e grava, mas continua na edição para a pessoa ver os novos preços.
+ * Jornada do rascunho já criado (docs/modulos/ORCAMENTOS.md §5): cada alteração do cabeçalho e dos itens é gravada
+ * automaticamente com o PUT do rascunho (incluir e remover na hora; digitação, após uma pausa), uma gravação por
+ * vez e sempre com a versão lida. Os ids devolvidos pela API passam às linhas, então nada é criado duas vezes.
+ * "Finalizar" leva ao resumo (o orçamento continua rascunho; a emissão é lá).
  */
-function EdicaoRascunho({
+function JornadaOrcamento({
   orcamento,
-  aoSalvar,
+  avisosIniciais,
+  aoTrocarTabela,
 }: {
   orcamento: Orcamento;
-  aoSalvar: (o: Orcamento, sair: boolean) => void;
+  /** Avisos da gravação que remontou a jornada (itens removidos ou reprecificados na troca de tabela). */
+  avisosIniciais: string[];
+  /** A API reprecificou os itens na nova tabela: a página remonta com os dados gravados. */
+  aoTrocarTabela: (o: Orcamento) => void;
 }) {
-  const [cliente, setCliente] = useState<ClienteParaOrcamento | null>({ cpfCnpj: null, ...orcamento.cliente });
-  const [linhas, setLinhas] = useState<LinhaTela[]>(orcamento.itens.map(linhaDoItem));
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const tabelas = useTabelasOrcamento();
+  const vendedores = useVendedoresOrcamento();
+  const [etapa, setEtapa] = useState(PRODUTOS);
+  const [cliente, setCliente] = useState<ClienteEscolhido>(orcamento.cliente);
+  const [linhas, setLinhas] = useState<LinhaTela[]>(() => orcamento.itens.map(linhaDoItem));
+  const [tipo, setTipo] = useState<FiltroTipoItem>('');
   const [tabelaPendente, setTabelaPendente] = useState<string | null>(null);
+  const [erroEtapa, setErroEtapa] = useState<string | null>(null);
+  const [avisos, setAvisos] = useState(avisosIniciais);
+  const [gravacao, setGravacao] = useState<Gravacao>({ estado: 'salvo', em: null });
   const form = useForm<Entrada, unknown, Saida>({
     resolver: zodResolver(cabecalhoSchema),
     defaultValues: valoresDoOrcamento(orcamento),
     mode: 'onTouched',
   });
-  const salvar = useMutation({
-    mutationFn: ({ dados }: { dados: Saida; sair: boolean }) =>
-      api<Orcamento>(`/orcamentos/${orcamento.id}`, {
-        method: 'PUT',
-        body: { ...dados, itens: linhas.map(itemParaApi), versao: orcamento.versao },
-      }),
-    onSuccess: (salvo, { sair }) => aoSalvar(salvo, sair),
-  });
-  const tabelaPrecoId = String(form.watch('tabelaPrecoId') ?? '');
-  const totais = somarItens(linhas.map(calculoDaLinha));
-  const temErro = linhas.some((l) => precoDaLinha(l).erro);
-  const enviar = form.handleSubmit((dados) => salvar.mutate({ dados, sair: true }));
+  const veiculos = useVeiculosCliente(cliente.id);
+  const cabecalho = form.watch();
 
-  const trocarCliente = (c: ClienteParaOrcamento | null) => {
-    setCliente(c);
-    form.setValue('clienteId', c?.id ?? '', { shouldValidate: !!c });
-    form.setValue('veiculoId', '');
+  // ---- Gravação automática ----
+  const versao = useRef(orcamento.versao);
+  const tabelaGravada = useRef(orcamento.tabela.id);
+  const linhasAtuais = useRef(linhas);
+  const emAndamento = useRef(false);
+  const deNovo = useRef(false);
+  const saindo = useRef(false);
+  const assinatura = assinaturaDe(cabecalho, linhas);
+  const [assinaturaGravada, setAssinaturaGravada] = useState(assinatura);
+  useEffect(() => {
+    linhasAtuais.current = linhas;
+  }, [linhas]);
+
+  const gravar = useCallback(async () => {
+    if (emAndamento.current) {
+      deNovo.current = true;
+      return;
+    }
+    const enviadas = linhasAtuais.current;
+    const valores = form.getValues();
+    const dados = cabecalhoSchema.safeParse(valores);
+    if (!dados.success) return setGravacao({ estado: 'invalido', motivo: 'Revise os dados do cliente para salvar.' });
+    if (enviadas.some((l) => precoDaLinha(l).erro))
+      return setGravacao({ estado: 'invalido', motivo: 'Corrija a negociação para salvar.' });
+    if (!enviadas.every(linhaValida))
+      return setGravacao({ estado: 'invalido', motivo: 'Informe a quantidade dos itens para salvar.' });
+
+    emAndamento.current = true;
+    setGravacao({ estado: 'salvando' });
+    try {
+      const salvo = await api<Orcamento>(`/orcamentos/${orcamento.id}`, {
+        method: 'PUT',
+        body: { ...dados.data, itens: enviadas.map(itemParaApi), versao: versao.current, automatico: true },
+      });
+      versao.current = salvo.versao;
+      queryClient.setQueryData(['orcamentos', orcamento.id], salvo);
+      queryClient.invalidateQueries({ queryKey: ['orcamentos', 'lista'], refetchType: 'none' });
+      if (salvo.tabela.id !== tabelaGravada.current) {
+        tabelaGravada.current = salvo.tabela.id;
+        return aoTrocarTabela(salvo);
+      }
+      // Itens novos recebem o id gravado (mesma ordem do envio); se a API tirou algum, vale o que ela gravou.
+      if (salvo.itens.length === enviadas.length)
+        setLinhas((atuais) =>
+          atuais.map((l) => {
+            const i = enviadas.findIndex((e) => e.chave === l.chave);
+            return i < 0 || l.id ? l : { ...l, id: salvo.itens[i]!.id };
+          }),
+        );
+      else setLinhas(salvo.itens.map(linhaDoItem));
+      setAvisos(salvo.avisos);
+      setAssinaturaGravada(assinaturaDe(valores, enviadas));
+      setGravacao({ estado: 'salvo', em: new Date() });
+    } catch (e) {
+      setGravacao({ estado: 'erro', motivo: e instanceof Error ? e.message : 'erro inesperado.' });
+    } finally {
+      emAndamento.current = false;
+      if (deNovo.current) {
+        deNovo.current = false;
+        void gravar();
+      }
+    }
+  }, [form, orcamento.id, queryClient, aoTrocarTabela]);
+
+  // Mudou algo: grava (incluir/remover na hora; digitação, depois de uma pausa).
+  const quantidadeGravada = useRef(linhas.length);
+  useEffect(() => {
+    if (assinatura === assinaturaGravada) return;
+    const imediato = linhas.length !== quantidadeGravada.current;
+    quantidadeGravada.current = linhas.length;
+    const espera = setTimeout(() => void gravar(), imediato ? 0 : ESPERA_GRAVACAO_MS);
+    return () => clearTimeout(espera);
+  }, [assinatura, assinaturaGravada, linhas.length, gravar]);
+
+  const pendente = assinatura !== assinaturaGravada || gravacao.estado !== 'salvo';
+  const confirmacaoSaida = useConfirmarSaida(
+    pendente,
+    saindo,
+    'Há alterações que ainda não foram salvas. Se sair agora, elas serão perdidas.',
+  );
+
+  // ---- Etapas ----
+  const irPara = (i: number) => {
+    setErroEtapa(null);
+    setEtapa(i);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
+  const continuarParaProdutos = async () => {
+    if (await form.trigger([...CAMPOS_CLIENTE])) irPara(PRODUTOS);
+  };
+  const revisar = () => {
+    if (!linhas.length) return setErroEtapa('Inclua ao menos um produto ou serviço para revisar o orçamento.');
+    if (linhas.some((l) => precoDaLinha(l).erro))
+      return setErroEtapa('Corrija a negociação dos itens marcados antes de revisar.');
+    irPara(REVISAO);
+  };
+  const finalizar = () => {
+    if (pendente) return setErroEtapa('Aguarde o orçamento terminar de salvar.');
+    saindo.current = true;
+    navigate(`/orcamentos/${orcamento.id}`, { state: { avisosAoSalvar: avisos } });
+  };
+
+  const trocarCliente = (c: ClienteEscolhido) => {
+    setCliente(c);
+    form.setValue('clienteId', c.id, { shouldValidate: true, shouldDirty: true });
+    form.setValue('veiculoId', '', { shouldDirty: true });
+  };
+  // Com itens, trocar a tabela reprecifica no servidor (volta ao preço cheio; sem preço, sai): pede confirmação.
   const mudarTabela = (id: string) => {
     if (linhas.length) setTabelaPendente(id);
-    else form.setValue('tabelaPrecoId', id);
-  };
-  const confirmarTabela = () => {
-    form.setValue('tabelaPrecoId', tabelaPendente!);
-    setTabelaPendente(null);
-    void form.handleSubmit((dados) => salvar.mutate({ dados, sair: false }))();
+    else form.setValue('tabelaPrecoId', id, { shouldDirty: true });
   };
 
+  const veiculo = veiculos.data?.find((v) => v.id === cabecalho.veiculoId);
+  const condicoes = [
+    { rotulo: 'Vendedor', valor: vendedores.data?.find((v) => v.id === cabecalho.vendedorId)?.nome },
+    { rotulo: 'Tabela de preço', valor: tabelas.data?.find((t) => t.id === cabecalho.tabelaPrecoId)?.nome },
+    {
+      rotulo: 'Validade',
+      valor: cabecalho.validadeAte
+        ? `Até ${formatarDataIso(String(cabecalho.validadeAte))}`
+        : `${VALIDADE_PADRAO_DIAS} dias a partir da emissão`,
+    },
+    {
+      rotulo: 'Veículo',
+      valor: veiculo ? `${formatarPlaca(veiculo.placa)} — ${veiculo.marca} ${veiculo.modelo}` : 'Sem veículo',
+    },
+    { rotulo: 'Observações', valor: cabecalho.observacoes, largo: true },
+  ];
+  const situacao = <SituacaoGravacao gravacao={gravacao} aoTentar={() => void gravar()} />;
+
   return (
-    <form className="space-y-6" noValidate onSubmit={enviar}>
-      <Cartao>
-        <Alerta>{salvar.isError && aplicarErrosDaApi(salvar.error, form.setError)}</Alerta>
-        <CamposCabecalho
-          form={form}
-          cliente={cliente}
-          aoTrocarCliente={trocarCliente}
-          aoMudarTabela={mudarTabela}
-          clienteFixo={orcamento.versaoOrcamento > 1}
-          vendedorAtualId={orcamento.vendedor.id}
+    <div className="space-y-4">
+      <Cartao className="px-4 py-3">
+        <Etapas
+          rotulo="Etapas do orçamento"
+          titulos={ETAPAS}
+          detalhes={detalhesDasEtapas(cliente.nome, linhas)}
+          atual={etapa}
+          aoIr={irPara}
         />
       </Cartao>
 
-      <Cartao>
-        <Secao titulo="Itens">
-          <BuscaItem
-            tabelaPrecoId={tabelaPrecoId}
-            aoEscolher={(i) =>
-              setLinhas((atuais) =>
-                // Item já incluído: soma um múltiplo na linha existente em vez de criar outra.
-                atuais.some((l) => l.tipo === i.tipo && l.itemId === i.id)
-                  ? atuais.map((l) => (l.tipo === i.tipo && l.itemId === i.id ? darPasso(l, 1) : l))
-                  : [...atuais, linhaNova(i)],
-              )
-            }
-          />
-          <TabelaItens
-            linhas={linhas}
-            aoMudar={(chave, mudanca) => setLinhas((atuais) => atuais.map((l) => (l.chave === chave ? mudanca(l) : l)))}
-            aoRemover={(chave) => setLinhas((atuais) => atuais.filter((l) => l.chave !== chave))}
-          />
-          <Totais subtotal={totais.subtotalCentavos} desconto={totais.descontoCentavos} total={totais.totalCentavos} />
-        </Secao>
-      </Cartao>
+      <FaixaResumo cliente={cliente.nome} linhas={linhas} situacao={situacao} />
+      <Aviso>
+        {avisos.length > 0 && (
+          <ul className="list-inside list-disc space-y-0.5">
+            {avisos.map((a) => (
+              <li key={a}>{a}</li>
+            ))}
+          </ul>
+        )}
+      </Aviso>
 
-      <div className="flex justify-center">
-        <Botao type="submit" variante="sucesso" disabled={salvar.isPending || temErro}>
-          {salvar.isPending ? 'Salvando…' : 'Salvar orçamento'}
-        </Botao>
-      </div>
+      {etapa === CLIENTE && (
+        <>
+          <Cartao className="p-4 sm:p-5">
+            <CamposCabecalho
+              form={form}
+              cliente={cliente}
+              aoTrocarCliente={trocarCliente}
+              aoMudarTabela={mudarTabela}
+              clienteFixo={orcamento.versaoOrcamento > 1}
+              vendedorAtualId={orcamento.vendedor.id}
+            />
+          </Cartao>
+          <BarraAcoes>
+            <Botao type="button" onClick={() => void continuarParaProdutos()}>
+              Continuar para produtos <ArrowRight className="ml-1.5 size-4" aria-hidden />
+            </Botao>
+          </BarraAcoes>
+        </>
+      )}
+
+      {etapa === PRODUTOS && (
+        <>
+          <Cartao className="p-4 sm:p-5">
+            <ItensOrcamento
+              linhas={linhas}
+              aoMudarLinhas={setLinhas}
+              tabelaPrecoId={String(cabecalho.tabelaPrecoId ?? '')}
+              tipo={tipo}
+              aoMudarTipo={setTipo}
+            />
+          </Cartao>
+          <Alerta>{erroEtapa}</Alerta>
+          <BarraAcoes>
+            <Botao type="button" variante="secundario" className="mr-auto" onClick={() => irPara(CLIENTE)}>
+              <ArrowLeft className="mr-1.5 size-4" aria-hidden /> Cliente
+            </Botao>
+            <Botao type="button" onClick={revisar}>
+              Revisar orçamento <ArrowRight className="ml-1.5 size-4" aria-hidden />
+            </Botao>
+          </BarraAcoes>
+        </>
+      )}
+
+      {etapa === REVISAO && (
+        <>
+          <RevisaoOrcamento cliente={cliente} linhas={linhas} condicoes={condicoes} />
+          <Alerta>{erroEtapa}</Alerta>
+          <BarraAcoes>
+            <Botao type="button" variante="secundario" className="mr-auto" onClick={() => irPara(PRODUTOS)}>
+              <ArrowLeft className="mr-1.5 size-4" aria-hidden /> Voltar
+            </Botao>
+            <Botao type="button" variante="sucesso" disabled={pendente} onClick={finalizar}>
+              {pendente ? 'Salvando…' : 'Finalizar'}
+            </Botao>
+          </BarraAcoes>
+        </>
+      )}
 
       {tabelaPendente && (
         <Janela titulo="Trocar a tabela de preço" aoFechar={() => setTabelaPendente(null)}>
           <div className="space-y-4">
             <TextoSuave>
               Os preços de todos os itens serão recalculados pela nova tabela, voltando ao preço cheio (a negociação é
-              desfeita). Itens sem preço nela serão removidos do orçamento. O rascunho é salvo em seguida.
+              desfeita). Itens sem preço nela serão removidos do orçamento.
             </TextoSuave>
             <div className="flex gap-2">
-              <Botao type="button" onClick={confirmarTabela}>
-                Recalcular e salvar
+              <Botao
+                type="button"
+                onClick={() => {
+                  form.setValue('tabelaPrecoId', tabelaPendente, { shouldDirty: true });
+                  setTabelaPendente(null);
+                }}
+              >
+                Trocar e recalcular
               </Botao>
               <Botao type="button" variante="secundario" onClick={() => setTabelaPendente(null)}>
                 Manter a tabela atual
@@ -790,18 +678,22 @@ function EdicaoRascunho({
           </div>
         </Janela>
       )}
-    </form>
+      {confirmacaoSaida}
+    </div>
   );
 }
 
+/** Edição do rascunho: a jornada aberta em Produtos e serviços, com gravação automática. */
 export function EditarOrcamento() {
   const { id } = useParams() as { id: string };
-  const navigate = useNavigate();
-  const pode = usePode();
+  const perfil = usePerfilOrcamento();
   const queryClient = useQueryClient();
-  const { orcamento, recalculando, erroRecalculo, avisos, setAvisos } = useOrcamento(id);
+  const { orcamento, recalculando, erroRecalculo, avisos } = useOrcamento(id);
+  // Remonta a jornada só quando a API reprecifica os itens (troca de tabela); a gravação automática não remonta.
+  const [geracao, setGeracao] = useState(0);
+  const [avisosDaTroca, setAvisosDaTroca] = useState<string[]>([]);
 
-  if (!pode('orcamentos', 'editar')) return <Alerta>Você não tem permissão para alterar orçamentos.</Alerta>;
+  if (!perfil.podeAlterar) return <Alerta>Só o Administrador e os vendedores alteram orçamentos.</Alerta>;
   if (orcamento.isError) return <Alerta>{orcamento.error.message}</Alerta>;
   if (erroRecalculo) return <Alerta>{erroRecalculo.message}</Alerta>;
   const o = orcamento.data;
@@ -809,10 +701,12 @@ export function EditarOrcamento() {
     return <TextoSuave>Carregando…</TextoSuave>;
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
-      <Titulo>
-        {formatarNumeroOrcamento(o.numero)} · Versão {o.versaoOrcamento}
-      </Titulo>
+    <div className="mx-auto max-w-6xl space-y-4">
+      <CabecalhoObjeto
+        titulo={`${formatarNumeroOrcamento(o.numero)} · Versão ${o.versaoOrcamento}`}
+        selos={<SeloSituacao situacao={o.situacao} />}
+        atributos={atributosDoOrcamento(o, true)}
+      />
       {o.status !== 'rascunho' ? (
         <Alerta>
           Só o rascunho pode ser alterado. Para mudar um orçamento emitido, gere uma nova versão no detalhe.
@@ -829,16 +723,14 @@ export function EditarOrcamento() {
             )}
           </Aviso>
           <TextoSuave className="text-xs">Preços de {formatarDataIso(o.precosEm)}.</TextoSuave>
-          <EdicaoRascunho
-            // Remonta com os dados da API a cada gravação (itens com os ids e preços oficiais).
-            key={o.versao}
+          <JornadaOrcamento
+            key={geracao}
             orcamento={o}
-            aoSalvar={(salvo, sair) => {
+            avisosIniciais={avisosDaTroca}
+            aoTrocarTabela={(salvo) => {
               queryClient.setQueryData(['orcamentos', id], salvo);
-              queryClient.invalidateQueries({ queryKey: ['orcamentos', 'lista'] });
-              // Os avisos da gravação (arredondamentos, itens removidos) seguem para o resumo.
-              if (sair) navigate(`/orcamentos/${id}`, { state: { avisosAoSalvar: salvo.avisos } });
-              else setAvisos(salvo.avisos.length ? salvo.avisos : ['Rascunho salvo.']);
+              setAvisosDaTroca(salvo.avisos.length ? salvo.avisos : ['Itens recalculados pela nova tabela.']);
+              setGeracao((g) => g + 1);
             }}
           />
         </>

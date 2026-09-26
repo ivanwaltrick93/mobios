@@ -8,3 +8,4 @@ export * from './estoque.js';
 export * from './importacao.js';
 export * from './vendedores.js';
 export * from './orcamentos.js';
+export * from './aprovacoes.js';

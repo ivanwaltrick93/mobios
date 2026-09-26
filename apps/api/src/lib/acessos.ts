@@ -8,7 +8,7 @@ import {
 } from '@mobios/shared';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
-import { funcaoPermissoes, funcoes, usuarioFuncoes, users } from '../db/schema.js';
+import { funcaoPermissoes, funcoes, usuarioFuncoes, users, vendedores } from '../db/schema.js';
 
 export type AcessoUsuario = {
   ativo: boolean;
@@ -16,6 +16,11 @@ export type AcessoUsuario = {
   funcoes: FuncaoResumo[];
   /** Nível efetivo por módulo: maior entre as funções ATIVAS; tudo, para o admin. */
   acessos: Acessos;
+  /**
+   * Cadastro de vendedor ATIVO do usuário, se ele não for Administrador: os orçamentos ficam no nome dele e ele
+   * só vê e altera os próprios (docs/modulos/ORCAMENTOS.md §5). null = não atua como vendedor.
+   */
+  vendedorId: string | null;
 };
 
 /** Calcula o acesso do usuário a partir das funções dele (sempre dentro de withTenant). */
@@ -51,8 +56,20 @@ export async function carregarAcesso(tx: Tx, usuarioId: string): Promise<AcessoU
       : [];
     acessos = combinarAcessos(niveis.map((n) => ({ [n.modulo]: n.nivel }) as Partial<Acessos>));
   }
+  const [vendedor] = admin
+    ? []
+    : await tx
+        .select({ id: vendedores.id })
+        .from(vendedores)
+        .where(and(eq(vendedores.usuarioId, usuarioId), eq(vendedores.ativo, true)));
   // Funções desativadas deixam de valer e também somem do perfil do usuário.
-  return { ativo: usuario.ativo, admin, funcoes: ativas.map(({ id, nome, admin }) => ({ id, nome, admin })), acessos };
+  return {
+    ativo: usuario.ativo,
+    admin,
+    funcoes: ativas.map(({ id, nome, admin }) => ({ id, nome, admin })),
+    acessos,
+    vendedorId: vendedor?.id ?? null,
+  };
 }
 
 /** Grava os níveis de uma função (substitui os anteriores). */

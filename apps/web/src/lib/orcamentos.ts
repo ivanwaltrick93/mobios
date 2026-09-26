@@ -2,14 +2,14 @@ import { hojeIso, type Orcamento, type TabelaParaOrcamento, type VendedorParaOrc
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { api } from './api';
-import { usePode } from './sessao';
+import { usePerfilOrcamento } from './sessao';
 
 /**
  * Orçamento pelo id. Rascunho de outro dia é recalculado ao abrir (uma vez), por quem pode editar: a API aplica os
  * preços do dia e devolve os avisos do que mudou.
  */
 export function useOrcamento(id: string) {
-  const podeEditar = usePode()('orcamentos', 'editar');
+  const podeEditar = usePerfilOrcamento().podeAlterar;
   const queryClient = useQueryClient();
   const [avisos, setAvisos] = useState<string[]>([]);
   const orcamento = useQuery({ queryKey: ['orcamentos', id], queryFn: () => api<Orcamento>(`/orcamentos/${id}`) });
