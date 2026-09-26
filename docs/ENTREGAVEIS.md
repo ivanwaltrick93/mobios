@@ -154,7 +154,7 @@ flowchart LR
 | OS-09 | Fluxo de status (orçamento → aguardando aprovação → aprovada → em execução → aguardando peça → concluída → entregue; recusada; cancelada com motivo) | 🟢 |
 | OS-10 | Atribuir mecânico(s) à O.S. ou a cada serviço | 🟢 |
 | OS-11 | Apontamento de horas por mecânico (início/fim do serviço) | 🟡 |
-| OS-12 | Serviço adicional descoberto durante a execução → novo orçamento dentro da mesma O.S. | 🟢 |
+| OS-12 | Serviço adicional descoberto durante a execução → novo orçamento dentro da mesma O.S. **Decisão de 26/09/2026:** sem orçamento separado; o adicional entra como item da própria O.S. (numa O.S. já aprovada, entra aprovado) | 🟢 |
 | OS-13 | Entrega: km de saída, observações, termo de entrega assinado | 🟢 |
 | OS-14 | Impressão/PDF da O.S. com a marca da oficina | 🟢 |
 | OS-15 | **Garantia** por serviço/peça (prazo e km) e O.S. de retorno em garantia vinculada à original | 🟡 |

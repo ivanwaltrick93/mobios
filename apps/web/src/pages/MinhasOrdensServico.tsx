@@ -46,6 +46,7 @@ export function MinhasOrdensServico() {
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-mono text-sm font-semibold">{formatarNumeroOs(o.numero)}</span>
                     <SeloSituacaoOs situacao={o.situacao} />
+                    {o.atrasada && <Selo tom="perigo">Atrasada</Selo>}
                   </div>
                   <p className="text-lg font-semibold tracking-wide">{formatarPlaca(o.veiculoPlaca)}</p>
                   <p className="truncate text-sm text-texto-suave">{o.clienteNome}</p>

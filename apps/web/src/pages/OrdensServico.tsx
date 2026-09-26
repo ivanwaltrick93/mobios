@@ -27,7 +27,16 @@ import { api } from '../lib/api';
 import { useMecanicosOs, useVendedoresOs } from '../lib/ordensServico';
 import { usePerfilOs } from '../lib/sessao';
 
-const FILTRO_INICIAL = { q: '', situacao: '', vendedorId: '', mecanicoId: '', pecaPendente: '', desde: '', ate: '' };
+const FILTRO_INICIAL = {
+  atrasadas: '',
+  q: '',
+  situacao: '',
+  vendedorId: '',
+  mecanicoId: '',
+  pecaPendente: '',
+  desde: '',
+  ate: '',
+};
 
 const dataHora = (d: Date | string | null) =>
   d ? new Date(d).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—';
@@ -36,7 +45,12 @@ const dataHora = (d: Date | string | null) =>
 export function OrdensServico() {
   const perfil = usePerfilOs();
   const [params] = useSearchParams();
-  const [filtro, setFiltro] = useState(() => ({ ...FILTRO_INICIAL, situacao: params.get('situacao') ?? '' }));
+  // Links do Início chegam com a situação ou "atrasadas" na URL.
+  const [filtro, setFiltro] = useState(() => ({
+    ...FILTRO_INICIAL,
+    situacao: params.get('situacao') ?? '',
+    atrasadas: params.get('atrasadas') === 'true' ? 'true' : '',
+  }));
   const [pagina, setPagina] = useState(1);
   const vendedores = useVendedoresOs();
   const mecanicos = useMecanicosOs(!perfil.mecanico);
@@ -80,7 +94,7 @@ export function OrdensServico() {
           valor={filtro.q}
           aoMudar={(valor) => mudar('q', valor)}
         />
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
           <Campo rotulo="Situação">
             <Select value={filtro.situacao} onChange={(e) => mudar('situacao', e.target.value)}>
               <option value="">Todas</option>
@@ -114,6 +128,12 @@ export function OrdensServico() {
               </Select>
             </Campo>
           )}
+          <Campo rotulo="Prazo">
+            <Select value={filtro.atrasadas} onChange={(e) => mudar('atrasadas', e.target.value)}>
+              <option value="">Todas</option>
+              <option value="true">Atrasadas</option>
+            </Select>
+          </Campo>
           <Campo rotulo="Peças">
             <Select value={filtro.pecaPendente} onChange={(e) => mudar('pecaPendente', e.target.value)}>
               <option value="">Todas</option>
@@ -165,6 +185,7 @@ export function OrdensServico() {
                 <Td>
                   <div className="flex flex-wrap items-center gap-1">
                     <SeloSituacaoOs situacao={o.situacao} />
+                    {o.atrasada && <Selo tom="perigo">Atrasada</Selo>}
                     {o.pecasSolicitadas > 0 && <Selo tom="alerta">{o.pecasSolicitadas} peça(s) pedida(s)</Selo>}
                   </div>
                 </Td>

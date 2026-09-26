@@ -101,6 +101,12 @@ export const ordensServico = pgTable(
     /** Conclusão (onda 5.3): todos os serviços aprovados executados. */
     concluidaEm: timestamp({ withTimezone: true }),
     concluidaPor: uuid(),
+    /** Entrega (onda 5.4, OS-13): km de saída, quem entregou, quem retirou e observações. */
+    kmSaida: integer(),
+    entregueEm: timestamp({ withTimezone: true }),
+    entreguePor: uuid(),
+    recebidoPor: text(),
+    observacoesEntrega: text(),
     /** Bruto dos serviços e dos produtos, desconto (só de produto do catálogo) e total. */
     subtotalServicosCentavos: bigint({ mode: 'number' }).notNull().default(0),
     subtotalMateriaisCentavos: bigint({ mode: 'number' }).notNull().default(0),
@@ -121,7 +127,7 @@ export const ordensServico = pgTable(
     foreignKey({ columns: [t.tenantId, t.vendedorId], foreignColumns: [vendedores.tenantId, vendedores.id] }),
     foreignKey({ columns: [t.tenantId, t.orcamentoId], foreignColumns: [orcamentos.tenantId, orcamentos.id] }),
     foreignKey({ columns: [t.tenantId, t.tabelaPrecoId], foreignColumns: [tabelasPreco.tenantId, tabelasPreco.id] }),
-    ...[t.aprovadaPor, t.recusadaPor, t.canceladaPor, t.concluidaPor].map((c) =>
+    ...[t.aprovadaPor, t.recusadaPor, t.canceladaPor, t.concluidaPor, t.entreguePor].map((c) =>
       foreignKey({ columns: [t.tenantId, c], foreignColumns: [users.tenantId, users.id] }),
     ),
     ...fksAutoria(t),
@@ -131,6 +137,17 @@ export const ordensServico = pgTable(
       sql`${t.subtotalServicosCentavos} >= 0 and ${t.subtotalMateriaisCentavos} >= 0 and ${t.descontoCentavos} >= 0
         and ${t.totalCentavos} = ${t.subtotalServicosCentavos} + ${t.subtotalMateriaisCentavos} - ${t.descontoCentavos}`,
     ),
+    check('ordens_servico_km_saida', sql`${t.kmSaida} is null or ${t.kmSaida} >= ${t.kmEntrada}`),
+    check(
+      'ordens_servico_entrega',
+      sql`${t.status} <> 'entregue' or (${t.kmSaida} is not null and ${t.entregueEm} is not null)`,
+    ),
+    // Previsão das O.S. em aberto: o alerta de atrasadas do Início e o filtro da lista.
+    index('ordens_servico_previsao_em_aberto')
+      .on(t.tenantId, t.previsaoEntrega)
+      .where(
+        sql`${t.previsaoEntrega} is not null and ${t.status} in ('aberta', 'em_diagnostico', 'aguardando_aprovacao', 'aprovada', 'em_execucao', 'aguardando_peca')`,
+      ),
     check('ordens_servico_cancelamento', sql`${t.status} <> 'cancelada' or ${t.motivoCancelamento} is not null`),
     // Lista: a ordem da tela (abertura, número). NULLS FIRST: o padrão do ORDER BY ... DESC (DATABASE.md §2).
     index('ordens_servico_lista').on(t.tenantId, t.criadoEm.desc().nullsFirst(), t.numero.desc().nullsFirst()),

@@ -64,6 +64,7 @@ const mensagensUnicidade: Record<string, string> = {
 
 /** Violações de CHECK/trigger com mensagem própria (as demais caem em "Dados inválidos"). */
 const mensagensCheck: Record<string, string> = {
+  ordens_servico_km_saida: 'O km de saída não pode ser menor que o de entrada.',
   categorias_sem_ciclo: 'Uma categoria não pode ficar abaixo dela mesma nem de uma subcategoria sua.',
   categorias_pai_diferente: 'Uma categoria não pode ser pai dela mesma.',
   materiais_precos_vigencia_valida: 'O fim da vigência deve ser igual ou posterior ao início.',

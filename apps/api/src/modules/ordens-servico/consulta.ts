@@ -1,4 +1,4 @@
-import { SITUACOES_OS, type OrdemServico, type SituacaoOs } from '@mobios/shared';
+import { osAtrasada, SITUACOES_OS, type OrdemServico, type SituacaoOs } from '@mobios/shared';
 import { and, asc, desc, eq, inArray } from 'drizzle-orm';
 import type { FastifyRequest } from 'fastify';
 import type { Tx } from '../../db/client.js';
@@ -71,6 +71,7 @@ export async function carregarOs(tx: Tx, id: string, u: Usuario, avisos: string[
       orcamentoVersao: orcamentos.versaoOrcamento,
       aprovadaPor: nomeUsuario('ordens_servico', 'aprovada_por'),
       concluidaPor: nomeUsuario('ordens_servico', 'concluida_por'),
+      entreguePor: nomeUsuario('ordens_servico', 'entregue_por'),
       criadaPor: nomeUsuario('ordens_servico', 'criado_por'),
     })
     .from(ordensServico)
@@ -191,6 +192,7 @@ export async function carregarOs(tx: Tx, id: string, u: Usuario, avisos: string[
     totalCentavos: g.totalCentavos,
     abertaEm: g.criadoEm,
     pecasSolicitadas: solicitacoes.filter((s) => s.status === 'pendente').length,
+    atrasada: osAtrasada(g.status, g.previsaoEntrega),
     cliente: o.cliente,
     veiculo: o.veiculo,
     vendedor: g.vendedorId ? { id: g.vendedorId, nome: o.vendedorNome ?? '', ativo: !!o.vendedorAtivo } : null,
@@ -228,6 +230,11 @@ export async function carregarOs(tx: Tx, id: string, u: Usuario, avisos: string[
     diagnostico: g.diagnostico,
     concluidaEm: g.concluidaEm,
     concluidaPor: o.concluidaPor,
+    kmSaida: g.kmSaida,
+    entregueEm: g.entregueEm,
+    entreguePor: o.entreguePor,
+    recebidoPor: g.recebidoPor,
+    observacoesEntrega: g.observacoesEntrega,
     solicitacoesPeca: solicitacoes.map((s) => ({ ...s, quantidade: Number(s.quantidade) })),
     fotos,
     permissoes: { alterar: podeAlterarOs(u, g), produtos: podeProdutosOs(u) },

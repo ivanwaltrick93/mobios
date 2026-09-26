@@ -20,6 +20,7 @@
     "@fastify/cookie": "^11.1.2",
     "@fastify/helmet": "^13.1.1",
     "@fastify/jwt": "^10.2.2",
+    "@fontsource/inter": "^5.3.0",
     "@mobios/shared": "workspace:*",
     "@node-rs/argon2": "^2.2.1",
     "drizzle-orm": "^0.45.3",
@@ -27,11 +28,13 @@
     "fastify-plugin": "^6.0.0",
     "fastify-type-provider-zod": "^7.0.0",
     "ioredis": "^6.0.0",
+    "pdfmake": "^0.3.11",
     "postgres": "^3.4.9",
     "zod": "^4.6.5"
   },
   "devDependencies": {
     "@types/node": "^26.6.2",
+    "@types/pdfmake": "^0.3.3",
     "drizzle-kit": "^0.31.11",
     "tsup": "^8.5.1",
     "tsx": "^4.23.15",

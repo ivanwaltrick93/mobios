@@ -232,6 +232,13 @@
       "when": 1790451452385,
       "tag": "0032_execucao_os",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1790452133943,
+      "tag": "0033_entrega_os",
+      "breakpoints": true
     }
   ]
 }

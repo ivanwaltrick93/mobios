@@ -17,6 +17,7 @@ import {
   ordemServicoFiltroSchema,
   ordemServicoResumoSchema,
   ordemServicoSchema,
+  osAtrasada,
   SITUACOES_OS_EM_ABERTO,
   SITUACOES_OS_ITENS_EDITAVEIS,
   transicaoOsSchema,
@@ -56,6 +57,7 @@ import {
   veiculosDoCliente,
 } from '../orcamentos/apoio.js';
 import { snapshotDaOs } from './aprovacao.js';
+import { entregaOsRoutes } from './entrega.js';
 import { execucaoOsRoutes } from './execucao.js';
 import { recepcaoOsRoutes } from './recepcao.js';
 import { carregarOs, exigirSemAprovacaoPendente, exigirSituacaoOs, exigirVersaoLidaOs, travarOs } from './consulta.js';
@@ -116,6 +118,8 @@ export const ordensServicoRoutes: FastifyPluginAsyncZod = async (app) => {
   // Checklist, fotos e diagnóstico (onda 5.2); execução, mecânicos por serviço e solicitação de peça (onda 5.3).
   await app.register(recepcaoOsRoutes);
   await app.register(execucaoOsRoutes);
+  // Entrega e PDF (onda 5.4).
+  await app.register(entregaOsRoutes);
 
   /** Lista: número (com ou sem "OS-"), nome do cliente ou placa; filtros; o mecânico só vê as dele. */
   app.get(
@@ -127,8 +131,8 @@ export const ordensServicoRoutes: FastifyPluginAsyncZod = async (app) => {
       },
     },
     async (req) => {
-      const { q, situacao, clienteId, veiculoId, vendedorId, mecanicoId, abertas, pecaPendente, desde, ate } =
-        req.query;
+      const { q, situacao, clienteId, veiculoId, vendedorId, mecanicoId, abertas, atrasadas, pecaPendente } = req.query;
+      const { desde, ate } = req.query;
       const { pagina, porPagina } = req.query;
       const numero = q?.replace(/^os-?/i, '').replace(/^0+(?=\d)/, '');
       const onde = and(
@@ -147,7 +151,8 @@ export const ordensServicoRoutes: FastifyPluginAsyncZod = async (app) => {
           ? sql`exists (select 1 from os_mecanicos m where m.ordem_servico_id = ${ordensServico.id}
               and m.usuario_id = ${mecanicoId})`
           : undefined,
-        abertas ? inArray(ordensServico.status, SITUACOES_OS_EM_ABERTO) : undefined,
+        abertas || atrasadas ? inArray(ordensServico.status, SITUACOES_OS_EM_ABERTO) : undefined,
+        atrasadas ? lt(ordensServico.previsaoEntrega, sql`now()`) : undefined,
         pecaPendente
           ? sql`exists (select 1 from os_solicitacoes_peca s where s.ordem_servico_id = ${ordensServico.id}
               and s.status = 'pendente')`
@@ -192,7 +197,11 @@ export const ordensServicoRoutes: FastifyPluginAsyncZod = async (app) => {
         const [{ total }] = (await tx.select({ total: count() }).from(ordensServico).where(onde)) as [
           { total: number },
         ];
-        return { itens, total };
+        const agora = new Date();
+        return {
+          itens: itens.map((o) => ({ ...o, atrasada: osAtrasada(o.situacao, o.previsaoEntrega, agora) })),
+          total,
+        };
       });
     },
   );

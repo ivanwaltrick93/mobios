@@ -35,6 +35,7 @@ Todas as dependências são open source, com licenças permissivas (MIT, Apache-
 | Cache de leitura | Redis 8 (`ioredis`) | AGPLv3 (Redis) / MIT (`ioredis`) | Acelera leituras caras que toleram atraso (hoje, o Painel). Opcional e descartável: ver §3.1 |
 | ORM / migrações | Drizzle ORM + drizzle-kit | Apache-2.0 | SQL explícito, tipado, leve; convive bem com RLS |
 | Senhas | Argon2id (`@node-rs/argon2`) | MIT | Padrão OWASP; binários prontos p/ Mac/Win/Linux |
+| PDF | `pdfmake` + fonte Inter (`@fontsource/inter`) | MIT / SIL OFL | PDF da O.S. gerado no servidor, em memória, sem acesso a arquivo local nem URL |
 | Sessão | JWT em cookie httpOnly (`@fastify/jwt`, `@fastify/cookie`) | MIT | Imune a roubo via XSS no `localStorage` |
 | Front-end | React 19 + Vite | MIT | SPA; não há necessidade de SSR em app autenticado |
 | Estado servidor | TanStack Query | MIT | Cache, loading, invalidação |

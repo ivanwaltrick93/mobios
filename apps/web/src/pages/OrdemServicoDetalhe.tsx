@@ -1,6 +1,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
   cabecalhoOsInputSchema,
+  entregaOsInputSchema,
   EVENTOS_OS,
   formatarHoras,
   formatarMoeda,
@@ -15,7 +16,21 @@ import {
   type SituacaoOs,
 } from '@mobios/shared';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Ban, CheckCircle2, Pause, Pencil, Play, Search, Send, UserPlus, Wrench, X, XCircle } from 'lucide-react';
+import {
+  Ban,
+  CheckCircle2,
+  FileText,
+  KeyRound,
+  Pause,
+  Pencil,
+  Play,
+  Search,
+  Send,
+  UserPlus,
+  Wrench,
+  X,
+  XCircle,
+} from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { useForm } from 'react-hook-form';
 import { Link, useParams } from 'react-router';
@@ -35,6 +50,7 @@ import {
   CabecalhoObjeto,
   Campo,
   Cartao,
+  classesBotao,
   Input,
   Janela,
   Linha,
@@ -200,6 +216,7 @@ export function OrdemServicoDetalhe() {
   const [confirmando, setConfirmando] = useState<Acao | null>(null);
   const [motivo, setMotivo] = useState('');
   const [editandoDados, setEditandoDados] = useState(false);
+  const [entregando, setEntregando] = useState(false);
   const [editandoItens, setEditandoItens] = useState(false);
   // O mecânico chega pela execução; os demais, pelos itens.
   const [aba, setAba] = useState<Aba>(perfil.mecanico ? 'execucao' : 'itens');
@@ -243,7 +260,12 @@ export function OrdemServicoDetalhe() {
           </span>
         }
         titulo={<span className="font-mono">{formatarNumeroOs(o.numero)}</span>}
-        selos={<SeloSituacaoOs situacao={o.situacao} />}
+        selos={
+          <>
+            <SeloSituacaoOs situacao={o.situacao} />
+            {o.atrasada && <Selo tom="perigo">Atrasada</Selo>}
+          </>
+        }
         atributos={[
           { rotulo: 'Cliente', valor: o.cliente.nome },
           {
@@ -254,12 +276,30 @@ export function OrdemServicoDetalhe() {
           { rotulo: 'Previsão de entrega', valor: dataHora(o.previsaoEntrega) ?? 'Sem previsão' },
           { rotulo: 'Total', valor: <span className="font-semibold">{formatarMoeda(o.totalCentavos)}</span> },
         ]}
-        acoes={acoes.map((a) => (
-          <Botao key={a} variante={ACOES[a].variante} onClick={() => setConfirmando(a)}>
-            {ACOES[a].icone}
-            {ACOES[a].rotulo}
-          </Botao>
-        ))}
+        acoes={
+          <>
+            {acoes.map((a) => (
+              <Botao key={a} variante={ACOES[a].variante} onClick={() => setConfirmando(a)}>
+                {ACOES[a].icone}
+                {ACOES[a].rotulo}
+              </Botao>
+            ))}
+            {alterar && o.situacao === 'concluida' && (
+              <Botao variante="sucesso" onClick={() => setEntregando(true)}>
+                <KeyRound className="mr-1.5 size-4" aria-hidden /> Entregar
+              </Botao>
+            )}
+            {/* PDF gerado na hora pela API (OS-14), numa aba nova. */}
+            <a
+              href={`/api/ordens-servico/${o.id}/pdf`}
+              target="_blank"
+              rel="noopener"
+              className={classesBotao('secundario')}
+            >
+              <FileText className="mr-1.5 size-4" aria-hidden /> PDF
+            </a>
+          </>
+        }
       >
         <AvisoAprovacaoComercial aprovacao={o.aprovacaoComercial} />
         {o.situacao === 'recusada' && (
@@ -383,6 +423,14 @@ export function OrdemServicoDetalhe() {
               {o.aprovadaEm && (
                 <Dado rotulo="Aprovada pelo cliente">{`${dataHora(o.aprovadaEm)} por ${o.aprovadaPor ?? '—'}`}</Dado>
               )}
+              {o.entregueEm && (
+                <>
+                  <Dado rotulo="Entregue">{`${dataHora(o.entregueEm)} por ${o.entreguePor ?? '—'}`}</Dado>
+                  <Dado rotulo="Km de saída">{o.kmSaida?.toLocaleString('pt-BR')}</Dado>
+                  <Dado rotulo="Retirado por">{o.recebidoPor}</Dado>
+                  <Dado rotulo="Observações da entrega">{o.observacoesEntrega}</Dado>
+                </>
+              )}
             </dl>
             <Dado rotulo="Relato do cliente">
               <span className="whitespace-pre-line">{o.relatoCliente}</span>
@@ -420,6 +468,7 @@ export function OrdemServicoDetalhe() {
         </Cartao>
       </div>
 
+      {entregando && <JanelaEntrega os={o} aoSalvar={guardar} aoFechar={() => setEntregando(false)} />}
       {editandoDados && <JanelaDados os={o} aoSalvar={guardar} aoFechar={() => setEditandoDados(false)} />}
 
       {confirmando && confirmacao && (
@@ -577,6 +626,67 @@ type EntradaDados = z.input<typeof cabecalhoOsInputSchema>;
 type SaidaDados = z.output<typeof cabecalhoOsInputSchema>;
 
 /** Relato, observações, vendedor e previsão de entrega (cliente, veículo e km de entrada não mudam). */
+type EntradaEntrega = z.input<typeof entregaOsInputSchema>;
+type SaidaEntrega = z.output<typeof entregaOsInputSchema>;
+
+/** Entrega ao cliente (OS-13): km de saída (não menor que o de entrada), quem retirou e observações. */
+function JanelaEntrega({
+  os: o,
+  aoSalvar,
+  aoFechar,
+}: {
+  os: OrdemServico;
+  aoSalvar: (o: OrdemServico) => void;
+  aoFechar: () => void;
+}) {
+  const form = useForm<EntradaEntrega, unknown, SaidaEntrega>({
+    resolver: zodResolver(entregaOsInputSchema),
+    defaultValues: { recebidoPor: o.cliente.nome, observacoesEntrega: '', versao: o.versao },
+    mode: 'onTouched',
+  });
+  const erros = form.formState.errors;
+  const entregar = useMutation({
+    mutationFn: (dados: SaidaEntrega) =>
+      api<OrdemServico>(`/ordens-servico/${o.id}/entregar`, { method: 'POST', body: dados }),
+    onSuccess: (salva) => {
+      aoSalvar(salva);
+      aoFechar();
+    },
+  });
+  return (
+    <Janela titulo="Entregar ao cliente" aoFechar={aoFechar}>
+      <form noValidate onSubmit={form.handleSubmit((d) => entregar.mutate(d))} className="space-y-4">
+        <TextoSuave>
+          A O.S. fica entregue e não muda mais. O PDF passa a trazer o termo de entrega para a assinatura do cliente.
+        </TextoSuave>
+        <Campo rotulo={`Km de saída * (entrada: ${o.kmEntrada.toLocaleString('pt-BR')})`} erro={erros.kmSaida}>
+          <Input
+            type="number"
+            inputMode="numeric"
+            min={o.kmEntrada}
+            {...form.register('kmSaida', { setValueAs: (v) => (v === '' || v == null ? undefined : Number(v)) })}
+          />
+        </Campo>
+        <Campo rotulo="Retirado por" erro={erros.recebidoPor}>
+          <Input maxLength={120} {...form.register('recebidoPor')} />
+        </Campo>
+        <Campo rotulo="Observações da entrega" erro={erros.observacoesEntrega}>
+          <AreaTexto rows={2} maxLength={1000} {...form.register('observacoesEntrega')} />
+        </Campo>
+        <Alerta>{entregar.isError && aplicarErrosDaApi(entregar.error, form.setError)}</Alerta>
+        <div className="flex justify-end gap-2">
+          <Botao type="button" variante="secundario" onClick={aoFechar}>
+            Voltar
+          </Botao>
+          <Botao type="submit" variante="sucesso" disabled={entregar.isPending}>
+            {entregar.isPending ? 'Entregando…' : 'Entregar'}
+          </Botao>
+        </div>
+      </form>
+    </Janela>
+  );
+}
+
 function JanelaDados({
   os: o,
   aoSalvar,

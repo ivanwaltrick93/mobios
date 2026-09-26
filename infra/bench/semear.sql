@@ -249,10 +249,16 @@ begin
     insert into ordens_servico (tenant_id, numero, status, cliente_id, veiculo_id, vendedor_id, tabela_preco_id,
       km_entrada, relato_cliente, previsao_entrega, motivo_cancelamento, subtotal_servicos_centavos,
       subtotal_materiais_centavos, desconto_centavos, total_centavos, criado_por, atualizado_por, criado_em,
-      atualizado_em)
+      atualizado_em, concluida_em, concluida_por, km_saida, entregue_em, entregue_por)
     select p_tenant, b.i, b.status, orc.cliente_id, orc.veiculo_id, orc.vendedor_id, v_tabela, 10000 + b.i % 90000,
       'Barulho na suspensão', b.criado + interval '2 days',
-      case when b.status = 'cancelada' then 'Cliente desistiu' end, 0, 0, 0, 0, v_admin, v_admin, b.criado, b.criado
+      case when b.status = 'cancelada' then 'Cliente desistiu' end, 0, 0, 0, 0, v_admin, v_admin, b.criado, b.criado,
+      -- Concluídas e entregues com as datas; entregue exige km de saída (migração 0033).
+      case when b.status in ('concluida', 'entregue') then b.criado + interval '2 days' end,
+      case when b.status in ('concluida', 'entregue') then v_admin end,
+      case when b.status = 'entregue' then 10000 + b.i % 90000 + 15 end,
+      case when b.status = 'entregue' then b.criado + interval '3 days' end,
+      case when b.status = 'entregue' then v_admin end
     from base b
     join orcamentos orc on orc.tenant_id = p_tenant and orc.numero = b.i
     returning id, numero, criado_em

@@ -12,7 +12,7 @@ import {
   somarDias,
   temAcesso,
 } from '@mobios/shared';
-import { and, asc, count, desc, eq, inArray, sql, type SQL } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, lt, sql, type SQL } from 'drizzle-orm';
 import type { PgColumn } from 'drizzle-orm/pg-core';
 import type { FastifyRequest } from 'fastify';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
@@ -243,7 +243,8 @@ const carregarPainel = (req: FastifyRequest<{ Querystring: { periodo: PeriodoPai
         .limit(5);
     }
 
-    // O.S. ainda na oficina, das que o usuário vê (o mecânico, só as vinculadas a ele).
+    // O.S. ainda na oficina, das que o usuário vê (o mecânico, só as vinculadas a ele), e as atrasadas (OS-17).
+    let osAtrasadas = 0;
     if (podeVerOs(req.user)) {
       const [{ abertas }] = (await tx
         .select({ abertas: count() })
@@ -251,6 +252,17 @@ const carregarPainel = (req: FastifyRequest<{ Querystring: { periodo: PeriodoPai
         .where(and(inArray(ordensServico.status, SITUACOES_OS_EM_ABERTO), filtroVisiveis(req.user)))) as [
         { abertas: number },
       ];
+      const [{ atrasadas }] = (await tx
+        .select({ atrasadas: count() })
+        .from(ordensServico)
+        .where(
+          and(
+            inArray(ordensServico.status, SITUACOES_OS_EM_ABERTO),
+            lt(ordensServico.previsaoEntrega, sql`now()`),
+            filtroVisiveis(req.user),
+          ),
+        )) as [{ atrasadas: number }];
+      osAtrasadas = atrasadas;
       indicadores.push({
         id: 'os_abertas',
         titulo: 'O.S. em aberto',
@@ -279,6 +291,13 @@ const carregarPainel = (req: FastifyRequest<{ Querystring: { periodo: PeriodoPai
         nivel: 'aviso',
         mensagem: `${pendentes} aprovação(ões) comercial(is) de desconto aguardando decisão.`,
         link: '/aprovacoes-comerciais',
+      });
+    }
+    if (osAtrasadas > 0) {
+      alertas.push({
+        nivel: 'aviso',
+        mensagem: `${osAtrasadas} O.S. atrasada(s): a previsão de entrega já passou.`,
+        link: '/os?atrasadas=true',
       });
     }
     if (incompletos > 0) {

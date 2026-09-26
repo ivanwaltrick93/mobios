@@ -973,3 +973,94 @@ describe('O.S.: execução (onda 5.3)', () => {
     expect(lista.itens[0]).toMatchObject({ id: os.id, pecasSolicitadas: 1 });
   });
 });
+
+describe('O.S.: entrega, PDF e atraso (onda 5.4)', () => {
+  /** O.S. concluída: serviço aprovado, executado e concluída. */
+  async function concluida(c: Cenario) {
+    let os = (await abrir(c)).json() as Os;
+    os = (await salvarItens(c.chamar, os, [servico(c), produto(c, { descontoPercentual: 5 })])).json();
+    os = (await acao(c.chamar, os, 'solicitar-aprovacao')).json();
+    os = (await acao(c.chamar, os, 'aprovar')).json();
+    os = (await acao(c.chamar, os, 'iniciar-execucao')).json();
+    os = (
+      await c.chamar('POST', `/api/ordens-servico/${os.id}/itens/${os.itens[0]!.id}/executar`, { versao: os.versao })
+    ).json();
+    return os;
+  }
+  const entregar = (c: Cenario, os: Os, dados: object) =>
+    c.chamar('POST', `/api/ordens-servico/${os.id}/entregar`, { versao: os.versao, ...dados });
+
+  it('entrega só da concluída, com km de saída não menor que o de entrada; o veículo fica com o km', async () => {
+    const c = await cenario('Oficina OS Entrega');
+    let os = await concluida(c);
+    expect((await entregar(c, os, { kmSaida: 52_100 })).statusCode).toBe(409);
+    os = (await acao(c.chamar, os, 'concluir')).json();
+
+    expect((await entregar(c, os, {})).statusCode).toBe(400);
+    const menor = await entregar(c, os, { kmSaida: 51_999 });
+    expect(menor.statusCode).toBe(400);
+    expect(menor.json().campos).toMatchObject({ kmSaida: expect.any(String) });
+
+    const r = await entregar(c, os, { kmSaida: 52_150, recebidoPor: 'Joana Pereira', observacoesEntrega: 'Lavado' });
+    expect(r.statusCode).toBe(200);
+    os = r.json();
+    expect(os).toMatchObject({
+      situacao: 'entregue',
+      kmSaida: 52_150,
+      recebidoPor: 'Joana Pereira',
+      observacoesEntrega: 'Lavado',
+      entreguePor: 'Admin Teste',
+    });
+    expect((os.eventos as { evento: string; detalhe: string }[])[0]).toMatchObject({
+      evento: 'entregue',
+      detalhe: 'Km de saída 52.150; retirado por Joana Pereira.',
+    });
+    const [v] = await c.banco(sql`select km_atual from veiculos where id = ${c.cliente.veiculoId}`);
+    expect(v!.km_atual).toBe(52_150);
+    // Entregue: nada mais muda.
+    expect((await entregar(c, os, { kmSaida: 60_000 })).statusCode).toBe(409);
+    expect((await acao(c.chamar, os, 'cancelar', 'x')).statusCode).toBe(409);
+  });
+
+  it('PDF da O.S. para quem vê a O.S.; outra oficina e mecânico não vinculado recebem 404', async () => {
+    const c = await cenario('Oficina OS PDF');
+    const b = await cenario('Oficina OS PDF B');
+    const mecanico = await c.pessoa('Mecânico');
+    let os = await concluida(c);
+    os = (await acao(c.chamar, os, 'concluir')).json();
+    os = (await entregar(c, os, { kmSaida: 52_200, recebidoPor: 'Joana' })).json();
+
+    const pdf = await c.chamar('GET', `/api/ordens-servico/${os.id}/pdf`);
+    expect(pdf.statusCode).toBe(200);
+    expect(pdf.headers['content-type']).toBe('application/pdf');
+    expect(pdf.headers['content-disposition']).toContain(`OS-${String(os.numero).padStart(6, '0')}.pdf`);
+    expect(pdf.rawPayload.subarray(0, 5).toString()).toBe('%PDF-');
+    // O de uma O.S. aberta (sem itens nem entrega) também sai.
+    const aberta = (await abrir(c)).json() as Os;
+    expect((await c.chamar('GET', `/api/ordens-servico/${aberta.id}/pdf`)).statusCode).toBe(200);
+
+    expect((await b.chamar('GET', `/api/ordens-servico/${os.id}/pdf`)).statusCode).toBe(404);
+    expect((await mecanico.chamar('GET', `/api/ordens-servico/${os.id}/pdf`)).statusCode).toBe(404);
+  });
+
+  it('atrasada: em aberto com a previsão vencida; filtro da lista e alerta no Início', async () => {
+    const c = await cenario('Oficina OS Atraso');
+    const atrasada = (await abrir(c, c.chamar, { previsaoEntrega: '2020-01-10T17:00' })).json() as Os;
+    const noPrazo = (await abrir(c, c.chamar, { previsaoEntrega: '2099-01-10T17:00' })).json() as Os;
+    expect(atrasada.atrasada).toBe(true);
+    expect(noPrazo.atrasada).toBe(false);
+
+    const lista = (await c.chamar('GET', '/api/ordens-servico?atrasadas=true')).json();
+    expect(lista.itens.map((o: { id: string }) => o.id)).toEqual([atrasada.id]);
+    expect(lista.itens[0].atrasada).toBe(true);
+    const painel = (await c.chamar('GET', '/api/painel')).json();
+    expect(painel.alertas).toContainEqual(
+      expect.objectContaining({ mensagem: '1 O.S. atrasada(s): a previsão de entrega já passou.' }),
+    );
+
+    // Cancelada deixa de estar atrasada.
+    const cancelada = (await acao(c.chamar, atrasada, 'cancelar', 'Desistiu')).json() as Os;
+    expect(cancelada.atrasada).toBe(false);
+    expect((await c.chamar('GET', '/api/ordens-servico?atrasadas=true')).json().total).toBe(0);
+  });
+});

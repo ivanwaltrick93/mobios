@@ -93,11 +93,34 @@ export const EVENTOS_OS = {
   solicitacao_atendida: 'Solicitação de peça atendida',
   solicitacao_recusada: 'Solicitação de peça recusada',
   concluida: 'Concluída',
+  entregue: 'Entregue ao cliente',
 } as const;
 export type EventoOs = keyof typeof EVENTOS_OS;
 
 /** Situações em que o serviço pode ser confirmado como executado (ou desfeito). */
 export const SITUACOES_OS_EXECUCAO: SituacaoOs[] = ['em_execucao', 'aguardando_peca'];
+
+// ---------- Entrega e prazo (onda 5.4; docs/modulos/ORDENS_SERVICO.md §12) ----------
+
+/**
+ * O.S. atrasada (OS-17): ainda na oficina (em aberto) com a previsão de entrega vencida. Concluída esperando a
+ * retirada não conta: o serviço está pronto.
+ */
+export const osAtrasada = (situacao: SituacaoOs, previsaoEntrega: Date | string | null, agora = new Date()) =>
+  !!previsaoEntrega && SITUACOES_OS_EM_ABERTO.includes(situacao) && new Date(previsaoEntrega) < agora;
+
+/** Entrega ao cliente (OS-13): km de saída (obrigatório, não menor que o de entrada), quem retirou e observações. */
+export const entregaOsInputSchema = z.object({
+  kmSaida: z
+    .number({ error: 'Informe o km de saída' })
+    .int('Informe o km sem casas decimais')
+    .min(0, 'O km não pode ser negativo')
+    .max(9_999_999, 'Km alto demais'),
+  recebidoPor: textoOpcional(120),
+  observacoesEntrega: textoOpcional(1000),
+  versao: z.number().int().min(1),
+});
+export type EntregaOsInput = z.input<typeof entregaOsInputSchema>;
 
 // ---------- Execução (onda 5.3; docs/modulos/ORDENS_SERVICO.md §11) ----------
 
@@ -353,6 +376,8 @@ export const ordemServicoResumoSchema = z.object({
   abertaEm: z.coerce.date(),
   /** Solicitações de peça ainda sem resposta. */
   pecasSolicitadas: z.number(),
+  /** Em aberto com a previsão de entrega vencida (OS-17). */
+  atrasada: z.boolean(),
 });
 export type OrdemServicoResumo = z.infer<typeof ordemServicoResumoSchema>;
 
@@ -399,6 +424,11 @@ export const ordemServicoSchema = ordemServicoResumoSchema.extend({
   diagnostico: z.string().nullable(),
   concluidaEm: z.coerce.date().nullable(),
   concluidaPor: z.string().nullable(),
+  kmSaida: z.number().nullable(),
+  entregueEm: z.coerce.date().nullable(),
+  entreguePor: z.string().nullable(),
+  recebidoPor: z.string().nullable(),
+  observacoesEntrega: z.string().nullable(),
   solicitacoesPeca: z.array(
     z.object({
       id: z.uuid(),
@@ -446,6 +476,8 @@ export const ordemServicoFiltroSchema = z.object({
   mecanicoId: idFiltro,
   /** Só as em aberto (tela do mecânico). */
   abertas: z.enum(['', 'true']).optional(),
+  /** Só as em aberto com a previsão de entrega vencida. */
+  atrasadas: z.enum(['', 'true']).optional(),
   /** Só as com solicitação de peça pendente. */
   pecaPendente: z.enum(['', 'true']).optional(),
   /** Período da abertura (extremos inclusivos). */

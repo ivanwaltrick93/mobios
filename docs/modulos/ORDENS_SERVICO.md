@@ -16,7 +16,7 @@ A Fase 5 é entregue em ondas, cada uma fechada e testada. Para começar a próx
 | **5.1 Núcleo** | Tabelas, número, abertura no balcão, conversão do orçamento, itens (catálogo e avulsos) com negociação e alçada, situações e histórico, vínculo de mecânicos, lista e detalhe, "O.S. em aberto" no Início | OS-01, 02, 06, 08 (total), 09, 23; vínculo de OS-10 | ✅ |
 | **5.2 Recepção** | Checklist de entrada; **até 5 fotos por O.S.**, no banco, com botão de câmera no celular (foto tirada na hora e reduzida no navegador antes de enviar); diagnóstico e observações do mecânico | OS-03, 04, 05 | ✅ |
 | **5.3 Execução** | Mecânico por serviço, tela do mecânico (`/minhas-ordens-servico`), confirmação de execução por serviço, conclusão só com os serviços executados, solicitação de peça pelo mecânico | OS-10, 18, 21 (sem estoque), 22 | ✅ |
-| **5.4 Entrega e documentos** | Entrega com km de saída e termo; **PDF gerado no servidor** (pdfmake, MIT; fonte Inter, SIL OFL) em layout moderno; previsão de entrega e O.S. atrasadas; orçamento adicional dentro da O.S. (OS-12) | OS-12, 13, 14, 17 | ⚪ |
+| **5.4 Entrega e documentos** | Entrega com km de saída e termo; **PDF gerado no servidor** (pdfmake, MIT; fonte Inter, SIL OFL) em layout moderno; previsão de entrega e O.S. atrasadas; orçamento adicional dentro da O.S. (OS-12) | OS-12, 13, 14, 17 | ✅ |
 
 Fora da Fase 5: reserva e baixa de estoque (Fase 6), compras (Fase 7), financeiro, garantia, apontamento de horas,
 kanban e assinatura digital.
@@ -41,7 +41,7 @@ kanban e assinatura digital.
 aberta ──► em_diagnostico ──► aguardando_aprovacao ──► aprovada ──► em_execucao ◄──► aguardando_peca
   │               │                   │                                  │
   └───────────────┴──── (já aprovada pelo cliente) ─────────────────────►┤
-                                      └──► recusada                      └──► concluida ──► entregue (onda 5.4)
+                                      └──► recusada                      └──► concluida ──► entregue
 Qualquer situação em aberto ──► cancelada (motivo obrigatório)
 ```
 
@@ -56,7 +56,7 @@ Qualquer situação em aberto ──► cancelada (motivo obrigatório)
 | Aguardar peça / retomar | `em_execucao` ↔ `aguardando_peca` | | Manual nesta onda (compras virão na Fase 7) |
 | Cancelar | qualquer em aberto | `cancelada` | Motivo obrigatório; cancela a aprovação comercial pendente. Terminal |
 | Concluir | `em_execucao` | `concluida` | Nenhum item pendente do cliente, todo serviço aprovado com execução confirmada e nenhuma solicitação de peça sem resposta (§11); grava quem e quando. Terminal até a entrega |
-| Entregar | | | Onda 5.4 |
+| Entregar | `concluida` | `entregue` | Km de saída obrigatório e não menor que o de entrada; quem retirou e observações opcionais; o veículo fica com o maior km (§12). Terminal |
 
 Toda mudança grava um evento no histórico da O.S. (`os_eventos`, que o banco impede de alterar ou apagar), com
 situação anterior e nova, quem e quando. Transição inválida: 409, mesmo que a tela não mostre a ação.
@@ -185,3 +185,27 @@ em análise. Cada registro grava um evento no histórico e usa a versão lida (4
   `PUT /:id/itens/:itemId/mecanicos`, `POST /:id/solicitacoes-peca`,
   `POST /:id/solicitacoes-peca/:solicitacaoId/atender` e `.../recusar`, `POST /:id/concluir`; filtros `abertas` e
   `pecaPendente` na lista.
+
+## 12. Entrega, PDF e prazo (onda 5.4)
+
+- **Entrega (OS-13):** da O.S. **concluída**, por quem altera a O.S. Pede o **km de saída** (obrigatório, inteiro, não
+  menor que o de entrada: 400 com o campo), **quem retirou** (vem o nome do cliente) e observações. Grava quem entregou
+  e quando, e o veículo fica com o maior km conhecido. Entregue, a O.S. não muda mais. A assinatura do cliente é no
+  papel, no termo do PDF (assinatura digital na tela é o OS-19, fora da Fase 5).
+- **PDF da O.S. (OS-14):** gerado no servidor na hora, para quem vê a O.S. (o mecânico, só nas vinculadas), com
+  **pdfmake** (MIT) e a fonte **Inter** (SIL OFL, do pacote `@fontsource/inter`): sem custo de licença. Tudo em
+  memória, nada gravado em disco, e o pdfmake não lê arquivo local nem baixa URL (`apps/api/src/lib/pdf.ts`). Layout
+  (`modules/ordens-servico/documento.ts`): logo (PNG ou JPEG; WebP fica de fora) e nome da oficina com a cor primária
+  dela, número e situação; blocos de cliente, veículo e atendimento (abertura, previsão, km de entrada e saída,
+  vendedor, mecânicos, orçamento de origem, conclusão); relato, checklist, diagnóstico; tabelas de serviços e de
+  produtos com desconto; totais; e o termo com as linhas de assinatura: **autorização do cliente** enquanto não foi
+  entregue e **termo de entrega** (data, km de saída, quem retirou) depois. Rodapé com número, data de geração e
+  página. Botão "PDF" no detalhe, que abre numa aba nova.
+- **Previsão e atraso (OS-17):** O.S. **atrasada** = em aberto com a previsão de entrega vencida (`osAtrasada`,
+  no shared). Concluída esperando a retirada não conta (o serviço está pronto). Aparece como selo "Atrasada" na
+  lista, no detalhe e em Minhas O.S.; a lista tem o filtro "Atrasadas"; o Início mostra o alerta "N O.S.
+  atrasada(s)" com link para a lista filtrada (índice parcial `ordens_servico_previsao_em_aberto`).
+- **Serviço adicional (OS-12)** (decisão de 26/09/2026): **sem orçamento adicional separado**. O que se descobre
+  durante a execução entra como item da própria O.S.; numa O.S. já aprovada pelo cliente, entra direto, aprovado
+  (§2), com o histórico registrando quem incluiu e quando.
+- **API:** `POST /:id/entregar`, `GET /:id/pdf`; filtro `atrasadas` na lista.
