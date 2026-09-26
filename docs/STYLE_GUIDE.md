@@ -82,17 +82,17 @@ Aplicação enterprise densa, inspirada em SAP Fiori, com identidade própria: f
 | `BarraFerramentas` | Toolbar | Ações/controles em linha |
 | `BarraFiltros` + `FiltroSelect` | FilterBar / FilterField | Busca + 2–3 filtros em linha; os demais em "Mais filtros" (com contador e "Limpar"); total de registros à direita |
 | `ThOrdenavel` | ordenação | Cabeçalho que ordena a lista (crescente/decrescente) |
-| `MenuAcoes` | ActionMenu | Ações do registro no "⋯" (Visualizar, Editar, WhatsApp, Excluir…) |
+| `MenuAcoes` | ActionMenu | Ações do registro no "⋯" (Visualizar, Editar, WhatsApp, Excluir…); `texto`: botão secundário com rótulo e seta (ações secundárias agrupadas no cabeçalho, ex.: "Atalhos" do Início) |
 | `BotaoIcone` | IconButton | Botão só com ícone, com dica |
 | `Suspenso` | popover | Painel que abre abaixo de um botão (base do menu e do "Mais filtros") |
-| `CartaoKpi` | KPI Card | Indicador com valor, detalhe e variação ↑↓ contra o período anterior; `null` = "Em breve" |
+| `CartaoKpi` | KPI Card | Indicador com valor, detalhe e variação ↑↓ contra o período anterior; `null` = "Em breve"; `compacto`: indicador de apoio, número menor |
 | `CabecalhoObjeto` | ObjectHeader | Cabeçalho do detalhe: ícone, nome, selos, 3–5 atributos em linha, ações e avisos curtos |
 | `Bloco` | Section | Bloco com título (detalhe e Início) |
 | `Dado` | atributo | Par rótulo/valor de leitura |
 | `Carregando` | LoadingState | Carregamento padrão |
 | `Confirmacao` | ConfirmationDialog | Confirmação de ação (no lugar do `confirm()` do navegador) |
 | `useNotificar()` + `ProvedorNotificacoes` | Toast | Aviso rápido que some sozinho (ex.: "Cliente excluído.") |
-| `GraficoRosca`, `GraficoBarras` (`components/Graficos.tsx`) | gráficos | SVG/HTML próprio, cores por token |
+| `GraficoRosca`, `GraficoBarras` (`components/Graficos.tsx`) | gráficos | SVG/HTML próprio, cores por token. Rosca com legenda em tabela (quantidade, %, detalhe; `para` leva à lista filtrada); barras em linhas compactas (nome, barra, valor, detalhe) |
 
 ### Componentes base
 
@@ -134,7 +134,7 @@ Aplicação enterprise densa, inspirada em SAP Fiori, com identidade própria: f
 - **Importação por planilha** sempre com `ImportarCsv`: mostra as colunas aceitas, avisa que a 1ª linha é o cabeçalho, oferece o modelo e lista as linhas com erro.
 - **Voltar** fica no topo, à esquerda, em todas as páginas menos o Início (componente `Voltar`, no `Layout`). Páginas raiz do menu voltam ao Início; as demais, à página anterior. Não crie links de voltar dentro das páginas.
 - **Detalhe (Object Page, já em Cliente):** `CabecalhoObjeto` compacto (atributos principais em linha, "Editar" + `MenuAcoes`), abas logo abaixo, conteúdo em `Bloco`s e listas em `Tabela`. Confirmações sempre com `Confirmacao`.
-- **Início:** `CabecalhoPagina` com período e atalhos, faixa de `CartaoKpi`, depois gráficos e blocos que respondem uma pergunta de negócio cada.
+- **Início (cockpit):** `CabecalhoPagina` com período, `MenuAcoes texto` "Atalhos" e **Novo orçamento** como única ação primária; faixa de `CartaoKpi` com os 4 resultados comerciais em destaque e os de apoio (clientes, veículos) `compacto` ao lado — indicador sem valor (módulo que não existe) não ocupa cartão, vai para a nota "Em breve" do rodapé. Abaixo, em duas colunas no desktop: resultados comerciais à esquerda (orçamentos por situação, valor por vendedor) e atenção à direita (**Ações necessárias**, com a linha inteira clicável, e **Relacionamento**, com menor peso). No celular, a ordem é: indicadores, ações necessárias, comercial, relacionamento. Cores das situações: neutro (rascunho, cancelado), alerta (aguardando; vencido em tom claro), info (emitido; enviado em tom claro), sucesso (aprovado), perigo (reprovado; recusado em tom claro) — tons claros por `color-mix` do mesmo token.
 - **Cadastro novo** em etapas curtas, com botões grandes para escolhas (ex.: Pessoa física / jurídica).
 
 ## Regras

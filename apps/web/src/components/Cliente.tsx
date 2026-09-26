@@ -13,17 +13,28 @@ export function SeloPendencias({ pendencias }: { pendencias: string[] }) {
 }
 
 /** Abre a conversa no WhatsApp (wa.me) com o número do cliente. */
-export function LinkWhatsApp({ numero, className = '' }: { numero: string; className?: string }) {
+/** Conversa no WhatsApp. `soIcone`: só o ícone (listas compactas); o número vai para a dica e o nome acessível. */
+export function LinkWhatsApp({
+  numero,
+  className = '',
+  soIcone = false,
+}: {
+  numero: string;
+  className?: string;
+  soIcone?: boolean;
+}) {
+  const titulo = `Abrir conversa no WhatsApp (${formatarTelefone(numero)})`;
   return (
     <a
       href={`https://wa.me/55${numero}`}
       target="_blank"
       rel="noopener noreferrer"
       className={`inline-flex items-center gap-1.5 text-sm text-sucesso hover:underline ${className}`}
-      title="Abrir conversa no WhatsApp"
+      title={titulo}
+      aria-label={soIcone ? titulo : undefined}
     >
       <MessageCircle className="size-4" aria-hidden />
-      {formatarTelefone(numero)}
+      {!soIcone && formatarTelefone(numero)}
     </a>
   );
 }

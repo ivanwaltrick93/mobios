@@ -1,6 +1,7 @@
-import { MoreHorizontal, type LucideIcon } from 'lucide-react';
+import { ChevronDown, MoreHorizontal, type LucideIcon } from 'lucide-react';
 import { useEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from 'react';
 import { Link } from 'react-router';
+import { classesBotao } from './base';
 
 /**
  * Painel suspenso (menu, "Mais filtros"): abre abaixo do botão e fecha ao clicar fora, com Esc ou ao escolher.
@@ -77,21 +78,39 @@ export type AcaoMenu = {
   externo?: boolean;
 };
 
-/** Ações de um registro num menu "⋯" (ActionMenu). Itens `false`/`null` são ignorados (ex.: sem permissão). */
+/**
+ * Ações de um registro num menu "⋯" (ActionMenu). Itens `false`/`null` são ignorados (ex.: sem permissão).
+ * `texto`: o gatilho vira um botão secundário com o rótulo visível (ações agrupadas no cabeçalho de uma página).
+ */
 export function MenuAcoes({
   acoes,
   rotulo = 'Mais ações',
+  texto = false,
 }: {
   acoes: (AcaoMenu | false | null | undefined)[];
   rotulo?: string;
+  texto?: boolean;
 }) {
   const visiveis = acoes.filter(Boolean) as AcaoMenu[];
   if (!visiveis.length) return null;
   return (
     <Suspenso
-      gatilho={({ aberto, alternar }) => (
-        <BotaoIcone rotulo={rotulo} icone={MoreHorizontal} aria-expanded={aberto} onClick={alternar} />
-      )}
+      gatilho={({ aberto, alternar }) =>
+        texto ? (
+          <button
+            type="button"
+            aria-expanded={aberto}
+            aria-haspopup="menu"
+            onClick={alternar}
+            className={classesBotao('secundario', 'gap-1.5')}
+          >
+            {rotulo}
+            <ChevronDown className={`size-4 transition ${aberto ? 'rotate-180' : ''}`} aria-hidden />
+          </button>
+        ) : (
+          <BotaoIcone rotulo={rotulo} icone={MoreHorizontal} aria-expanded={aberto} onClick={alternar} />
+        )
+      }
     >
       {(fechar) => (
         <ul role="menu" className="text-sm">

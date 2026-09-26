@@ -53,6 +53,7 @@ export function CartaoKpi({
   detalhe,
   variacao,
   para,
+  compacto = false,
 }: {
   titulo: string;
   valor: string | null;
@@ -60,11 +61,13 @@ export function CartaoKpi({
   /** Variação em % (null = sem base de comparação). */
   variacao?: number | null;
   para?: string;
+  /** Indicador de apoio: número menor, para não disputar atenção com os principais. */
+  compacto?: boolean;
 }) {
   const subiu = (variacao ?? 0) >= 0;
   const conteudo = (
     <div
-      className={`flex h-full flex-col gap-1 rounded-md border border-borda bg-superficie p-3 shadow-sm ${
+      className={`flex h-full flex-col gap-1 rounded-md border border-borda bg-superficie shadow-sm ${compacto ? 'p-2.5' : 'p-3'} ${
         para ? 'transition hover:border-primaria' : ''
       }`}
     >
@@ -72,7 +75,11 @@ export function CartaoKpi({
         <span className="text-xs font-medium text-texto-suave">{titulo}</span>
         {valor === null && <Selo>Em breve</Selo>}
       </div>
-      <span className={`text-2xl font-semibold tabular-nums ${valor === null ? 'text-texto-suave' : 'text-texto'}`}>
+      <span
+        className={`break-words ${compacto ? 'text-base' : 'text-xl'} font-semibold tabular-nums ${
+          valor === null ? 'text-texto-suave' : 'text-texto'
+        }`}
+      >
         {valor ?? '—'}
       </span>
       <span className="flex flex-wrap items-center gap-x-2 text-xs text-texto-suave">
