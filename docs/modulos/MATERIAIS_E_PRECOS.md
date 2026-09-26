@@ -1,9 +1,11 @@
-# Módulo Materiais e Preços
+# Módulo Produtos e Preços
 
-Cadastros mestres de **material, categoria, marca, depósito, tabela de preço e preço por vigência**.
+> No sistema, **produto** é o nome exibido para o cadastro que no código e no banco se chama **material** (`materiais`, `material_id`, rotas `/api/materiais`) — decisão de 25/09/2026: renomeado só o que o usuário vê.
+
+Cadastros mestres de **produto, categoria, marca, depósito, tabela de preço e preço por vigência**.
 Fora do escopo (outros módulos, que vão **usar** estes cadastros): estoque/saldo/reserva/movimentação, inventário, compras, fornecedores, vendas, O.S., fiscal e financeiro.
 
-> Implementação: `packages/shared/src/materiais.ts` (regras e schemas), `apps/api/src/modules/{materiais,categorias,marcas,depositos,tabelas-preco,precos}`, `apps/api/drizzle/0012_materiais_precos.sql`, telas em `apps/web/src/pages/` (Materiais, MaterialForm, MaterialDetalhe, PrecosMaterial, Categorias, Marcas, Depositos, TabelasPreco). Testes: `apps/api/src/materiais.test.ts` e `packages/shared/src/materiais.test.ts`.
+> Implementação: `packages/shared/src/materiais.ts` (regras e schemas), `apps/api/src/modules/{materiais,categorias,marcas,depositos,tabelas-preco,precos}`, `apps/api/drizzle/0012_materiais_precos.sql`, telas em `apps/web/src/pages/` (Produtos, MaterialForm, MaterialDetalhe, PrecosMaterial, Categorias, Marcas, Depositos, TabelasPreco). Testes: `apps/api/src/materiais.test.ts` e `packages/shared/src/materiais.test.ts`.
 
 > **Ampliação de 23/09/2026 (pedido do dono do produto):** entraram a **lista de preços** no menu e a **tabela de estoque** (saldo por SKU + depósito com disponível e reservado, ajuste manual com motivo). Ver §21. Movimentação automática (compra, venda, O.S.), inventário e transferência continuam fora.
 
@@ -14,7 +16,7 @@ Fora do escopo (outros módulos, que vão **usar** estes cadastros): estoque/sal
 | Tema | Decisão |
 |---|---|
 | Entrega | Documento + implementação (banco, API, telas, testes) |
-| Permissão | Dois módulos na matriz de funções: **Materiais** (materiais, categorias, marcas, depósitos) e **Preços** (tabelas e vigências) |
+| Permissão | Dois módulos na matriz de funções: **Produtos** (produtos, categorias, marcas, depósitos) e **Preços** (tabelas e vigências) |
 | Preço já vigente | O valor **nunca** é editado. Uma nova vigência **encerra automaticamente** a atual no dia anterior. Preço futuro pode ser editado (valor/fim) ou cancelado |
 | Moeda / filial | Só **BRL** (campo `moeda` existe, pronto para crescer). **Sem filial**: cada oficina já é um tenant; multi-filial fica para depois |
 
@@ -24,9 +26,9 @@ Fora do escopo (outros módulos, que vão **usar** estes cadastros): estoque/sal
 
 - **Multi-tenant com RLS**, como todo o MobiOS: toda tabela tem `tenant_id` + política de isolamento; toda FK entre tabelas de negócio é **composta** `(tenant_id, x_id)` (checagem de FK ignora RLS).
 - **Chave técnica × chave de negócio:** PK UUID (`id`); SKU, códigos de depósito e de tabela são **únicos por oficina** e nunca usados como PK (podem mudar, podem colidir entre oficinas, e não amarram as FKs futuras de estoque/vendas).
-- **Classificações que variam por oficina** (tipo de material, tipo de depósito) são **tabelas parametrizáveis** editadas em Configurações (uma página por lista: código automático, nome, descrição e status; exclusão só sem uso). **Domínios definidos por norma** (unidade de medida, origem fiscal, moeda) são fixos no código (ENUM/CHECK).
+- **Classificações que variam por oficina** (tipo de produto, tipo de depósito) são **tabelas parametrizáveis** editadas em Configurações (uma página por lista: código automático, nome, descrição e status; exclusão só sem uso). **Domínios definidos por norma** (unidade de medida, origem fiscal, moeda) são fixos no código (ENUM/CHECK).
 - **Preço = histórico imutável por vigência.** A tabela `materiais_precos` é o próprio histórico; nada é apagado. A **não sobreposição** é garantida no banco por uma constraint `EXCLUDE USING gist` sobre `daterange` — vale mesmo com gravações simultâneas ou fora da API.
-- **Concorrência:** unicidade por índices únicos; vigências por EXCLUDE + trava consultiva (`pg_advisory_xact_lock`) por material+tabela; ciclo de categorias por trigger com trava por oficina; **edição otimista** com coluna `versao` (quem salva com versão velha recebe 409).
+- **Concorrência:** unicidade por índices únicos; vigências por EXCLUDE + trava consultiva (`pg_advisory_xact_lock`) por produto+tabela; ciclo de categorias por trigger com trava por oficina; **edição otimista** com coluna `versao` (quem salva com versão velha recebe 409).
 - **Auditoria:** `criado_por/atualizado_por/criado_em/atualizado_em` nos cadastros; trilha **`precos_eventos`** (antes/depois em JSON) para toda mudança de preço.
 - **Exclusão:** física só do que nunca foi usado (FKs `RESTRICT`); o resto é **inativado**.
 
@@ -34,13 +36,13 @@ Fora do escopo (outros módulos, que vão **usar** estes cadastros): estoque/sal
 
 | Entidade | Tabela | Papel |
 |---|---|---|
-| MATERIAL | `materiais` | Produto/peça: cadastro mestre |
+| PRODUTO | `materiais` | Produto/peça: cadastro mestre |
 | CATEGORIA | `categorias` | Classificação hierárquica (pai/filha) |
 | MARCA | `marcas` | Fabricante |
 | DEPÓSITO | `depositos` | Local lógico de armazenamento (sem saldo) |
 | TABELA_PRECO | `tabelas_preco` | Lista de preços (Varejo, Oficina...) |
-| MATERIAL_PRECO | `materiais_precos` | Preço do material numa tabela durante uma vigência |
-| *Auxiliar* | `tipos_material` | Tipo de material, editável por oficina |
+| MATERIAL_PRECO | `materiais_precos` | Preço do produto numa tabela durante uma vigência |
+| *Auxiliar* | `tipos_material` | Tipo de produto, editável por oficina |
 | *Auxiliar* | `tipos_deposito` | Tipo de depósito, editável por oficina |
 | *Auxiliar* | `precos_eventos` | Trilha de auditoria das vigências |
 
@@ -63,7 +65,7 @@ erDiagram
     USERS ||--o{ MATERIAIS : "criado_por / atualizado_por"
 ```
 
-Cardinalidades: CATEGORIA 1:N MATERIAL · MARCA 1:N MATERIAL (marca opcional) · MATERIAL 1:N MATERIAL_PRECO · TABELA_PRECO 1:N MATERIAL_PRECO · CATEGORIA 1:N CATEGORIA (auto-relacionamento) · DEPÓSITO não se relaciona com os demais **ainda** (o estoque fará DEPÓSITO 1:N SALDO N:1 MATERIAL).
+Cardinalidades: CATEGORIA 1:N PRODUTO · MARCA 1:N PRODUTO (marca opcional) · PRODUTO 1:N MATERIAL_PRECO · TABELA_PRECO 1:N MATERIAL_PRECO · CATEGORIA 1:N CATEGORIA (auto-relacionamento) · DEPÓSITO não se relaciona com os demais **ainda** (o estoque fará DEPÓSITO 1:N SALDO N:1 PRODUTO).
 
 ## 4. Modelo detalhado de cada tabela
 
@@ -97,7 +99,7 @@ Colunas de **autoria** (materiais, categorias, marcas, depositos, tabelas_preco)
 
 - **Obrigatórios:** sku, descrição, tipo, categoria, unidade (mínimo para identificar, classificar e movimentar o item).
 - **Opcionais:** código de barras, descrição curta, marca, código do fabricante, NCM, CEST, origem.
-- **Derivados (não armazenados):** subcategoria e caminho da categoria (`Peças › Motor › Filtros`, calculado por CTE recursiva); situação do material no estoque; preço atual (consulta em `materiais_precos`).
+- **Derivados (não armazenados):** subcategoria e caminho da categoria (`Peças › Motor › Filtros`, calculado por CTE recursiva); situação do produto no estoque; preço atual (consulta em `materiais_precos`).
 - **Pertencem a outras entidades:** preço (→ `materiais_precos`); custo e custo médio (→ estoque/compras); saldo e localização na prateleira (→ estoque por depósito); fornecedor (→ compras); aplicação/compatibilidade com veículos (→ futuro catálogo de aplicações).
 - **Não criados agora:** peso e dimensões — servem a frete/e-commerce, que não estão no escopo; entram numa extensão logística sem mudar o que existe.
 
@@ -111,7 +113,7 @@ Colunas de **autoria** (materiais, categorias, marcas, depositos, tabelas_preco)
 | categoria_pai_id | uuid | Não | FK composta → categorias; CHECK ≠ id; índice | NULL = nível principal |
 | ativa | boolean | Sim | default true | |
 
-Regras: sem duplicidade no mesmo nível (índice único); sem ser filha de si mesma (CHECK); **sem ciclo** (trigger `categorias_sem_ciclo` com CTE recursiva e trava por oficina); não exclui com materiais ou subcategorias (FK RESTRICT).
+Regras: sem duplicidade no mesmo nível (índice único); sem ser filha de si mesma (CHECK); **sem ciclo** (trigger `categorias_sem_ciclo` com CTE recursiva e trava por oficina); não exclui com produtos ou subcategorias (FK RESTRICT).
 
 ### 4.3 `marcas`
 
@@ -222,7 +224,7 @@ Regra de ouro: **toda regra crítica existe no backend/banco**; a interface só 
 
 ## 9. Regra de vigência de preços
 
-Definições: vigência = intervalo **fechado** `[data_inicio, data_fim]`; `data_fim NULL` = **aberta** (vale até outra vigência começar). Datas no fuso de Brasília. Para o mesmo material + tabela, vigências não canceladas **nunca se sobrepõem**.
+Definições: vigência = intervalo **fechado** `[data_inicio, data_fim]`; `data_fim NULL` = **aberta** (vale até outra vigência começar). Datas no fuso de Brasília. Para o mesmo produto + tabela, vigências não canceladas **nunca se sobrepõem**.
 
 | Situação | Condição (em relação a hoje) |
 |---|---|
@@ -231,7 +233,7 @@ Definições: vigência = intervalo **fechado** `[data_inicio, data_fim]`; `data
 | Encerrada | `data_fim < hoje` |
 | Cancelada | `cancelado = true` (ignorada nas regras de sobreposição) |
 
-**Nova vigência** (tudo dentro de uma transação com trava por material + tabela):
+**Nova vigência** (tudo dentro de uma transação com trava por produto + tabela):
 
 1. `data_inicio ≥ hoje` — o passado não é reescrito.
 2. Se já existe vigência começando **no mesmo dia** → 409 (edite a existente, se futura).
@@ -271,40 +273,40 @@ LIMIT 1;
 
 - Retorna **exatamente um** preço ou nenhum: a constraint EXCLUDE torna impossível haver dois (o `LIMIT 1` é só economia).
 - Resolve **futuro** (não aparece antes do início), **atual**, **histórico** (qualquer data passada), **ausência** (`preco: null`) e **aberta** (fim nulo).
-- Usa o índice `(material_id, tabela_preco_id, data_inicio DESC)`: o custo não cresce com o tamanho do histórico total, só com o número de vigências daquele material nessa tabela.
+- Usa o índice `(material_id, tabela_preco_id, data_inicio DESC)`: o custo não cresce com o tamanho do histórico total, só com o número de vigências daquele produto nessa tabela.
 - API: `GET /api/precos/vigente?sku=ABC123&tabela=VAREJO&data=2026-09-23` (ou por ids). Material/tabela inativos continuam respondendo, com `ativo/ativa` na resposta — quem decide se vende é o módulo de vendas.
 
 ## 11. Regras de ativação/inativação
 
 | Registro inativo | Efeito | Continua consultável |
 |---|---|---|
-| Material | Não recebe preço novo; futuros módulos não o oferecem em venda/compra/O.S. | Sim: cadastro, histórico de preços, consulta de preço vigente |
-| Categoria | Não pode ser escolhida para material nem como pai | Sim; materiais que já usam mantêm |
+| Produto | Não recebe preço novo; futuros módulos não o oferecem em venda/compra/O.S. | Sim: cadastro, histórico de preços, consulta de preço vigente |
+| Categoria | Não pode ser escolhida para produto nem como pai | Sim; produtos que já usam mantêm |
 | Marca / tipo | Não podem ser escolhidos | Sim; quem já usa mantém |
 | Depósito | Futuro estoque não movimenta nele | Sim |
 | Tabela de preço | Não recebe preço novo | Sim: histórico e consulta vigente |
 | Preço | Não há "inativo": futuro → **cancelado**; vigente → **encerrado** | Sempre (histórico) |
 
-Excluir fisicamente só o que **nunca foi usado** (categoria sem materiais/subcategorias, marca sem materiais, material sem preços, tabela sem preços, depósito sem referência).
+Excluir fisicamente só o que **nunca foi usado** (categoria sem produtos/subcategorias, marca sem produtos, produto sem preços, tabela sem preços, depósito sem referência).
 
 ## 12. Auditoria
 
-- Cadastros: `criado_em`, `atualizado_em`, `criado_por`, `atualizado_por`, `versao` (exibidos na tela do material).
+- Cadastros: `criado_em`, `atualizado_em`, `criado_por`, `atualizado_por`, `versao` (exibidos na tela do produto).
 - Preços: além disso, **`precos_eventos`** registra cada criação, alteração de preço futuro, encerramento (manual ou automático), cancelamento (com motivo) e reabertura, com o estado antes/depois, usuário e horário. Como vigências nunca são apagadas nem têm o valor alterado depois de começar, **o histórico nunca se perde**.
 
 ## 13. APIs
 
-Autenticação por cookie de sessão; `consultar`/`editar` conforme o módulo (Materiais ou Preços); tudo isolado por oficina.
+Autenticação por cookie de sessão; `consultar`/`editar` conforme o módulo (Produtos ou Preços); tudo isolado por oficina.
 
 | Recurso | Endpoints | Módulo |
 |---|---|---|
-| Material | `GET /api/materiais?q&tipoId&categoriaId&marcaId&ativo&pagina&porPagina` · `GET /api/materiais/:id` · `POST /api/materiais` · `PUT /api/materiais/:id` (com `versao`) · `PATCH /api/materiais/:id/status` · `DELETE /api/materiais/:id` (só sem preços) | Materiais |
-| Categoria | `GET /api/categorias` (árvore achatada) · `POST` · `PUT /:id` · `PATCH /:id/status` · `DELETE /:id` | Materiais |
-| Marca | `GET /api/marcas` · `POST` · `PUT /:id` · `PATCH /:id/status` · `DELETE /:id` | Materiais |
-| Depósito | `GET /api/depositos` · `GET /:id` · `POST` · `PUT /:id` · `PATCH /:id/status` · `DELETE /:id` | Materiais |
+| Produto | `GET /api/materiais?q&tipoId&categoriaId&marcaId&ativo&pagina&porPagina` · `GET /api/materiais/:id` · `POST /api/materiais` · `PUT /api/materiais/:id` (com `versao`) · `PATCH /api/materiais/:id/status` · `DELETE /api/materiais/:id` (só sem preços) | Produtos |
+| Categoria | `GET /api/categorias` (árvore achatada) · `POST` · `PUT /:id` · `PATCH /:id/status` · `DELETE /:id` | Produtos |
+| Marca | `GET /api/marcas` · `POST` · `PUT /:id` · `PATCH /:id/status` · `DELETE /:id` | Produtos |
+| Depósito | `GET /api/depositos` · `GET /:id` · `POST` · `PUT /:id` · `PATCH /:id/status` · `DELETE /:id` | Produtos |
 | Tabela de preço | `GET /api/tabelas-preco` · `GET /:id` · `POST` · `PUT /:id` · `PATCH /:id/status` · `DELETE /:id` | Preços |
 | Preço | `GET /api/precos?materialId&tabelaPrecoId` (histórico) · `POST /api/precos` (nova vigência) · `PUT /api/precos/:id` (futuro: valor/fim) · `POST /api/precos/:id/encerrar` · `POST /api/precos/:id/cancelar` · `GET /api/precos/:id/eventos` · `GET /api/precos/vigente?sku|materialId&tabela|tabelaPrecoId&data` | Preços |
-| Tipos | `GET/POST/PUT /api/opcoes/tiposMaterial` e `/tiposDeposito` (alteração só admin) | Materiais |
+| Tipos | `GET/POST/PUT /api/opcoes/tiposMaterial` e `/tiposDeposito` (alteração só admin) | Produtos |
 
 Códigos: 400 validação/regra, 403 sem permissão, 404 não existe (ou de outra oficina), 409 conflito (duplicidade, sobreposição, versão desatualizada, registro em uso).
 
@@ -312,31 +314,31 @@ Códigos: 400 validação/regra, 403 sem permissão, 404 não existe (ou de outr
 
 | Tela | Rota | Conteúdo |
 |---|---|---|
-| Materiais | `/materiais` | Busca (SKU, descrição, fabricante, código de barras), filtros (tipo, categoria com subcategorias, marca, status), cartões, "Mostrar mais" |
-| Novo / editar material | `/materiais/novo`, `/materiais/:id/editar` | Etapas: Identificação → Classificação → Fiscal → Controles; máscaras (SKU, EAN, NCM, CEST) |
-| Material | `/materiais/:id` | Cabeçalho (SKU, tipo, status, Inativar/Reativar, Editar); abas **Dados** (identificação, fiscal, controles, auditoria) e **Preços** |
-| Preços do material | aba Preços | Por tabela: preço vigente em destaque, programados, histórico (encerrados/cancelados), **Nova vigência**, Editar/Cancelar (futuro), Encerrar, trilha "Alterações" |
+| Produtos | `/materiais` | Busca (SKU, descrição, fabricante, código de barras), filtros (tipo, categoria com subcategorias, marca, status), cartões, "Mostrar mais" |
+| Novo / editar produto | `/materiais/novo`, `/materiais/:id/editar` | Etapas: Identificação → Classificação → Fiscal → Controles; máscaras (SKU, EAN, NCM, CEST) |
+| Produto | `/materiais/:id` | Cabeçalho (SKU, tipo, status, Inativar/Reativar, Editar); abas **Dados** (identificação, fiscal, controles, auditoria) e **Preços** |
+| Preços do produto | aba Preços | Por tabela: preço vigente em destaque, programados, histórico (encerrados/cancelados), **Nova vigência**, Editar/Cancelar (futuro), Encerrar, trilha "Alterações" |
 | Categorias | `/materiais/categorias` | Árvore com + Subcategoria, Editar (inclusive mover), Inativar, Excluir |
 | Marcas | `/materiais/marcas` | Lista com edição em linha |
 | Depósitos | `/materiais/depositos` | Cartões com tipo e permissões; criar/editar/inativar |
-| Tabelas de preço | `/tabelas-preco` | Cartões com materiais com preço vigente hoje |
+| Tabelas de preço | `/tabelas-preco` | Cartões com produtos com preço vigente hoje |
 | Tipos | `/configuracoes/tipos-material`, `/configuracoes/tipos-deposito` | Tabela com código, nome, descrição, uso e status; excluir só sem uso |
 
 ## 15. Fluxos de cadastro
 
 1. **Preparação (uma vez):** tabelas de preço → categorias → marcas → depósitos (tipos já vêm prontos).
-2. **Material novo:** Identificação → Classificação → Fiscal → Controles → cai na aba Preços do material.
+2. **Produto novo:** Identificação → Classificação → Fiscal → Controles → cai na aba Preços do produto.
 3. **Preço inicial:** Nova vigência (valor, início = hoje, sem fim).
 4. **Reajuste programado:** Nova vigência com início futuro → a atual é encerrada na véspera automaticamente.
 5. **Promoção com data de fim:** a vigência atual deve terminar antes ou a promoção deve ir até o fim dela; senão o sistema recusa e explica (não parte preço automaticamente).
 6. **Erro em preço programado:** Editar (valor/fim) ou Cancelar com motivo (a anterior volta ao fim original).
-7. **Tirar de linha:** Inativar o material (histórico preservado).
+7. **Tirar de linha:** Inativar o produto (histórico preservado).
 
 ## 16. Casos de erro
 
 | Caso | Resposta |
 |---|---|
-| SKU/código de barras/código repetido | 409 "Já existe um material com este SKU" (e equivalentes) |
+| SKU/código de barras/código repetido | 409 "Já existe um produto com este SKU" (e equivalentes) |
 | Código de barras com dígito errado | 400 no campo |
 | Categoria abaixo de uma descendente | 400 "Uma categoria não pode ficar abaixo dela mesma..." |
 | Tipo/categoria/marca inativos | 400 "... está inativa: escolha outra ou reative." |
@@ -347,7 +349,7 @@ Códigos: 400 validação/regra, 403 sem permissão, 404 não existe (ou de outr
 | Editar/cancelar preço em vigor | 409 com orientação |
 | Preço novo em material/tabela inativos | 400 |
 | Excluir registro em uso | 409 "…Inative-o." |
-| Material de outra oficina | 404 |
+| Produto de outra oficina | 404 |
 
 ## 17. Exemplos de dados
 
@@ -357,7 +359,7 @@ Códigos: 400 validação/regra, 403 sem permissão, 404 não existe (ou de outr
 | VEL-BKR6E | Vela de ignição BKR6E | Peça | Peças › Motor › Velas | NGK | UN |
 | OLE-5W30-1L | Óleo 5W30 sintético 1 L | Lubrificante | Lubrificantes | Mobil | L |
 
-| material | tabela | preço | início | fim | situação (23/09/2026) |
+| produto | tabela | preço | início | fim | situação (23/09/2026) |
 |---|---|---|---|---|---|
 | FIL-001 | VAREJO | 45,90 | 2026-01-01 | 2026-06-30 | encerrado |
 | FIL-001 | VAREJO | 49,90 | 2026-07-01 | 2026-09-30 | vigente |
@@ -392,9 +394,9 @@ WHERE p.tabela_preco_id = :varejo AND NOT p.cancelado
 
 ## 19. Considerações de performance
 
-- **Milhões de materiais:** filtros sempre começam por `tenant_id` (índices compostos); busca de texto via GIN trigram; SKU/EAN por índice único; paginação por `limit/offset` limitada a 100 por página (trocar por *keyset* em `(descricao, sku)` se as páginas profundas ficarem lentas).
-- **Histórico de preços grande:** a consulta vigente usa o índice composto e lê poucas linhas por material+tabela, independentemente do volume total. Se a tabela passar de dezenas de milhões de linhas, particionar `materiais_precos` por `tenant_id` (hash) sem mudar a aplicação.
-- **Contagens** (materiais por categoria, com preço por tabela) são subconsultas indexadas; se ficarem caras, viram contadores materializados.
+- **Milhões de produtos:** filtros sempre começam por `tenant_id` (índices compostos); busca de texto via GIN trigram; SKU/EAN por índice único; paginação por `limit/offset` limitada a 100 por página (trocar por *keyset* em `(descricao, sku)` se as páginas profundas ficarem lentas).
+- **Histórico de preços grande:** a consulta vigente usa o índice composto e lê poucas linhas por produto+tabela, independentemente do volume total. Se a tabela passar de dezenas de milhões de linhas, particionar `materiais_precos` por `tenant_id` (hash) sem mudar a aplicação.
+- **Contagens** (produtos por categoria, com preço por tabela) são subconsultas indexadas; se ficarem caras, viram contadores materializados.
 - **Stateless:** nenhuma trava em memória; as travas são do PostgreSQL (`pg_advisory_xact_lock`), então funcionam com N réplicas da API.
 
 ## 20. Revisão da arquitetura
@@ -406,7 +408,7 @@ WHERE p.tabela_preco_id = :varejo AND NOT p.cancelado
 | Relacionamentos | Marca opcional (insumos sem marca); categoria obrigatória; FKs compostas em tudo |
 | Regras no banco | Unicidades, CHECKs, EXCLUDE, ciclo por trigger, FK RESTRICT |
 | Regras na aplicação | Início não retroativo, encerramento automático, só editar/cancelar futuro, validar ativos, versão |
-| Concorrência | Índices únicos (SKU/EAN), EXCLUDE (vigência), trava por material+tabela (encerramento automático consistente), trava por oficina (ciclo), versão otimista (perda de alteração) |
+| Concorrência | Índices únicos (SKU/EAN), EXCLUDE (vigência), trava por produto+tabela (encerramento automático consistente), trava por oficina (ciclo), versão otimista (perda de alteração) |
 | Escalabilidade futura | Estoque referencia `(tenant_id, material_id)` e `(tenant_id, deposito_id)`; vendas/O.S. consultam o preço vigente e **gravam o valor praticado** na própria linha (nunca referenciam a vigência para calcular depois) |
 
 ### Modelo final consolidado
@@ -446,16 +448,16 @@ Decisões do dono do produto (23/09/2026): lista de preços **uma tabela por vez
 | Tabela | Campos | Chaves e regras |
 |---|---|---|
 | `estoques` | tenant_id, **material_id**, **deposito_id**, disponivel numeric(14,3), reservado numeric(14,3), atualizado_por, versao, timestamps | **PK (material_id, deposito_id)** (a chave de negócio SKU + depósito); FKs compostas para materiais e depósitos; CHECK disponível ≥ 0 e reservado ≥ 0; índice por depósito |
-| `estoque_ajustes` | id, material_id, deposito_id, disponível e reservado antes/depois, motivo, usuario_id, criado_em | Histórico imutável; índice (material, depósito, criado_em desc) |
+| `estoque_ajustes` | id, material_id, deposito_id, disponível e reservado antes/depois, motivo, usuario_id, criado_em | Histórico imutável; índice (produto, depósito, criado_em desc) |
 
-Regras do ajuste (`PUT /api/estoque/:materialId/:depositoId`, módulo Estoque/Editar): material ativo e que controla estoque; depósito ativo; unidade não fracionada só aceita inteiros (L, KG, M até 3 casas); motivo obrigatório; a linha é travada (`FOR UPDATE`) e a versão lida precisa bater (409 se outra pessoa ajustou); o primeiro saldo simultâneo é resolvido pela PK (409). Nada muda sem registro em `estoque_ajustes`.
+Regras do ajuste (`PUT /api/estoque/:materialId/:depositoId`, módulo Estoque/Editar): produto ativo e que controla estoque; depósito ativo; unidade não fracionada só aceita inteiros (L, KG, M até 3 casas); motivo obrigatório; a linha é travada (`FOR UPDATE`) e a versão lida precisa bater (409 se outra pessoa ajustou); o primeiro saldo simultâneo é resolvido pela PK (409). Nada muda sem registro em `estoque_ajustes`.
 
 ### APIs
 
 | Endpoint | Uso |
 |---|---|
-| `GET /api/estoque?q&depositoId&materialId&comSaldo&pagina` | Tabela de estoque: todo material ativo que controla estoque × todo depósito ativo (zerado onde não há saldo), mais linhas com saldo de itens inativados; `comSaldo=true` só o que tem saldo |
-| `GET /api/estoque/material/:materialId` | Saldo do material em cada depósito (aba Estoque do material) |
+| `GET /api/estoque?q&depositoId&materialId&comSaldo&pagina` | Tabela de estoque: todo produto ativo que controla estoque × todo depósito ativo (zerado onde não há saldo), mais linhas com saldo de itens inativados; `comSaldo=true` só o que tem saldo |
+| `GET /api/estoque/material/:materialId` | Saldo do produto em cada depósito (aba Estoque do produto) |
 | `PUT /api/estoque/:materialId/:depositoId` | Ajuste manual (disponível, reservado, motivo, versao) |
 | `GET /api/estoque/:materialId/:depositoId/ajustes` | Histórico de ajustes |
 | ~~`GET /api/precos/lista`~~ (substituída por `GET /api/precos/linhas`, §24) | Lista de preços: preço vigente, vigente até, próximo preço e disponível somado (null sem acesso ao Estoque) |
@@ -463,8 +465,8 @@ Regras do ajuste (`PUT /api/estoque/:materialId/:depositoId`, módulo Estoque/Ed
 ### Telas
 
 - **Lista de preços** (menu, `/precos`, módulo Preços): escolha da tabela (lembrada no navegador), busca por SKU/descrição/fabricante/código de barras, "Só com preço"; aba **Tabelas de preço** ao lado.
-- **Estoque** (menu, `/estoque`, módulo Estoque): tabela SKU | Material | Depósito | Disponível | Reservado | Saldo, filtro por depósito, "Só com saldo" (saldo > 0), Ajustar e Histórico em cada linha.
-- **Material → aba Estoque**: totais (disponível, reservado, saldo) e o saldo em cada depósito, com ajuste e histórico.
+- **Estoque** (menu, `/estoque`, módulo Estoque): tabela SKU | Produto | Depósito | Disponível | Reservado | Saldo, filtro por depósito, "Só com saldo" (saldo > 0), Ajustar e Histórico em cada linha.
+- **Produto → aba Estoque**: totais (disponível, reservado, saldo) e o saldo em cada depósito, com ajuste e histórico.
 
 ### Evolução
 
@@ -472,16 +474,16 @@ Quando compras, vendas e O.S. existirem, elas alteram `estoques` pelas mesmas re
 
 ## 22. Ampliação: Política Comercial, preço padrão e importação por planilha
 
-Decisões do dono do produto (23/09/2026): menu "Lista de preços" passa a se chamar **Política Comercial**; **preço padrão** = um preço sem datas por material + tabela, usado quando nenhuma vigência cobre o dia; cadastro de preço dentro da tabela **digitando o SKU**, conferido antes de gravar; **importação por CSV** de preços e de saldos, gravando as linhas válidas e relatando as demais; no estoque, o valor informado (lançamento ou planilha) é o **saldo final**; listagens com **20 por página**.
+Decisões do dono do produto (23/09/2026): menu "Lista de preços" passa a se chamar **Política Comercial**; **preço padrão** = um preço sem datas por produto + tabela, usado quando nenhuma vigência cobre o dia; cadastro de preço dentro da tabela **digitando o SKU**, conferido antes de gravar; **importação por CSV** de preços e de saldos, gravando as linhas válidas e relatando as demais; no estoque, o valor informado (lançamento ou planilha) é o **saldo final**; listagens com **20 por página**.
 
 ### Tabelas
 
 | Tabela | Campos | Chaves e regras |
 |---|---|---|
-| `precos_padrao` | id, tenant_id, material_id, tabela_preco_id, preco_centavos, autoria (criado_por, atualizado_por, versao), timestamps | **UNIQUE (tenant, material, tabela)**; FKs compostas RESTRICT; CHECK preço ≥ 0; RLS |
-| `precos_padrao_eventos` | id, tenant_id, material_id, tabela_preco_id, evento (definido/alterado/removido), preco_antes, preco_depois, usuario_id, criado_em | Trilha imutável; índice (material, tabela, criado_em); RLS |
+| `precos_padrao` | id, tenant_id, material_id, tabela_preco_id, preco_centavos, autoria (criado_por, atualizado_por, versao), timestamps | **UNIQUE (tenant, produto, tabela)**; FKs compostas RESTRICT; CHECK preço ≥ 0; RLS |
+| `precos_padrao_eventos` | id, tenant_id, material_id, tabela_preco_id, evento (definido/alterado/removido), preco_antes, preco_depois, usuario_id, criado_em | Trilha imutável; índice (produto, tabela, criado_em); RLS |
 
-Preço de um dia = vigência que cobre a data (regras do §9) **ou**, sem ela, o preço padrão. Definir/alterar/remover o padrão usa a mesma trava por material + tabela das vigências; na tela, a edição envia a `versao` (409 se outra pessoa alterou); a importação grava o valor informado. Material ou tabela inativos não recebem preço novo (vigência nem padrão).
+Preço de um dia = vigência que cobre a data (regras do §9) **ou**, sem ela, o preço padrão. Definir/alterar/remover o padrão usa a mesma trava por produto + tabela das vigências; na tela, a edição envia a `versao` (409 se outra pessoa alterou); a importação grava o valor informado. Produto ou tabela inativos não recebem preço novo (vigência nem padrão).
 
 ### Importação por planilha (CSV)
 
@@ -495,8 +497,8 @@ Preço de um dia = vigência que cobre a data (regras do §9) **ou**, sem ela, o
 
 | Endpoint | Uso |
 |---|---|
-| `POST /api/precos` | Nova vigência; material por `materialId` **ou** `sku` (SKU inexistente: 400 com `campos.sku`) |
-| `GET /api/precos/padrao?materialId` | Preços padrão do material, por tabela |
+| `POST /api/precos` | Nova vigência; produto por `materialId` **ou** `sku` (SKU inexistente: 400 com `campos.sku`) |
+| `GET /api/precos/padrao?materialId` | Preços padrão do produto, por tabela |
 | `PUT /api/precos/padrao` | Define ou altera o padrão (`materialId` ou `sku`, `tabelaPrecoId`, `precoCentavos`, `versao?`) |
 | `DELETE /api/precos/padrao?materialId&tabelaPrecoId` | Remove o padrão (fica na trilha) |
 | `GET /api/precos/padrao/eventos?materialId&tabelaPrecoId` | Trilha do padrão |
@@ -511,16 +513,16 @@ Permissões: importar e cadastrar preços exigem Preços/Editar; lançar e impor
 ### Telas
 
 - **Política Comercial** (menu, módulo Preços): abas **Lista de preços** (uma tabela por vez, 20 por página, selo "Padrão" quando o preço vem do padrão) e **Tabelas de preço** (tabela analítica com "Importar preços"; clicar no nome abre `/tabelas-preco/:id`, com os preços da tabela e "Adicionar preço" por SKU, com vigência ou padrão).
-- **Material → aba Preços**: em cada tabela, o bloco "Preço padrão (sem vigência)" com Definir/Alterar/Remover e histórico.
+- **Produto → aba Preços**: em cada tabela, o bloco "Preço padrão (sem vigência)" com Definir/Alterar/Remover e histórico.
 - **Estoque**: "Lançar saldo" (SKU + código do depósito) e "Importar planilha", além do ajuste por linha; 20 por página.
 
-## 23. Importação de materiais, categorias e linhas de preço; submenu da Política Comercial
+## 23. Importação de produtos, categorias e linhas de preço; submenu da Política Comercial
 
 Decisões do dono do produto (23/09/2026): a importação **cria os novos e atualiza os existentes**, grava as linhas válidas e lista as demais com o número da linha; a categoria é indicada pelo **código ou pelo caminho** completo; em Linhas de Preço, a **tabela da tela** vale quando a coluna `tabela` fica vazia.
 
 - **Mesmas regras da tela:** cada linha é validada pelo mesmo schema do cadastro (`materialInputSchema`, `categoriaInputSchema`) e gravada pelas mesmas funções das rotas (`criarMaterial`/`atualizarMaterial`, `criarCategoria`/`atualizarCategoria`), dentro de um SAVEPOINT. O erro aponta a coluna da planilha (ex.: `ncm: NCM tem 8 dígitos`).
-- **Atualização:** SKU já cadastrado atualiza o material; mesmo código, ou mesmo nome sob o mesmo pai, atualiza a categoria. Colunas **ausentes do arquivo** não mudam o registro existente; coluna presente e vazia limpa o campo opcional.
-- **Referências:** tipo de material pelo nome; marca pelo nome ou código; categoria pelo código, pelo caminho (`Peças > Motor > Filtros`) ou pelo nome, se ele for único (nome repetido em níveis diferentes = erro pedindo código ou caminho). Categorias são processadas na ordem do arquivo: o pai pode vir numa linha anterior.
+- **Atualização:** SKU já cadastrado atualiza o produto; mesmo código, ou mesmo nome sob o mesmo pai, atualiza a categoria. Colunas **ausentes do arquivo** não mudam o registro existente; coluna presente e vazia limpa o campo opcional.
+- **Referências:** tipo de produto pelo nome; marca pelo nome ou código; categoria pelo código, pelo caminho (`Peças > Motor > Filtros`) ou pelo nome, se ele for único (nome repetido em níveis diferentes = erro pedindo código ou caminho). Categorias são processadas na ordem do arquivo: o pai pode vir numa linha anterior.
 - **Repetidos no arquivo:** a segunda linha com o mesmo SKU (ou a mesma categoria) vira erro apontando a primeira.
 
 | Endpoint | Uso |
@@ -529,25 +531,25 @@ Decisões do dono do produto (23/09/2026): a importação **cria os novos e atua
 | `POST /api/categorias/importar` (text/csv) | Colunas em `COLUNAS_IMPORTACAO_CATEGORIAS` |
 | `POST /api/precos/importar?tabelaPrecoId` (text/csv) | Linhas de Preço: `tabela` opcional (vazia = tabela da tela) |
 
-Menu **Política Comercial** com submenu: **Linhas de Preço** (antiga aba "Lista de preços", com "Importar planilha") e **Tabelas de Preço**. Permissões: importar materiais e categorias exige Materiais/Editar.
+Menu **Política Comercial** com submenu: **Linhas de Preço** (antiga aba "Lista de preços", com "Importar planilha") e **Tabelas de Preço**. Permissões: importar produtos e categorias exige Materiais/Editar.
 
 ## 24. Linhas de Preço: uma linha por vigência, só preço
 
-Decisões do dono do produto (23/09/2026): a tela mostra **apenas preço** (sem estoque nem outros dados do material além de SKU e descrição); **cada vigência é uma linha**, com início, fim e situação; o preço padrão é outra linha; o filtro de situação mostra também encerradas e canceladas, começando em "vigentes, futuras e padrão"; material sem preço não aparece; **cadastro manual de preço** direto na tela (mesmo formulário por SKU do detalhe da tabela, na tabela selecionada). Vale nas duas telas: Linhas de Preço e detalhe de cada tabela.
+Decisões do dono do produto (23/09/2026): a tela mostra **apenas preço** (sem estoque nem outros dados do produto além de SKU e descrição); **cada vigência é uma linha**, com início, fim e situação; o preço padrão é outra linha; o filtro de situação mostra também encerradas e canceladas, começando em "vigentes, futuras e padrão"; produto sem preço não aparece; **cadastro manual de preço** direto na tela (mesmo formulário por SKU do detalhe da tabela, na tabela selecionada). Vale nas duas telas: Linhas de Preço e detalhe de cada tabela.
 
 | Endpoint | Uso |
 |---|---|
 | `GET /api/precos/linhas?tabelaPrecoId&q&situacao&pagina` | Linhas da tabela: `{ id, materialId, sku, descricao, precoCentavos, dataInicio, dataFim, situacao }`; `situacao` do filtro: `atuais` (padrão), `vigente`, `futuro`, `encerrado`, `cancelado`, `padrao`, `todas`. A situação da vigência segue a regra de `situacaoPreco` |
 
-A antiga `GET /api/precos/lista` (uma linha por material, com próximo preço e disponível somado do estoque) foi removida: era usada só por esta tela.
+A antiga `GET /api/precos/lista` (uma linha por produto, com próximo preço e disponível somado do estoque) foi removida: era usada só por esta tela.
 
 ## 25. Serviços e preço de serviço (menu Ofertas)
 
-Decisões do dono do produto (24/09/2026): o serviço (mão de obra) é vendido como o material, com preço nas **mesmas Tabelas de Preço**; o grupo de menu "Materiais" passa a se chamar **Ofertas** (Materiais · Serviços · Categorias · Marcas · Depósitos).
+Decisões do dono do produto (24/09/2026): o serviço (mão de obra) é vendido como o produto, com preço nas **mesmas Tabelas de Preço**; o grupo de menu "Produtos" passa a se chamar **Ofertas** (Produtos · Serviços · Categorias · Marcas · Depósitos).
 
 - **`servicos`**: código sequencial por oficina, automático e imutável (exibido com 6 dígitos, `000001`); nome obrigatório e repetível (quem identifica é o código); descrição; `forma_preco` = `fechado` (o preço da tabela é o do serviço) ou `hora` (o preço da tabela é o de uma hora; o valor do serviço é esse preço × as horas); `tempo_minutos` (horas de trabalho, digitadas como horas:minutos; obrigatório no valor-hora, CHECK `servicos_valor_hora_com_tempo`); classificação (`classificacoes_servico`, lista de Configurações, opcional); garantia em dias e km (só registro); observação; status, autoria e `versao` (409). Excluir só o serviço sem preço (FK RESTRICT); senão, inativar.
-- **Preço de material ou serviço**: `materiais_precos`, `precos_padrao` e `precos_padrao_eventos` ganharam `servico_id`; `material_id` ficou opcional e o CHECK `*_um_item` exige **exatamente um** dos dois. As vigências de serviço têm a própria constraint EXCLUDE (`materiais_precos_servico_sem_sobreposicao`), o preço padrão o próprio índice único parcial (`precos_padrao_servico_unico`), e a trava consultiva usa o id do item. Todas as regras de vigência (seções 9 a 11) valem igual para serviço.
-- **API de preços**: onde havia `materialId`/`sku`, o item pode ser `servicoId` ou `servicoCodigo` (ex.: `000012`), exatamente um. `GET /api/precos/linhas` devolve `{ tipo, itemId, codigo, descricao, formaPreco, … }` e aceita `tipo=material|servico`. A importação de preços aceita as colunas `tipo` (material/servico, vazio = material) e `codigo` (SKU ou código do serviço); a coluna antiga `sku` continua valendo. `materiaisComPreco` das tabelas conta só materiais.
+- **Preço de produto ou serviço**: `materiais_precos`, `precos_padrao` e `precos_padrao_eventos` ganharam `servico_id`; `material_id` ficou opcional e o CHECK `*_um_item` exige **exatamente um** dos dois. As vigências de serviço têm a própria constraint EXCLUDE (`materiais_precos_servico_sem_sobreposicao`), o preço padrão o próprio índice único parcial (`precos_padrao_servico_unico`), e a trava consultiva usa o id do item. Todas as regras de vigência (seções 9 a 11) valem igual para serviço.
+- **API de preços**: onde havia `materialId`/`sku`, o item pode ser `servicoId` ou `servicoCodigo` (ex.: `000012`), exatamente um. `GET /api/precos/linhas` devolve `{ tipo, itemId, codigo, descricao, formaPreco, … }` e aceita `tipo=material|servico`. A importação de preços aceita as colunas `tipo` (material/servico, vazio = produto) e `codigo` (SKU ou código do serviço); a coluna antiga `sku` continua valendo. `materiaisComPreco` das tabelas conta só materiais.
 - **Permissões**: módulo **Serviços** (Admin e Financeiro editam; Atendente, Mecânico e Almoxarife consultam); os preços de serviço seguem o módulo **Preços**.
 
 | Endpoint | Uso |
@@ -556,7 +558,7 @@ Decisões do dono do produto (24/09/2026): o serviço (mão de obra) é vendido 
 | `GET/POST /api/servicos`, `GET/PUT /api/servicos/:id`, `PATCH /api/servicos/:id/status`, `DELETE /api/servicos/:id` | Cadastro |
 | `POST /api/servicos/importar` (text/csv) | Colunas em `COLUNAS_IMPORTACAO_SERVICOS`: sem código = novo; código existente = atualiza |
 
-Telas: **Serviços** (tabela com código, nome e situação; busca, filtros de classificação e situação; importar; novo), **detalhe** com abas Dados e Preços (a mesma aba Preços do material, com "/hora" no valor-hora) e formulário de cadastro/edição. Linhas de Preço e "Cadastrar preço" passam a ter o tipo (material ou serviço).
+Telas: **Serviços** (tabela com código, nome e situação; busca, filtros de classificação e situação; importar; novo), **detalhe** com abas Dados e Preços (a mesma aba Preços do produto, com "/hora" no valor-hora) e formulário de cadastro/edição. Linhas de Preço e "Cadastrar preço" passam a ter o tipo (produto ou serviço).
 
 ## 26. Tabela de preço padrão
 
@@ -569,9 +571,9 @@ Telas: **Serviços** (tabela com código, nome e situação; busca, filtros de c
 
 ## PMC (preço médio de compra) — decisão de 25/09/2026
 
-Custo de compra do material junto ao fornecedor, base da **análise de margem da aprovação comercial**
+Custo de compra do produto junto ao fornecedor, base da **análise de margem da aprovação comercial**
 (`docs/modulos/APROVACAO_COMERCIAL.md` §16). Campo opcional (`materiais.pmc_centavos`; vazio = não disponível, nunca
-zero), fora do cadastro comum: aparece num bloco próprio da tela do material e na coluna `pmc` da importação, só para
+zero), fora do cadastro comum: aparece num bloco próprio da tela do produto e na coluna `pmc` da importação, só para
 quem tem **Custos e margem** (Consultar vê; Editar altera). Cada mudança fica em `materiais_pmc_eventos` (antes, depois,
-quem, quando; só inclusão). Material com histórico de PMC não pode ser excluído (só inativado). É copiado para o item do
+quem, quando; só inclusão). Produto com histórico de PMC não pode ser excluído (só inativado). É copiado para o item do
 orçamento quando ele entra.

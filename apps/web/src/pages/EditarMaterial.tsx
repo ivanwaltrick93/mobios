@@ -11,7 +11,7 @@ export function EditarMaterial() {
   const navigate = useNavigate();
   const permitido = usePode()('materiais', 'editar');
   const material = useQuery({ queryKey: ['materiais', id], queryFn: () => api<Material>(`/materiais/${id}`) });
-  if (!permitido) return <Alerta>Você não tem permissão para alterar materiais.</Alerta>;
+  if (!permitido) return <Alerta>Você não tem permissão para alterar produtos.</Alerta>;
   if (material.isPending) return <TextoSuave>Carregando…</TextoSuave>;
   if (material.isError) return <Alerta>{material.error.message}</Alerta>;
   return (

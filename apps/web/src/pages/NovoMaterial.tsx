@@ -6,10 +6,10 @@ import { MaterialForm } from './MaterialForm';
 export function NovoMaterial() {
   const pode = usePode();
   const navigate = useNavigate();
-  if (!pode('materiais', 'editar')) return <Alerta>Você não tem permissão para cadastrar materiais.</Alerta>;
+  if (!pode('materiais', 'editar')) return <Alerta>Você não tem permissão para cadastrar produtos.</Alerta>;
   return (
     <div className="mx-auto max-w-4xl space-y-6">
-      <Titulo>Novo material</Titulo>
+      <Titulo>Novo produto</Titulo>
       <Cartao>
         {/* Depois de cadastrar, o próximo passo natural é informar os preços. */}
         <MaterialForm

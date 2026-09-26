@@ -210,7 +210,7 @@ export async function montarItens(
         }
       : (() => {
           const c = cadastro.get(chave(item.tipo, item.id));
-          const rotulo = item.tipo === 'material' ? 'Material' : 'Serviço';
+          const rotulo = item.tipo === 'material' ? 'Produto' : 'Serviço';
           if (!c) throw new ErroHttp(400, `Item ${n + 1}: ${rotulo.toLowerCase()} não encontrado.`);
           if (!c.vendavel) throw new ErroHttp(400, `${rotulo} ${nomeDoItem(c)} ${c.motivo} e não pode ser vendido.`);
           return c;

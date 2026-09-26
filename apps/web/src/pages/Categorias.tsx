@@ -47,7 +47,7 @@ export function Categorias() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['categorias'] }),
   });
 
-  if (!pode('materiais')) return <Alerta>Você não tem permissão para acessar os materiais.</Alerta>;
+  if (!pode('materiais')) return <Alerta>Você não tem permissão para acessar os produtos.</Alerta>;
 
   return (
     <div className="space-y-6">
@@ -77,7 +77,7 @@ export function Categorias() {
         />
       )}
       <TextoSuave>
-        Organize os materiais em níveis (ex.: Peças › Motor › Filtros). Ao filtrar por uma categoria, as subcategorias
+        Organize os produtos em níveis (ex.: Peças › Motor › Filtros). Ao filtrar por uma categoria, as subcategorias
         entram junto.
       </TextoSuave>
       {edicao && !edicao.categoria && !edicao.paiId && (
@@ -87,14 +87,14 @@ export function Categorias() {
 
       {arvore.length === 0 && !edicao ? (
         <Vazio icone={<FolderTree />} titulo="Nenhuma categoria cadastrada">
-          Todo material precisa de uma categoria. Comece pelas principais: Peças, Pneus, Lubrificantes...
+          Todo produto precisa de uma categoria. Comece pelas principais: Peças, Pneus, Lubrificantes...
         </Vazio>
       ) : (
         <Tabela>
           <Cabecalho>
             <Th>Nome</Th>
             <Th>Código</Th>
-            <Th className="text-right">Materiais</Th>
+            <Th className="text-right">Produtos</Th>
             <Th>Status</Th>
             <Th />
           </Cabecalho>
@@ -150,7 +150,7 @@ export function Categorias() {
                           { rotulo: 'Caminho', valor: c.caminho },
                           { rotulo: 'Código', valor: c.codigo ?? '—' },
                           { rotulo: 'Descrição', valor: c.descricao ?? '—' },
-                          { rotulo: 'Materiais nesta categoria', valor: c.materiais },
+                          { rotulo: 'Produtos nesta categoria', valor: c.materiais },
                           { rotulo: 'Status', valor: c.ativa ? 'Ativa' : 'Inativa' },
                         ]}
                       />

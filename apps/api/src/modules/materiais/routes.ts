@@ -92,7 +92,7 @@ async function carregar(tx: Tx, id: string): Promise<Material> {
     .innerJoin(categorias, eq(categorias.id, materiais.categoriaId))
     .leftJoin(marcas, eq(marcas.id, materiais.marcaId))
     .where(eq(materiais.id, id));
-  if (!m) throw naoEncontrado('Material');
+  if (!m) throw naoEncontrado('Produto');
   return m;
 }
 
@@ -102,7 +102,7 @@ async function validarReferencias(
   dados: { tipoId: string; categoriaId: string; marcaId: string | null },
   atual?: Material,
 ) {
-  await validarReferencia(tx, tiposMaterial, tiposMaterial.ativa, dados.tipoId, atual?.tipoId, 'Tipo de material');
+  await validarReferencia(tx, tiposMaterial, tiposMaterial.ativa, dados.tipoId, atual?.tipoId, 'Tipo de produto');
   await validarReferencia(tx, categorias, categorias.ativa, dados.categoriaId, atual?.categoriaId, 'Categoria');
   await validarReferencia(tx, marcas, marcas.ativa, dados.marcaId, atual?.marcaId, 'Marca');
 }
@@ -135,9 +135,9 @@ async function gravarPmc(
     .from(materiais)
     .where(eq(materiais.id, materialId))
     .for('update');
-  if (!atual) throw naoEncontrado('Material');
+  if (!atual) throw naoEncontrado('Produto');
   if (anterior !== undefined && atual.pmcCentavos !== anterior)
-    throw new ErroHttp(409, 'O PMC deste material foi alterado por outra pessoa. Recarregue a página e refaça a ação.');
+    throw new ErroHttp(409, 'O PMC deste produto foi alterado por outra pessoa. Recarregue a página e refaça a ação.');
   if (atual.pmcCentavos === pmcCentavos) return;
   await tx.update(materiais).set({ pmcCentavos }).where(eq(materiais.id, materialId));
   await tx.insert(materiaisPmcEventos).values({
@@ -151,7 +151,7 @@ async function gravarPmc(
 /** Alteração com concorrência otimista; manter tipo/categoria/marca atuais é permitido mesmo se inativados. */
 async function atualizarMaterial(tx: Tx, atual: Material, versao: number, dados: DadosMaterial, usuarioId: string) {
   await validarReferencias(tx, dados, atual);
-  await atualizarVersionado(tx, materiais, atual.id, versao, { ...dados, atualizadoPor: usuarioId }, 'Material');
+  await atualizarVersionado(tx, materiais, atual.id, versao, { ...dados, atualizadoPor: usuarioId }, 'Produto');
 }
 
 export const materiaisRoutes: FastifyPluginAsyncZod = async (app) => {
@@ -173,7 +173,7 @@ export const materiaisRoutes: FastifyPluginAsyncZod = async (app) => {
           .select({ pmcCentavos: materiais.pmcCentavos })
           .from(materiais)
           .where(eq(materiais.id, req.params.id));
-        if (!m) throw naoEncontrado('Material');
+        if (!m) throw naoEncontrado('Produto');
         const historico = await tx
           .select({
             antesCentavos: materiaisPmcEventos.antesCentavos,
@@ -312,7 +312,7 @@ export const materiaisRoutes: FastifyPluginAsyncZod = async (app) => {
         const atual = idExistente ? await carregar(savepoint, idExistente) : undefined;
 
         const tipoId = tipos.get(comparavel(valor('tipo')));
-        if (!tipoId) throw new ErroHttp(400, `tipo: "${valor('tipo')}" não está na lista de tipos de material.`);
+        if (!tipoId) throw new ErroHttp(400, `tipo: "${valor('tipo')}" não está na lista de tipos de produto.`);
         const categoriaId = categoriasDaOficina.achar(valor('categoria'), 'categoria').id;
         let marcaId = atual?.marcaId ?? null;
         if (temColuna('marca')) {
@@ -374,7 +374,7 @@ export const materiaisRoutes: FastifyPluginAsyncZod = async (app) => {
     { ...editar, schema: { params: idParamSchema, body: statusInputSchema, response: { 200: materialSchema } } },
     async (req) =>
       withTenant(req.user.tid, async (tx) => {
-        await alterarAtivo(tx, materiais, materiais.ativo, req.params.id, req.body.ativo, req.user.sub, 'Material');
+        await alterarAtivo(tx, materiais, materiais.ativo, req.params.id, req.body.ativo, req.user.sub, 'Produto');
         return carregar(tx, req.params.id);
       }),
   );
@@ -386,8 +386,8 @@ export const materiaisRoutes: FastifyPluginAsyncZod = async (app) => {
         tx,
         materiais,
         req.params.id,
-        'Material',
-        'Este material já tem preços, saldo de estoque ou histórico de PMC e não pode ser excluído (o histórico é mantido). Inative-o.',
+        'Produto',
+        'Este produto já tem preços, saldo de estoque ou histórico de PMC e não pode ser excluído (o histórico é mantido). Inative-o.',
       ),
     );
     return reply.code(204).send();

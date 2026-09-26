@@ -50,7 +50,7 @@ export function Depositos() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['depositos'] }),
   });
 
-  if (!pode('materiais')) return <Alerta>Você não tem permissão para acessar os materiais.</Alerta>;
+  if (!pode('materiais')) return <Alerta>Você não tem permissão para acessar os produtos.</Alerta>;
 
   return (
     <div className="space-y-6">
@@ -58,8 +58,8 @@ export function Depositos() {
         Depósitos
       </Titulo>
       <TextoSuave>
-        Locais onde os materiais ficam guardados (loja, oficina, garantia...). O saldo por depósito chega com o módulo
-        de estoque.
+        Locais onde os produtos ficam guardados (loja, oficina, garantia...). O saldo por depósito chega com o módulo de
+        estoque.
       </TextoSuave>
       {edicao === 'novo' && (
         <Cartao>

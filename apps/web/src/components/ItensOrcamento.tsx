@@ -228,7 +228,7 @@ function arredondar(l: LinhaTela): LinhaTela {
 export const contarItens = (n: number) => `${n} ${n === 1 ? 'item' : 'itens'}`;
 
 /** Filtro da busca por tipo de item (campo `tipo` do catálogo: material ou serviço). */
-export const FILTROS_TIPO = { '': 'Todos', material: 'Materiais', servico: 'Serviços' } as const;
+export const FILTROS_TIPO = { '': 'Todos', material: 'Produtos', servico: 'Serviços' } as const;
 export type FiltroTipoItem = keyof typeof FILTROS_TIPO;
 
 /**
@@ -271,8 +271,8 @@ function BuscaItem({
         <Input
           id={ID_BUSCA}
           className="pl-9"
-          aria-label="Buscar material ou serviço"
-          placeholder={`Buscar ${tipo === 'material' ? 'material' : tipo === 'servico' ? 'serviço' : 'material ou serviço'} por SKU, código ou descrição… (ao menos 2 letras)`}
+          aria-label="Buscar produto ou serviço"
+          placeholder={`Buscar ${tipo === 'material' ? 'produto' : tipo === 'servico' ? 'serviço' : 'produto ou serviço'} por SKU, código ou descrição… (ao menos 2 letras)`}
           value={busca}
           onChange={(e) => setBusca(e.target.value)}
         />

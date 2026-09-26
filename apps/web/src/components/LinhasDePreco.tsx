@@ -82,7 +82,7 @@ export function LinhasDePreco({ tabelaPrecoId, autoFocus = false }: { tabelaPrec
             setPagina(1);
           }}
         >
-          <option value="">Materiais e serviços</option>
+          <option value="">Produtos e serviços</option>
           {Object.entries(TIPOS_ITEM_PRECO).map(([valor, rotulo]) => (
             <option key={valor} value={valor}>
               {rotulo}

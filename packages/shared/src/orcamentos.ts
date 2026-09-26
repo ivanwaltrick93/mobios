@@ -191,7 +191,7 @@ export const itemOrcamentoInputSchema = z
       .nullish(),
   })
   .refine((i) => (i.tipo === 'material' ? !!i.materialId && !i.servicoId : !!i.servicoId && !i.materialId), {
-    message: 'Item sem material ou serviço',
+    message: 'Item sem produto ou serviço',
     path: ['tipo'],
   })
   .refine((i) => i.descontoPercentual == null || i.precoUnitarioCentavos == null, {

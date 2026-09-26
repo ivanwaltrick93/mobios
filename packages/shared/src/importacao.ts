@@ -26,13 +26,13 @@ export const COLUNAS_IMPORTACAO_PRECOS: ColunaImportacao[] = [
   {
     nome: 'tipo',
     obrigatoria: false,
-    descricao: 'material ou servico. Vazio = material',
+    descricao: 'produto ou servico. Vazio = produto',
     exemplo: 'material',
   },
   {
     nome: 'codigo',
     obrigatoria: false,
-    descricao: 'SKU do material ou código do serviço (precisa estar cadastrado). A coluna "sku" também é aceita',
+    descricao: 'SKU do produto ou código do serviço (precisa estar cadastrado). A coluna "sku" também é aceita',
     exemplo: 'FIL-001',
   },
   {
@@ -141,12 +141,12 @@ export const COLUNAS_IMPORTACAO_CLIENTES: ColunaImportacao[] = [
 
 /** Materiais: SKU já cadastrado = atualiza o material (colunas ausentes do arquivo não mudam). */
 export const COLUNAS_IMPORTACAO_MATERIAIS: ColunaImportacao[] = [
-  { nome: 'sku', obrigatoria: true, descricao: 'Código do material. Já cadastrado = atualiza', exemplo: 'FIL-001' },
+  { nome: 'sku', obrigatoria: true, descricao: 'Código do produto. Já cadastrado = atualiza', exemplo: 'FIL-001' },
   { nome: 'descricao', obrigatoria: true, descricao: 'Descrição', exemplo: 'Filtro de óleo W712' },
   {
     nome: 'tipo',
     obrigatoria: true,
-    descricao: 'Nome do tipo de material (Configurações → Tipo de material)',
+    descricao: 'Nome do tipo de produto (Configurações → Tipo de produto)',
     exemplo: 'Peça',
   },
   {
@@ -212,7 +212,7 @@ export const COLUNAS_IMPORTACAO_CATEGORIAS: ColunaImportacao[] = [
 ];
 
 export const COLUNAS_IMPORTACAO_ESTOQUE: ColunaImportacao[] = [
-  { nome: 'sku', obrigatoria: true, descricao: 'SKU do material (precisa estar cadastrado)', exemplo: 'FIL-001' },
+  { nome: 'sku', obrigatoria: true, descricao: 'SKU do produto (precisa estar cadastrado)', exemplo: 'FIL-001' },
   { nome: 'deposito', obrigatoria: true, descricao: 'Código do depósito (precisa estar cadastrado)', exemplo: 'LOJA' },
   {
     nome: 'disponivel',

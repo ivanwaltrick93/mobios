@@ -94,7 +94,7 @@ export function PrecosItem({ item }: { item: ItemDosPrecos }) {
     <div className="space-y-4">
       {!item.ativo && (
         <Alerta>
-          {item.tipo === 'material' ? 'Material inativo' : 'Serviço inativo'}: não recebe preços novos, mas o histórico
+          {item.tipo === 'material' ? 'Produto inativo' : 'Serviço inativo'}: não recebe preços novos, mas o histórico
           continua disponível.
         </Alerta>
       )}

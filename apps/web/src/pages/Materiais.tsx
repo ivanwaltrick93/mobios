@@ -50,7 +50,7 @@ export function Materiais() {
   };
   const dados = materiais.data;
 
-  if (!pode('materiais')) return <Alerta>Você não tem permissão para acessar os materiais.</Alerta>;
+  if (!pode('materiais')) return <Alerta>Você não tem permissão para acessar os produtos.</Alerta>;
 
   return (
     <div className="space-y-6">
@@ -62,21 +62,21 @@ export function Materiais() {
                 <FileUp className="mr-1.5 size-4" aria-hidden /> Importar planilha
               </Botao>
               <Link to="/materiais/novo" className={classesBotao('primario')}>
-                <Plus className="mr-1.5 size-4" aria-hidden /> Novo material
+                <Plus className="mr-1.5 size-4" aria-hidden /> Novo produto
               </Link>
             </div>
           )
         }
       >
-        Materiais
+        Produtos
       </Titulo>
 
       {importando && (
         <ImportarCsv
-          titulo="Importar materiais"
+          titulo="Importar produtos"
           colunas={COLUNAS_IMPORTACAO_MATERIAIS}
           url="/materiais/importar"
-          nomeModelo="modelo-materiais.csv"
+          nomeModelo="modelo-produtos.csv"
           aoConcluir={() => queryClient.invalidateQueries({ queryKey: ['materiais'] })}
           aoFechar={() => setImportando(false)}
         />
@@ -84,7 +84,7 @@ export function Materiais() {
 
       <div className="space-y-3">
         <CampoBusca
-          rotulo="Buscar materiais"
+          rotulo="Buscar produtos"
           placeholder="SKU, descrição, código do fabricante ou de barras"
           valor={filtro.q}
           aoMudar={(valor) => mudar('q', valor)}
@@ -132,8 +132,8 @@ export function Materiais() {
           icone={<Package />}
           titulo={
             filtro.q || filtro.tipoId || filtro.categoriaId || filtro.marcaId
-              ? 'Nenhum material encontrado'
-              : 'Nenhum material cadastrado ainda'
+              ? 'Nenhum produto encontrado'
+              : 'Nenhum produto cadastrado ainda'
           }
         >
           {filtro.q ? 'Confira a grafia ou busque pelo SKU ou código do fabricante.' : undefined}

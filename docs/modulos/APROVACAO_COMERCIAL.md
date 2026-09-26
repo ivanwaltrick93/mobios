@@ -314,13 +314,13 @@ Indicador **gerencial de apoio ao aprovador**, restrito à jornada de aprovaçã
 sendo desconto acima da alçada, por item), não é margem contábil e **não aparece para o vendedor** (a tela e as respostas
 do orçamento não trazem PMC nem margem).
 
-- **PMC** (preço médio de compra = custo de compra junto ao fornecedor): campo do cadastro de material
+- **PMC** (preço médio de compra = custo de compra junto ao fornecedor): campo do cadastro de produto
   (`materiais.pmc_centavos`; vazio = não disponível, nunca zero), com histórico em `materiais_pmc_eventos` (só inclusão).
-  Informado na tela do material ou na importação CSV (coluna `pmc`). Quando existirem compras (Fase 7), o custo médio
+  Informado na tela do produto ou na importação CSV (coluna `pmc`). Quando existirem compras (Fase 7), o custo médio
   calculado alimentará esse campo.
-- **PMC congelado no item** (`orcamento_itens.pmc_centavos`): copiado ao incluir o material; a nova versão copia o da
+- **PMC congelado no item** (`orcamento_itens.pmc_centavos`): copiado ao incluir o produto; a nova versão copia o da
   anterior; o recálculo do rascunho de outro dia e a troca de tabela o atualizam junto com o preço; emitido, não muda.
-- **Cálculo** (`packages/shared/src/margem.ts`), só materiais (serviço fica fora e aparece como "Não considerado"):
+- **Cálculo** (`packages/shared/src/margem.ts`), só produtos (serviço fica fora e aparece como "Não considerado"):
 
 ```text
 Receita líquida = quantidade × preço líquido (= total do item)     Custo = quantidade × PMC

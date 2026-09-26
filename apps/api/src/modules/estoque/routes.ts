@@ -48,7 +48,7 @@ async function carregar(tx: Tx, materialId: string, depositoId: string): Promise
     .innerJoin(depositos, eq(depositos.id, depositoId))
     .leftJoin(estoques, and(eq(estoques.materialId, materiais.id), eq(estoques.depositoId, depositos.id)))
     .where(eq(materiais.id, materialId));
-  if (!s) throw naoEncontrado('Material ou depósito');
+  if (!s) throw naoEncontrado('Produto ou depósito');
   return s;
 }
 
@@ -99,8 +99,8 @@ async function ajustarSaldo(
 ): Promise<'alterado' | 'sem_alteracao'> {
   const { material, deposito, disponivel, motivo, versao, conferirVersao = false } = dados;
   if (!material.controlaEstoque)
-    throw new ErroHttp(400, 'Este material não controla estoque (veja os controles do cadastro).');
-  if (!material.ativo) throw new ErroHttp(400, 'Material inativo não recebe ajuste de estoque. Reative-o primeiro.');
+    throw new ErroHttp(400, 'Este produto não controla estoque (veja os controles do cadastro).');
+  if (!material.ativo) throw new ErroHttp(400, 'Produto inativo não recebe ajuste de estoque. Reative-o primeiro.');
   if (!deposito.ativo) throw new ErroHttp(400, 'Depósito inativo não recebe ajuste de estoque.');
 
   const chave = and(eq(estoques.materialId, material.id), eq(estoques.depositoId, deposito.id));
@@ -221,7 +221,7 @@ export const estoqueRoutes: FastifyPluginAsyncZod = async (app) => {
             .select({ id: materiais.id })
             .from(materiais)
             .where(eq(materiais.id, req.params.materialId));
-          if (!existe) throw naoEncontrado('Material');
+          if (!existe) throw naoEncontrado('Produto');
         }
         return lista;
       }),
@@ -235,7 +235,7 @@ export const estoqueRoutes: FastifyPluginAsyncZod = async (app) => {
       const { materialId, depositoId } = req.params;
       return withTenant(req.user.tid, async (tx) => {
         const material = await buscarMaterial(tx, eq(materiais.id, materialId));
-        if (!material) throw naoEncontrado('Material');
+        if (!material) throw naoEncontrado('Produto');
         const deposito = await buscarDeposito(tx, eq(depositos.id, depositoId));
         if (!deposito) throw naoEncontrado('Depósito');
         const situacao = await ajustarSaldo(

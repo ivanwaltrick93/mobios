@@ -63,10 +63,10 @@ export const MODULOS = [
   },
   {
     id: 'materiais',
-    nome: 'Materiais',
+    nome: 'Produtos',
     niveis: ['consultar', 'editar'],
     disponivel: true,
-    descricao: 'Editar = cadastrar materiais, categorias, marcas e depósitos.',
+    descricao: 'Editar = cadastrar produtos, categorias, marcas e depósitos.',
   },
   {
     id: 'servicos',
@@ -88,7 +88,7 @@ export const MODULOS = [
     niveis: ['consultar', 'editar'],
     disponivel: true,
     descricao:
-      'Consultar = ver o PMC (preço médio de compra) no cadastro de material e a análise de margem na aprovação ' +
+      'Consultar = ver o PMC (preço médio de compra) no cadastro de produto e a análise de margem na aprovação ' +
       'comercial. Editar = alterar o PMC. Informação interna: não aparece para o vendedor.',
   },
   {

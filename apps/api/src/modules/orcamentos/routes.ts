@@ -840,7 +840,7 @@ export const orcamentosRoutes: FastifyPluginAsyncZod = async (app) => {
           .select({ itens: count() })
           .from(orcamentoItens)
           .where(eq(orcamentoItens.orcamentoId, atual.id))) as [{ itens: number }];
-        if (!itens) throw new ErroHttp(400, 'Inclua ao menos um material ou serviço antes de emitir.');
+        if (!itens) throw new ErroHttp(400, 'Inclua ao menos um produto ou serviço antes de emitir.');
         const [vendedor] = await tx
           .select({ ativo: vendedores.ativo })
           .from(vendedores)

@@ -84,7 +84,7 @@ export const marcasRoutes: FastifyPluginAsyncZod = async (app) => {
         marcas,
         req.params.id,
         'Marca',
-        'Esta marca está em uso por materiais e não pode ser excluída. Inative-a.',
+        'Esta marca está em uso por produtos e não pode ser excluída. Inative-a.',
       ),
     );
     return reply.code(204).send();

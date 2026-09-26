@@ -179,7 +179,7 @@ export const categoriasRoutes: FastifyPluginAsyncZod = async (app) => {
         categorias,
         req.params.id,
         'Categoria',
-        'Esta categoria tem subcategorias ou materiais e não pode ser excluída. Inative-a.',
+        'Esta categoria tem subcategorias ou produtos e não pode ser excluída. Inative-a.',
       ),
     );
     return reply.code(204).send();

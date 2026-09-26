@@ -20,16 +20,16 @@ A oportunidade (Fase 2) e a conversão em O.S. ou pedido de venda ainda não exi
 
 ## 2. Itens
 
-- **Material:** ativo e com "Permite venda". **Serviço:** ativo.
+- **Produto:** ativo e com "Permite venda". **Serviço:** ativo.
 - Só entra item **com preço na tabela no dia** (vigência ou preço padrão). Sem preço, aparece na busca, mas não pode ser incluído.
 - Código, descrição, unidade, múltiplo e preço de tabela ficam guardados no item (snapshot): mudar o cadastro ou a tabela depois não altera o orçamento, exceto pelos recálculos do §3.
 - **Quantidade** arredondada **para cima**:
-  - material: até o **múltiplo de venda** (caixa master); unidade inteira (UN, PC…) é sempre inteira; unidade fracionada (L, KG, M) com múltiplo 1 aceita a fração digitada (até 3 casas);
+  - produto: até o **múltiplo de venda** (caixa master); unidade inteira (UN, PC…) é sempre inteira; unidade fracionada (L, KG, M) com múltiplo 1 aceita a fração digitada (até 3 casas);
   - serviço de **preço fechado**: número inteiro;
   - serviço de **valor-hora**: horas:minutos em múltiplos das horas do serviço (serviço de 1:30 → 1:30, 3:00, 4:30…); o preço da tabela é o da hora.
   - na tela, botões **− e +** ao lado do campo sobem e descem de um múltiplo em um múltiplo (nunca abaixo de um; para tirar, a lixeira); o campo também aceita digitação, arredondada ao sair;
   - incluir um item que **já está** no orçamento soma um múltiplo à linha existente, em vez de criar outra.
-- **Negociação só de material** (serviço não aceita):
+- **Negociação só de produto** (serviço não aceita):
   - por **percentual** (até 2 casas, até 100%): o desconto em centavos é arredondado **para cima** (a favor do cliente). Ex.: 10% de R$ 123,45 = R$ 12,35 → R$ 111,10;
   - ou digitando o **preço**, que só pode ficar **abaixo** do preço de tabela (ou igual);
   - a tela mostra o preço de tabela riscado, o negociado e o percentual: ~~R$ 125,00~~ R$ 112,50 −10%.
@@ -41,8 +41,8 @@ A oportunidade (Fase 2) e a conversão em O.S. ou pedido de venda ainda não exi
 
 - **Troca de tabela** (rascunho com itens): a tela pede confirmação numa janela e salva em seguida. No **orçamento novo, ainda não gravado**, a confirmação tira os itens (que são incluídos de novo com os preços da nova tabela). Todos os itens vão ao **preço cheio da nova tabela** (a negociação é desfeita); itens **sem preço** nela são **removidos**, com aviso.
 - **Rascunho aberto em outro dia** (`precos_em` anterior a hoje): ao abrir, a tela chama `POST /orcamentos/:id/recalcular` com os preços do dia, na mesma tabela:
-  - material que **ficou mais caro**: o preço de tabela passa a ser o novo, mas o cliente **mantém o valor que tinha**, com desconto (~~R$ 110,00~~ R$ 100,00 −9,09%);
-  - material que **ficou mais barato**: fica o preço novo;
+  - produto que **ficou mais caro**: o preço de tabela passa a ser o novo, mas o cliente **mantém o valor que tinha**, com desconto (~~R$ 110,00~~ R$ 100,00 −9,09%);
+  - produto que **ficou mais barato**: fica o preço novo;
   - (nos dois casos vale o menor entre o valor que o cliente tinha e o preço novo);
   - **serviço**: sempre o preço novo, mais caro ou mais barato;
   - item **sem preço** no dia: removido;
@@ -88,7 +88,7 @@ rascunho ─Emitir, desconto acima da alçada→ aguardando aprovação comercia
 - **Card do cliente** (novo orçamento e edição, decisão de 25/09/2026): iniciais, nome com os alertas, tipo, CPF/CNPJ e cidade/UF; resumo com o **último orçamento aprovado** (data e valor), cliente desde e contato. Ações: 👁 **Visualizar cliente** (gaveta lateral, sem sair do orçamento: identificação, contato, endereço principal, veículos e os 5 últimos orçamentos, com link para o cadastro completo só para quem acessa Clientes) e **Alterar**. Dados de `GET /orcamentos/apoio/clientes/:id/contexto`; para o vendedor, orçamentos e último aprovado são só os dele. **Limite de crédito e última compra não existem no MobiOS** (virão com o Financeiro e as vendas); o cliente não tem código.
 - **Jornada do orçamento** (decisões de 25/09/2026): três etapas com um indicador no topo (etapa atual; concluídas com ✓ e clicáveis; cada uma com o seu resumo: o cliente, "2 itens · total"):
   1. **Cliente** — card do cliente, veículo, vendedor, tabela, validade e observações. No orçamento novo, **"Continuar para produtos" cria o rascunho** (POST, com o número ORC) e abre a edição dele (`/orcamentos/:id/editar`); rascunho abandonado fica na lista.
-  2. **Produtos e serviços** — filtro **Todos | Materiais | Serviços** (campo `tipo` do catálogo; parâmetro `tipo` de `/orcamentos/apoio/itens`; só da tela), busca (a partir de 2 letras; preço de tabela e, no material, o **estoque livre** somado dos depósitos) e a tabela de itens, na largura toda. Serviço mostra "— Não negociável". "Revisar orçamento →" exige **ao menos um item** (regra só da tela) e negociação válida.
+  2. **Produtos e serviços** — filtro **Todos | Produtos | Serviços** (campo `tipo` do catálogo; parâmetro `tipo` de `/orcamentos/apoio/itens`; só da tela), busca (a partir de 2 letras; preço de tabela e, no produto, o **estoque livre** somado dos depósitos) e a tabela de itens, na largura toda. Serviço mostra "— Não negociável". "Revisar orçamento →" exige **ao menos um item** (regra só da tela) e negociação válida.
   3. **Revisão** — cliente, itens, condições comerciais e valores. **"Finalizar"** leva ao resumo; o orçamento **continua rascunho** (a emissão, com a avaliação da alçada, é no resumo).
   - **Resumo em faixa** entre as etapas e os itens: cliente, itens, subtotal, descontos, **total**, o aviso de alçada (quantos itens passam dela) e o estado da gravação. Item acima da alçada: contorno laranja e ícone com a dica "passará por aprovação comercial ao emitir".
   - **Gravação automática do rascunho**: cada alteração (cliente, cabeçalho, incluir, quantidade, negociação, remover) é gravada com o `PUT` do rascunho — incluir e remover na hora; digitação após ~0,8 s de pausa —, uma gravação por vez, sempre com a versão lida (409 se outra pessoa gravou antes). Os ids devolvidos passam às linhas (nada é criado duas vezes). Linha com negociação inválida ou sem quantidade espera ser corrigida ("Corrija a negociação para salvar"). Estado: "Salvando…", "Salvo às hh:mm" ou "Não foi possível salvar — Tentar de novo". Com `automatico: true` a API não registra "Alterado" no histórico (seriam dezenas), mas continua registrando **"Descontos alterados"**. Atualizar a página ou voltar ao orçamento recupera tudo; sair com gravação pendente pede confirmação.

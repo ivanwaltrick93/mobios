@@ -86,7 +86,7 @@ export function Estoque() {
       </Titulo>
       <TextoSuave>
         Disponível = tudo o que existe no depósito. Reservado = parte dele separada para O.S. ou pedido. Saldo =
-        disponível − reservado, o que está livre para vender ou usar. Todo material ativo aparece em cada depósito; as
+        disponível − reservado, o que está livre para vender ou usar. Todo produto ativo aparece em cada depósito; as
         quantidades mudam por ajuste, lançamento ou planilha, sempre com motivo.
       </TextoSuave>
 
@@ -129,7 +129,7 @@ export function Estoque() {
       <Tabela>
         <Cabecalho>
           <Th>SKU</Th>
-          <Th>Material</Th>
+          <Th>Produto</Th>
           <Th>Depósito</Th>
           <Th className="text-right">Disponível</Th>
           <Th className="text-right">Reservado</Th>
@@ -201,7 +201,7 @@ export function Estoque() {
                 <Boxes className="size-8" aria-hidden />
                 {busca || depositoId || soComSaldo
                   ? 'Nada encontrado com esses filtros.'
-                  : 'Cadastre materiais (que controlam estoque) e depósitos para ver a tabela.'}
+                  : 'Cadastre produtos (que controlam estoque) e depósitos para ver a tabela.'}
               </span>
             </LinhaVazia>
           )}

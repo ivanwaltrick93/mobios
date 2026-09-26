@@ -102,7 +102,7 @@ export function TabelasPreco() {
 
       {tabelas.data?.length === 0 && !edicao ? (
         <Vazio icone={<Tag />} titulo="Nenhuma tabela de preço cadastrada">
-          Crie ao menos uma (ex.: Varejo) para começar a precificar os materiais.
+          Crie ao menos uma (ex.: Varejo) para começar a precificar os produtos.
         </Vazio>
       ) : (
         <Tabela>
@@ -111,7 +111,7 @@ export function TabelasPreco() {
             <Th>Nome</Th>
             <Th>Descrição</Th>
             <Th>Moeda</Th>
-            <Th className="text-right">Materiais com preço hoje</Th>
+            <Th className="text-right">Produtos com preço hoje</Th>
             <Th>Status</Th>
             {editar && <Th />}
           </Cabecalho>

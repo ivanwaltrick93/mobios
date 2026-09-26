@@ -148,7 +148,7 @@ export function MaterialForm({
         assistente={assistente}
         livre={livre}
         salvando={salvar.isPending}
-        rotuloSalvar={livre ? 'Salvar alterações' : 'Cadastrar material'}
+        rotuloSalvar={livre ? 'Salvar alterações' : 'Cadastrar produto'}
         aoCancelar={aoCancelar}
       />
     </form>
@@ -159,7 +159,7 @@ function EtapaIdentificacao({ form }: { form: Form }) {
   const erros = form.formState.errors;
   return (
     <div className="grid gap-4 md:grid-cols-3">
-      <Campo rotulo="SKU *" dica="Código interno do material, único na oficina" erro={erros.sku}>
+      <Campo rotulo="SKU *" dica="Código interno do produto, único na oficina" erro={erros.sku}>
         <InputMascara autoFocus placeholder="FIL-001" registro={form.register('sku')} mascara={mascaraCodigo} />
       </Campo>
       <div className="md:col-span-2">
@@ -217,7 +217,7 @@ function EtapaClassificacao({ form, material }: { form: Form; material?: Materia
       </Campo>
       <Campo
         rotulo="Categoria *"
-        dica={arvore.length ? undefined : 'Cadastre categorias em Materiais → Categorias'}
+        dica={arvore.length ? undefined : 'Cadastre categorias em Produtos → Categorias'}
         erro={erros.categoriaId}
       >
         <Select disabled={categorias.isPending} {...form.register('categoriaId')}>
@@ -315,7 +315,7 @@ function EtapaControles({ form }: { form: Form }) {
         </Campo>
         <Campo
           rotulo="Leadtime (dias corridos) *"
-          dica={`Tempo de ressuprimento do material. Vazio = ${LEADTIME_PADRAO_DIAS} dias.`}
+          dica={`Tempo de ressuprimento do produto. Vazio = ${LEADTIME_PADRAO_DIAS} dias.`}
           erro={erros.leadtimeDias}
         >
           <Input inputMode="numeric" {...form.register('leadtimeDias')} />

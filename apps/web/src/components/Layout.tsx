@@ -67,7 +67,7 @@ const menu: ItemMenu[] = [
     rotulo: 'Ofertas',
     icone: Package,
     filhos: [
-      { para: '/materiais', rotulo: 'Materiais', modulo: 'materiais' },
+      { para: '/materiais', rotulo: 'Produtos', modulo: 'materiais' },
       { para: '/servicos', rotulo: 'Serviços', modulo: 'servicos' },
       { para: '/materiais/categorias', rotulo: 'Categorias', modulo: 'materiais' },
       { para: '/materiais/marcas', rotulo: 'Marcas', modulo: 'materiais' },

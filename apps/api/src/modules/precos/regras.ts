@@ -102,7 +102,7 @@ export async function resolverItem(
     .from(materiais)
     .where(materialId ? eq(materiais.id, materialId) : eq(materiais.sku, sku ?? ''));
   if (material) return { tipo: 'material', ...material };
-  if (materialId) throw naoEncontrado('Material');
+  if (materialId) throw naoEncontrado('Produto');
   throw new ErroHttp(400, `SKU ${sku} não encontrado.`, { sku: 'SKU não encontrado' });
 }
 
@@ -111,7 +111,7 @@ async function exigirAtivos(tx: Tx, item: ItemPreco, tabelaPrecoId: string) {
   if (!item.ativo)
     throw new ErroHttp(
       400,
-      `${item.tipo === 'material' ? 'Material inativo' : 'Serviço inativo'} não recebe preço novo. Reative-o primeiro.`,
+      `${item.tipo === 'material' ? 'Produto inativo' : 'Serviço inativo'} não recebe preço novo. Reative-o primeiro.`,
     );
   const [tabela] = await tx
     .select({ ativa: tabelasPreco.ativa })

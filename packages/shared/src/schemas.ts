@@ -195,10 +195,10 @@ export const LISTAS_OPCOES = {
     uso: 'cliente(s)',
   },
   tiposMaterial: {
-    titulo: 'Tipo de material',
+    titulo: 'Tipo de produto',
     descricao: 'Classificação de peças, pneus, lubrificantes, insumos...',
     modulo: 'materiais',
-    uso: 'material(is)',
+    uso: 'produto(s)',
   },
   tiposDeposito: {
     titulo: 'Tipo de depósito',

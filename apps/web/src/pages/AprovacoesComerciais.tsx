@@ -120,9 +120,6 @@ export function AprovacoesComerciais() {
             <Th className="text-right">Versão</Th>
             <Th className="text-right">Valor original</Th>
             <Th className="text-right">Desconto</Th>
-            <Th className="text-right" title="Maior desconto entre os itens (a alçada é por item)">
-              Maior % por item
-            </Th>
             <Th className="text-right">Alçada</Th>
             <Th>Data</Th>
             <Th>Situação</Th>
@@ -145,9 +142,6 @@ export function AprovacoesComerciais() {
                 </Td>
                 <Td className="whitespace-nowrap text-right tabular-nums">{formatarMoeda(a.subtotalCentavos)}</Td>
                 <Td className="whitespace-nowrap text-right tabular-nums">{formatarMoeda(a.descontoCentavos)}</Td>
-                <Td className="whitespace-nowrap text-right font-semibold tabular-nums">
-                  {formatarPercentual(a.percentual)}
-                </Td>
                 <Td suave className="whitespace-nowrap text-right tabular-nums">
                   {formatarPercentual(a.alcadaSolicitante)}
                 </Td>

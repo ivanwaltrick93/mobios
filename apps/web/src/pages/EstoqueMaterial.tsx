@@ -19,7 +19,7 @@ export function EstoqueMaterial({ material }: { material: Material }) {
   });
 
   if (!material.controlaEstoque)
-    return <Alerta>Este material não controla estoque (veja a etapa Controles do cadastro).</Alerta>;
+    return <Alerta>Este produto não controla estoque (veja a etapa Controles do cadastro).</Alerta>;
   if (saldos.isPending) return <TextoSuave>Carregando…</TextoSuave>;
   if (saldos.isError) return <Alerta>{saldos.error.message}</Alerta>;
   if (saldos.data.length === 0) {
@@ -60,7 +60,7 @@ export function EstoqueMaterial({ material }: { material: Material }) {
         ))}
       </div>
 
-      {!material.ativo && <Alerta>Material inativo: os saldos continuam visíveis, mas não recebem ajuste.</Alerta>}
+      {!material.ativo && <Alerta>Produto inativo: os saldos continuam visíveis, mas não recebem ajuste.</Alerta>}
       <Cartao className="divide-y divide-borda p-0">
         {saldos.data.map((s) => (
           <div key={s.depositoId} className="space-y-3 px-4 py-3">

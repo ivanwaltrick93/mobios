@@ -385,7 +385,7 @@ const vigenciaValida = <T extends { dataInicio: string; dataFim: string | null }
  * Exatamente um dos dois.
  */
 const itemDoPreco = {
-  materialId: z.uuid('Informe o material').optional(),
+  materialId: z.uuid('Informe o produto').optional(),
   sku: z.string().trim().toUpperCase().max(40, 'Máximo de 40 caracteres').optional(),
   servicoId: z.uuid('Informe o serviço').optional(),
   /** Código do serviço ("000012" ou 12). */
@@ -398,9 +398,9 @@ const itemDoPreco = {
 type ItemInformado = { materialId?: string; sku?: string; servicoId?: string; servicoCodigo?: number };
 const umItem = (v: ItemInformado) =>
   Number(!!(v.materialId || v.sku)) + Number(!!(v.servicoId || v.servicoCodigo)) === 1;
-const erroItem = { message: 'Informe o SKU do material ou o código do serviço (só um dos dois)', path: ['sku'] };
+const erroItem = { message: 'Informe o SKU do produto ou o código do serviço (só um dos dois)', path: ['sku'] };
 
-export const TIPOS_ITEM_PRECO = { material: 'Material', servico: 'Serviço' } as const;
+export const TIPOS_ITEM_PRECO = { material: 'Produto', servico: 'Serviço' } as const;
 export type TipoItemPreco = keyof typeof TIPOS_ITEM_PRECO;
 
 /** Consultas de preço de um item: `materialId` ou `servicoId` (só um). */

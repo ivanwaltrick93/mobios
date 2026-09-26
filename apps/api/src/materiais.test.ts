@@ -151,12 +151,12 @@ describe('materiais', () => {
 
     const base = { descricao: 'Outro', tipoId: material.tipoId, categoriaId: filtros.id, unidade: 'UN' };
     expect((await o.chamar('POST', '/api/materiais', { ...base, sku: 'Fil-001' })).json().erro).toBe(
-      'Já existe um material com este SKU',
+      'Já existe um produto com este SKU',
     );
     expect(
       (await o.chamar('POST', '/api/materiais', { ...base, sku: 'FIL-002', codigoBarras: '7891000315507' })).json()
         .erro,
-    ).toBe('Já existe um material com este código de barras');
+    ).toBe('Já existe um produto com este código de barras');
     expect(
       (await o.chamar('POST', '/api/materiais', { ...base, sku: 'FIL-002', codigoBarras: '7891000315508' })).json()
         .campos.codigoBarras,
@@ -920,7 +920,7 @@ describe('importação de categorias e materiais por planilha', () => {
     ).json();
     expect(resultado).toMatchObject({ linhas: 7, importadas: 2 });
     expect(resultado.erros).toEqual([
-      { linha: 4, mensagem: 'tipo: "Serviço inexistente" não está na lista de tipos de material.' },
+      { linha: 4, mensagem: 'tipo: "Serviço inexistente" não está na lista de tipos de produto.' },
       {
         linha: 5,
         mensagem:
@@ -1217,13 +1217,17 @@ describe('serviços (menu Ofertas)', () => {
           'VAREJO;;;FIL-001;45,00',
           'VAREJO;servico;123;;10,00',
           'VAREJO;peça;X;;10,00',
+          // Na planilha o tipo do produto é "produto" (o antigo "material" não vale mais).
+          'VAREJO;produto;FIL-001;;45,00',
+          'VAREJO;material;FIL-001;;45,00',
         ].join('\n'),
       )
     ).json();
-    expect(precos).toMatchObject({ linhas: 4, importadas: 2 });
+    expect(precos).toMatchObject({ linhas: 6, importadas: 2 });
     expect(precos.erros).toEqual([
       { linha: 4, mensagem: 'Serviço "123" não encontrado.' },
-      { linha: 5, mensagem: 'tipo: use "material" ou "servico" (recebido "peça").' },
+      { linha: 5, mensagem: 'tipo: use "produto" ou "servico" (recebido "peça").' },
+      { linha: 7, mensagem: 'tipo: use "produto" ou "servico" (recebido "material").' },
     ]);
     const linhas = (await o.chamar('GET', `/api/precos/linhas?tabelaPrecoId=${tabela.id}`)).json().itens as {
       codigo: string;

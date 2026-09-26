@@ -39,7 +39,7 @@ export function Marcas() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['marcas'] }),
   });
 
-  if (!pode('materiais')) return <Alerta>Você não tem permissão para acessar os materiais.</Alerta>;
+  if (!pode('materiais')) return <Alerta>Você não tem permissão para acessar os produtos.</Alerta>;
 
   return (
     <div className="space-y-6">
@@ -51,14 +51,14 @@ export function Marcas() {
       <Alerta>{acao.isError && acao.error.message}</Alerta>
       {marcas.data?.length === 0 && !edicao ? (
         <Vazio icone={<Tags />} titulo="Nenhuma marca cadastrada">
-          A marca é opcional no material, mas ajuda a filtrar e comparar peças.
+          A marca é opcional no produto, mas ajuda a filtrar e comparar peças.
         </Vazio>
       ) : (
         <Tabela>
           <Cabecalho>
             <Th>Nome</Th>
             <Th>Código</Th>
-            <Th className="text-right">Materiais</Th>
+            <Th className="text-right">Produtos</Th>
             <Th>Status</Th>
             <Th />
           </Cabecalho>
@@ -118,7 +118,7 @@ export function Marcas() {
                             { rotulo: 'Nome', valor: m.nome },
                             { rotulo: 'Código', valor: m.codigo ?? '—' },
                             { rotulo: 'Descrição', valor: m.descricao ?? '—' },
-                            { rotulo: 'Materiais desta marca', valor: m.materiais },
+                            { rotulo: 'Produtos desta marca', valor: m.materiais },
                             { rotulo: 'Status', valor: m.ativa ? 'Ativa' : 'Inativa' },
                           ]}
                         />

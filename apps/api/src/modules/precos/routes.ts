@@ -125,7 +125,7 @@ export const precosRoutes: FastifyPluginAsyncZod = async (app) => {
           .select({ id: materiais.id, sku: materiais.sku, descricao: materiais.descricao, ativo: materiais.ativo })
           .from(materiais)
           .where(materialId ? eq(materiais.id, materialId) : eq(materiais.sku, sku!));
-        if (!material) throw naoEncontrado('Material');
+        if (!material) throw naoEncontrado('Produto');
         const [tab] = await tx
           .select({
             id: tabelasPreco.id,
@@ -561,10 +561,11 @@ export const precosRoutes: FastifyPluginAsyncZod = async (app) => {
             );
           }
           const tipo = comparavel(valor('tipo'));
-          if (tipo && tipo !== 'material' && tipo !== 'servico')
-            throw new ErroHttp(400, `tipo: use "material" ou "servico" (recebido "${valor('tipo')}").`);
+          // Na planilha o tipo é "produto" ou "servico" (vazio = produto); no sistema, o produto é o material.
+          if (tipo && tipo !== 'produto' && tipo !== 'servico')
+            throw new ErroHttp(400, `tipo: use "produto" ou "servico" (recebido "${valor('tipo')}").`);
           const codigo = codigoDa(valores);
-          if (!codigo) throw new ErroHttp(400, 'codigo: informe o SKU do material ou o código do serviço.');
+          if (!codigo) throw new ErroHttp(400, 'codigo: informe o SKU do produto ou o código do serviço.');
           const item = tipo === 'servico' ? porCodigoServico.get(Number(codigo)) : porSku.get(codigo);
           if (!item)
             throw new ErroHttp(
