@@ -48,9 +48,9 @@ import { usePerfilOrcamento, useSessao } from '../lib/sessao';
 
 const dataHora = (d: Date | string) => new Date(d).toLocaleString('pt-BR');
 
-type Acao = 'emitir' | 'enviar' | 'aprovar' | 'recusar' | 'cancelar' | 'nova-versao' | 'retirar-aprovacao';
+type Acao = 'emitir' | 'enviar' | 'aprovar' | 'recusar' | 'nova-versao' | 'retirar-aprovacao';
 
-/** Ações que pedem confirmação numa janela (recusa e cancelamento aceitam um motivo, opcional). */
+/** Ações que pedem confirmação numa janela (a recusa aceita um motivo, opcional). */
 const CONFIRMACOES: Record<Acao, { titulo: string; texto: string; botao: string; motivo?: boolean }> = {
   emitir: {
     titulo: 'Emitir orçamento',
@@ -64,12 +64,6 @@ const CONFIRMACOES: Record<Acao, { titulo: string; texto: string; botao: string;
     botao: 'Aprovar',
   },
   recusar: { titulo: 'Recusar orçamento', texto: 'Registra que o cliente recusou.', botao: 'Recusar', motivo: true },
-  cancelar: {
-    titulo: 'Cancelar orçamento',
-    texto: 'O orçamento deixa de valer.',
-    botao: 'Cancelar orçamento',
-    motivo: true,
-  },
   'retirar-aprovacao': {
     titulo: 'Retirar pedido de aprovação',
     texto:
@@ -184,9 +178,6 @@ export function OrcamentoDetalhe() {
             variante: 'secundario' as const,
           },
         ]
-      : []),
-    ...(editar && (o.situacao === 'rascunho' || aberto || aguardando || reprovado)
-      ? [{ tipo: 'cancelar' as const, rotulo: 'Cancelar', icone: null, variante: 'secundario' as const }]
       : []),
   ];
   const confirmacao = confirmando && CONFIRMACOES[confirmando];
@@ -368,7 +359,7 @@ export function OrcamentoDetalhe() {
             <div className="flex gap-2">
               <Botao
                 variante={
-                  confirmando === 'cancelar' || confirmando === 'recusar'
+                  confirmando === 'recusar'
                     ? 'perigo'
                     : confirmando === 'emitir' || confirmando === 'aprovar'
                       ? 'sucesso'

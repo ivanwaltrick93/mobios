@@ -391,18 +391,19 @@ function CampoNegociacao({ l, aoMudar }: PropsLinha) {
     );
   const negociacao = precoDaLinha(l);
   const mudar = (mudanca: Partial<LinhaTela>) => aoMudar(l.chave, (x) => ({ ...x, ...mudanca }));
+  // Grade de duas colunas: o seletor (% ou R$) com a largura fixa da primeira, o campo com o resto. Os dois são
+  // w-full (classe base do kit), e cada um preenche a sua célula: mesma posição em todas as linhas.
   return (
-    <div className="flex items-start gap-1.5">
+    <div className="grid grid-cols-[4.5rem_minmax(0,1fr)] items-start gap-1.5">
       <Select
         aria-label={`Forma de negociação de ${l.descricao}`}
-        className="w-20 shrink-0"
         value={l.modo}
         onChange={(e) => mudar({ modo: e.target.value as LinhaTela['modo'], percentual: '', preco: '' })}
       >
         <option value="percentual">%</option>
         <option value="preco">R$</option>
       </Select>
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0">
         {l.modo === 'percentual' ? (
           <Input
             aria-label={`Desconto em % de ${l.descricao}`}
