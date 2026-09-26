@@ -5,7 +5,8 @@
 Gestão de Ordens de Serviço para oficinas mecânicas. Web, multi-tenant (SaaS) e open core.
 
 - Mapa de entregáveis (escopo e prioridades): [docs/ENTREGAVEIS.md](docs/ENTREGAVEIS.md)
-- Arquitetura e decisões: [docs/ARQUITETURA.md](docs/ARQUITETURA.md)
+- Arquitetura e decisões: [docs/ARQUITETURA.md](docs/ARQUITETURA.md) e [docs/decisoes/](docs/decisoes/)
+- Banco, performance e benchmark: [docs/performance/DATABASE.md](docs/performance/DATABASE.md)
 - Style guide: [docs/STYLE_GUIDE.md](docs/STYLE_GUIDE.md)
 - Como contribuir (padrões de código, passo a passo de módulo, migração e tela): [CONTRIBUTING.md](CONTRIBUTING.md)
 - Licença: núcleo AGPL-3.0-or-later ([LICENSE](LICENSE)); `ee/` sob licença comercial
@@ -22,7 +23,7 @@ Gestão de Ordens de Serviço para oficinas mecânicas. Web, multi-tenant (SaaS)
 
 ```bash
 cp .env.example .env              # troque JWT_SECRET, ADMIN_EMAIL e ADMIN_SENHA
-docker compose up -d --build      # db → migrate → api → web
+docker compose up -d --build      # db, redis → migrate → api → web
 ```
 
 Acesse http://localhost:8080 e entre com `ADMIN_EMAIL` / `ADMIN_SENHA`. O admin inicial é criado só na primeira subida (banco sem usuários); os demais usuários são cadastrados por ele, em **Usuários**.
@@ -32,6 +33,7 @@ Serviços:
 | Serviço | O que é |
 |---|---|
 | `db` | PostgreSQL 17 (dados no volume `mobios_db-data`; porta 5432 só em 127.0.0.1) |
+| `redis` | Cache de leitura (Redis 8, sem persistência; porta 6379 só em 127.0.0.1). Opcional: sem ele, a API lê tudo do banco ([decisão](docs/decisoes/0001-redis-cache-de-leitura.md)) |
 | `migrate` | Aplica as migrações, cria o admin inicial se preciso e encerra; a API só sobe se ele terminar com sucesso |
 | `api` | API Fastify (porta 3333, só na rede interna do Docker) |
 | `web` | Caddy servindo o front e repassando `/api/*` para a API |
@@ -41,7 +43,7 @@ Comandos úteis: `docker compose logs -f api`, `docker compose down` (mantém os
 ## Desenvolvimento (hot reload)
 
 ```bash
-docker compose up -d db           # só o banco
+docker compose up -d db redis     # banco e cache
 pnpm install
 pnpm db:migrate
 pnpm dev                          # api em :3333, web em http://localhost:5173
@@ -52,7 +54,7 @@ pnpm dev                          # api em :3333, web em http://localhost:5173
 | Comando | O que faz |
 |---|---|
 | `pnpm dev` | API e web com hot reload |
-| `pnpm test` | Testes (a API precisa do Postgres rodando e migrado) |
+| `pnpm test` | Testes (a API precisa do Postgres rodando e migrado, e do Redis para os testes de cache) |
 | `pnpm typecheck` | Checagem de tipos em todos os pacotes |
 | `pnpm lint` | ESLint em todo o projeto |
 | `pnpm format` / `pnpm format:check` | Formata com Prettier / só confere |

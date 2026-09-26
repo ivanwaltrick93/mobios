@@ -67,6 +67,7 @@ Nunca edite uma migração que já foi aplicada ou commitada: crie outra.
 4. Todo acesso ao banco dentro de `withTenant(req.user.tid, (tx) => ...)`.
 5. Testes de integração em `apps/api/src/*.test.ts` usando `app.inject`.
 6. Lista, busca ou painel: siga as regras de `docs/performance/DATABASE.md` §2 (busca por trecho pelas funções `busca_*`, nunca `ILIKE` direto) e confira o plano com `sh infra/bench/explicar.sh` e o tempo com `pnpm --filter @mobios/api bench` (banco de benchmark: `sh infra/bench/preparar.sh`).
+7. Leitura nova: decida se usa o cache pelo checklist de `docs/decisoes/0001-redis-cache-de-leitura.md` (quase sempre não; se sim, pela `obterOuCarregar` de `lib/cache.ts`).
 
 ### 4.3 Novo módulo de permissão
 

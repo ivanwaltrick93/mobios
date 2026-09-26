@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { Redis } from 'ioredis';
 import { afterAll, beforeAll, expect } from 'vitest';
 import { criarApp } from '../app.js';
 import { db, sqlClient } from '../db/client.js';
@@ -17,7 +18,22 @@ beforeAll(async () => {
 afterAll(async () => {
   await app.close();
   await sqlClient.end();
+  redisDosTestes?.disconnect();
 });
+
+let redisDosTestes: Redis | undefined;
+/**
+ * Esquece o Painel guardado no cache (Redis dos testes) da oficina da sessão: para conferir o cálculo depois de
+ * mudar os dados, sem esperar o prazo do cache.
+ */
+export async function esquecerPainel(
+  chamar: (method: 'GET', url: string) => Promise<{ json: () => { oficina: { id: string } } }>,
+) {
+  const tenant = (await chamar('GET', '/api/auth/sessao')).json().oficina.id;
+  redisDosTestes ??= new Redis(process.env.REDIS_URL!, { maxRetriesPerRequest: 1 });
+  const chaves = await redisDosTestes.keys(`mobios:test:t:${tenant}:painel:*`);
+  if (chaves.length) await redisDosTestes.del(...chaves);
+}
 
 export const SENHA = 'senha-segura-123';
 export const emailAleatorio = () => `${randomUUID()}@teste.dev`;

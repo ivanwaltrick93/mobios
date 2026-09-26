@@ -3,12 +3,18 @@ import { hojeIso, somarDias, TEMA_VAZIO } from '@mobios/shared';
 import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { withTenant } from './db/client.js';
-import { app, cliente, emailAleatorio, entrar, novaOficina, SENHA, veiculo } from './testes/apoio.js';
+import { app, cliente, emailAleatorio, entrar, esquecerPainel, novaOficina, SENHA, veiculo } from './testes/apoio.js';
 
 // Oficina: aparência, marca pública, logo, painel, fotos da equipe e relatórios; e a saúde da API.
 
 describe('saúde da API', () => {
-  it('responde pronta, sem login, quando o banco responde', async () => {
+  it('vida: responde sem login e sem depender do banco', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/vivo' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ ok: true });
+  });
+
+  it('prontidão: responde pronta, sem login, quando o banco responde', async () => {
     const res = await app.inject({ method: 'GET', url: '/api/saude' });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ ok: true });
@@ -176,6 +182,7 @@ describe('painel', () => {
     await a.chamar('POST', '/api/clientes', cliente({ nome: 'Sem Veículo' }));
     await a.chamar('POST', '/api/veiculos', veiculo(c.id));
 
+    await esquecerPainel(a.chamar);
     const painel = (await a.chamar('GET', '/api/painel')).json();
     const porId = Object.fromEntries(painel.indicadores.map((i: { id: string }) => [i.id, i]));
     expect(porId.clientes).toMatchObject({ valor: 2, detalhe: '2 novo(s) no período' });
@@ -198,6 +205,7 @@ describe('painel', () => {
     // Cadastro antigo sem WhatsApp: conta como incompleto.
     const tenant = (await a.chamar('GET', '/api/auth/sessao')).json().oficina.id;
     await withTenant(tenant, (tx) => tx.execute(sql`update clientes set whatsapp = null where id = ${c.id}`));
+    await esquecerPainel(a.chamar);
     const depois = (await a.chamar('GET', '/api/painel')).json();
     expect(depois.aniversariantes.map((x: { nome: string; dias: number }) => [x.nome, x.dias])).toEqual([
       ['Faz Anos Hoje', 0],

@@ -108,8 +108,9 @@ migração com `CREATE INDEX IF NOT EXISTS`.
 ## 6. Painel, relatórios e estoque
 
 - **Painel:** 12 a 14 comandos, todos agregações da oficina (clientes, veículos, orçamentos do período, alertas).
-  Na oficina grande: 385 ms (vendedor: 285 ms). Sem materialized view: os números precisam ser atuais, e o custo
-  cabe na meta (§9). Reavaliar (contadores mantidos por trigger ou visão com atraso) se passar de 1 s (p95).
+  Na oficina grande: 385 ms (vendedor: 285 ms) calculado; **em cache no Redis por até 60 s** (3 ms no acerto,
+  [ADR 0001](../decisoes/0001-redis-cache-de-leitura.md)). Sem materialized view. Reavaliar o cálculo se passar de
+  1 s (p95) sem cache.
 - **Relatórios:** prévia de 50 linhas; CSV de até 50 000 linhas montado em memória, na mesma transação. O
   `statement_timeout` de 30 s protege o pool. Relatório mais pesado: gerar num worker (job assíncrono) e baixar
   depois.
@@ -138,7 +139,10 @@ Medido (`bench:carga`, 20 usuários da oficina grande sem pausa, 1 instância): 
 sozinha) para 249 ms com pool de 10; 82 ms com 20; 368 ms com 5. A vazão total não muda (~50 req/s): o limite é o
 banco, e as requisições esperam conexão livre. Sem erros depois do ajuste de `shm_size` (§10).
 
-Mitigações, na ordem: (1) consultas baratas (esta fase); (2) pool dimensionado para o banco de produção (medir
+Com o Painel em cache no Redis (pool de 10): vazão 48 → 158 req/s, p95 da oficina grande 1 112 → 319 ms e mediana da
+oficina pequena durante a carga 262 → 80 ms ([RESULTADOS.md](RESULTADOS.md#cache-do-painel-redis)).
+
+Mitigações, na ordem: (1) consultas baratas e o Painel em cache (feito); (2) pool dimensionado para o banco de produção (medir
 com `bench:carga` no servidor real); (3) mais instâncias + PgBouncer; (4) limite de requisições simultâneas por
 oficina, com estado compartilhado (Redis ou `pg_try_advisory_lock`), se uma oficina ainda degradar as outras.
 
@@ -155,6 +159,9 @@ oficina, com estado compartilhado (Redis ou `pg_try_advisory_lock`), se uma ofic
 
 - **Tabelas e índices:** tamanho (`pg_total_relation_size`), linhas mortas e último autovacuum
   (`pg_stat_user_tables`), índices nunca usados (`pg_stat_user_indexes where idx_scan = 0`).
+- **Cache (Redis):** taxa de acerto por `redis-cli info stats` (`keyspace_hits`/`keyspace_misses`), memória e
+  descartes (`used_memory_human`, `evicted_keys`); na API, `cache: acerto | falta | gravado` (debug) e `cache: erro`
+  (warn). Ver o ADR 0001, §Operação.
 - **API:** o log do Fastify registra cada requisição com `responseTime` (JSON no stdout). Métricas p50/p95/p99,
   4xx/5xx e conexões do pool por instância ficam para quando houver coletor (Prometheus/OpenTelemetry, fase 4).
 - **Negócio:** orçamentos e aprovações por minuto saem de `orcamentos_eventos`/`aprovacoes_comerciais_eventos`.
@@ -191,12 +198,12 @@ mais crescem: `orcamento_itens`, `orcamentos_eventos`, `orcamentos`, `precos_eve
 | Recurso | Quando adotar |
 |---|---|
 | Particionamento `RANGE (criado_em)` (tabelas de eventos e movimentos) | Dezenas de milhões de linhas, consultas predominantemente por período e vacuum/índices problemáticos. Nunca uma partição por oficina. |
-| Redis | Limite de concorrência/requisições por oficina com várias instâncias, cache de dados de referência medido como gargalo. O Postgres continua a fonte da verdade. |
+| Redis | **Adotado como cache de leitura** (Painel), [ADR 0001](../decisoes/0001-redis-cache-de-leitura.md). Próximo uso: limite de requisições por oficina com várias instâncias. Cadastros auxiliares não entram (menos de 1 ms de banco). O Postgres continua a fonte da verdade. |
 | Réplica de leitura | Leitura dominante e primário saturado; relatórios e Painel primeiro (aceitam atraso), com estratégia para o atraso de replicação. |
 | PgBouncer | Instâncias × pool maior que a capacidade segura do Postgres (§7). |
 | UUID v7 | Não migrar: o Postgres 17 não gera v7 nativo, a troca afeta FKs compostas e não há gargalo de inserção medido. Reavaliar com o Postgres 18 (`uuidv7()`) para tabelas novas de eventos. |
 | Armazenamento de objetos (S3) | Arquivos grandes/numerosos (fotos do checklist, PDFs), ver ARQUITETURA §9.1. |
-| Rate limit das demais rotas | Pendente: exige estado compartilhado (Redis ou uma gravação no Postgres por requisição). Proteção atual: `statement_timeout`, pool por instância e limite de login. |
+| Rate limit das demais rotas | Pendente (próxima fase): o Redis do cache já está disponível para o estado compartilhado. Proteção atual: `statement_timeout`, pool por instância e limite de login. |
 
 ## 12. Backup e restauração
 

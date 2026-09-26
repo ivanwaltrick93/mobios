@@ -1,6 +1,15 @@
-# Para HTTPS em produção, troque ":80" pelo domínio (ex.: app.mobios.com.br):
-# o Caddy emite e renova o certificado Let's Encrypt automaticamente.
-:80 {
+# O Caddy roda sem root, em portas sem privilégio (Kubernetes-ready, docs/ARQUITETURA.md §9): 8080 (HTTP) e
+# 8443 (HTTPS). O docker compose publica a porta do servidor nelas.
+#
+# Para HTTPS em produção, troque ":8080" pelo domínio (ex.: app.mobios.com.br) e publique no compose
+# "80:8080" e "443:8443": o Caddy emite e renova o certificado Let's Encrypt automaticamente (o desafio chega pela
+# porta 80 do servidor, repassada à 8080).
+{
+	http_port 8080
+	https_port 8443
+}
+
+:8080 {
 	encode zstd gzip
 
 	handle /api/* {

@@ -4,6 +4,7 @@ import { serializerCompiler, validatorCompiler, type ZodTypeProvider } from 'fas
 import { sqlClient } from './db/client.js';
 import { env } from './env.js';
 import { authPlugin } from './lib/auth.js';
+import { registrarCache } from './lib/cache.js';
 import { ErroHttp, registrarTratamentoDeErros } from './lib/erros.js';
 import { authRoutes } from './modules/auth/routes.js';
 import { categoriasRoutes } from './modules/categorias/routes.js';
@@ -41,6 +42,11 @@ export async function criarApp() {
 
   await app.register(helmet);
   await app.register(authPlugin);
+  registrarCache(app);
+
+  // Vida (liveness): o processo responde. Não consulta o banco nem o Redis: numa queda do banco, o Kubernetes não deve
+  // reiniciar as réplicas (elas voltam sozinhas); só tirá-las de rotação pela prontidão, abaixo (ARQUITETURA §9).
+  app.get('/api/vivo', async () => ({ ok: true }));
 
   // Prontidão: a instância só está pronta com o banco respondendo (o healthcheck do Docker e um balanceador de carga
   // tiram de rotação a instância sem banco). Sem autenticação e sem tenant: só "select 1".

@@ -108,5 +108,7 @@ export const painelSchema = z.object({
   aniversariantes: z.array(aniversarianteSchema),
   /** Módulos ainda não implementados: exibidos como "em breve". */
   modulosPendentes: z.array(z.string()),
+  /** Quando os números foram calculados (o Painel pode vir do cache, com até 1 minuto de atraso). */
+  atualizadoEm: z.iso.datetime(),
 });
 export type Painel = z.infer<typeof painelSchema>;

@@ -34,8 +34,8 @@ jobs:
       - name: Preparar .env de teste
         run: cp .env.example .env
 
-      - name: Subir o PostgreSQL (cria mobios_app e mobios_test via infra/db/init.sh)
-        run: docker compose up -d --wait db
+      - name: Subir o PostgreSQL (cria mobios_app e mobios_test via infra/db/init.sh) e o Redis (cache)
+        run: docker compose up -d --wait db redis
 
       - run: pnpm format:check
       - run: pnpm lint

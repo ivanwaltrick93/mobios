@@ -70,6 +70,31 @@ pequena, 30 s, 1 instância):
   e aumenta a cauda da grande. Decisão: pool padrão 10, ajustável (`DB_POOL_MAX`), e medir no servidor real
   ([DATABASE.md §7](DATABASE.md)).
 
+## Cache do Painel (Redis)
+
+Depois da Fase 8, o Painel ainda era a leitura mais cara (~400 ms, 12 a 14 comandos) e a página mais aberta. Ele passou
+a ficar em cache por até 60 s ([ADR 0001](../decisoes/0001-redis-cache-de-leitura.md)). Mesmo banco e máquina; "com
+cache" é o acerto (o aquecimento do benchmark já guarda o Painel).
+
+| Cenário | Sem cache (p50 / p95) | Com cache (p50 / p95) | Comandos SQL |
+|---|---:|---:|---:|
+| Painel (mês), admin | 397 / 409 ms | 3,1 / 3,3 ms | 14 → 3 |
+| Painel do vendedor | 285 / 400 ms | 3,7 / 4,1 ms | 12 → 3 |
+
+Os 3 comandos restantes são os da autenticação, que nunca usa cache.
+
+Carga concorrente (`bench:carga`, 20 usuários da oficina grande + 1 da pequena, 20 s, pool 10):
+
+| | Sem cache | Com cache |
+|---|---:|---:|
+| Vazão da oficina grande | 47,9 req/s | 158 req/s |
+| Oficina grande, p50 / p95 | 302 / 1 112 ms | 104 / 319 ms |
+| Oficina pequena durante a carga, p50 / p95 | 262 / 491 ms | 80 / 143 ms |
+| Erros | 0 | 0 |
+
+Na mistura do teste, 1 em cada 9 telas da oficina grande é o Painel: tirá-lo do banco libera conexões para todo o resto,
+inclusive para as outras oficinas.
+
 ## Limitações
 
 - Dados sintéticos (nomes e datas uniformes); a oficina real pode ter outra distribuição de buscas.

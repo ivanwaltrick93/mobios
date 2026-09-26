@@ -19,6 +19,10 @@ const envSchema = z.object({
   DB_STATEMENT_TIMEOUT_MS: z.coerce.number().int().min(0).default(30_000),
   // Transação parada sem enviar comandos por mais que isso é encerrada (conexão presa por erro de código).
   DB_IDLE_TX_TIMEOUT_MS: z.coerce.number().int().min(0).default(60_000),
+  // Cache de leitura (docs/decisoes/0001-redis-cache-de-leitura.md). Vazio = desligado: tudo direto do Postgres.
+  REDIS_URL: z.preprocess((v) => v || undefined, z.url().optional()),
+  // Prazo do Painel no cache, em segundos (0 = sem cache para o Painel).
+  CACHE_TTL_PAINEL_S: z.coerce.number().int().min(0).max(3600).default(60),
 });
 
 const lido = envSchema.parse(process.env);

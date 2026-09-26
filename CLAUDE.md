@@ -29,12 +29,20 @@ Tenant = oficina: a unidade de isolamento dos dados.
 - A API conecta como `mobios_app` (sem superuser/BYPASSRLS); migrações rodam como `mobios`.
 - O teste "toda tabela com tenant_id tem RLS ativo" (`apps/api/src/rls.test.ts`) deve passar; tabela nova entra na lista dele.
 
-## Escalabilidade horizontal (não negociável — `docs/ARQUITETURA.md` §9)
+## Escalabilidade horizontal e Kubernetes-ready (não negociável — `docs/ARQUITETURA.md` §9)
+Todo desenvolvimento é Kubernetes-ready: roda com N réplicas, pode ser encerrado ou movido a qualquer momento e é configurado só pelo ambiente. Confira a tabela de requisitos do §9 em toda mudança de infraestrutura, imagem, processo ou dependência.
 - API sem estado, pronta para N réplicas. Nenhum estado compartilhado em memória (cache, contador, rate limit, trava): use Postgres ou Redis.
 - Nenhum arquivo no disco do container: tudo no Postgres (arquivo pequeno em `bytea`, até 1 MB, tipo validado pelos bytes; grandes: §9.1).
 - Nenhum dado de negócio fixo no front ou em `localStorage`; `localStorage` só para conveniência do usuário, em `try/catch`, com a tela funcionando sem ele.
 - Sequências de negócio (número da O.S.) no banco, via tabela `contadores`, dentro da transação.
 - Sem `setInterval`/cron na API: worker separado ou `pg_try_advisory_lock`.
+
+## Cache de leitura (Redis) — `docs/decisoes/0001-redis-cache-de-leitura.md`
+- PostgreSQL é a fonte da verdade; o Redis só acelera leituras que toleram atraso e pode faltar sem quebrar nada.
+- Toda leitura nova **avalia** o cache pelo checklist do ADR (custo medido, atraso tolerado, invalidação, perfil na chave, tenant da sessão, dado sensível). Cachear é exceção justificada por medição; a regra é decidir, não usar.
+- Nunca do cache: sessão, permissões, alçada, aprovação, estoque, saldo, preço do dia, PMC, margem, orçamento em edição, nada que decida uma gravação.
+- Só por `obterOuCarregar` (`apps/api/src/lib/cache.ts`), depois da autenticação e da checagem de acesso e fora do `withTenant`; prazo em `PRAZOS_CACHE`; chave com `chaveDaOficina(req.user.tid, ...)` e, se a resposta depender de permissões, `resumoParaChave` do perfil. Invalidação de entidade: apague a chave depois do COMMIT.
+- Novo dado em cache: linha na tabela do ADR, testes de acerto, falta, isolamento entre oficinas e perfis, e medição antes/depois.
 
 ## Configuração
 - Só por variável de ambiente, validada em `apps/api/src/env.ts`; variável nova também em `.env.example`, sem valor real. Diferenças entre ambientes vêm de `NODE_ENV`/variáveis, nunca de valores fixos no código.
@@ -132,6 +140,6 @@ Sem otimização prematura e sem desperdício óbvio (medição e regras: `docs/
 
 ## Definition of Done (checklist final)
 - [ ] Funcionalidade implementada; `pnpm check` passa, com os testes relacionados executados.
-- [ ] Segurança, permissões, multi-tenancy, escalabilidade, integridade de dados e arquitetura preservadas; performance adequada.
+- [ ] Segurança, permissões, multi-tenancy, escalabilidade (Kubernetes-ready), integridade de dados e arquitetura preservadas; performance adequada.
 - [ ] Documentação atualizada quando exigido (ver "Alterações e documentação").
 - [ ] Diff revisado: só o escopo pedido, sem comportamento não relacionado, duplicação ou código morto.

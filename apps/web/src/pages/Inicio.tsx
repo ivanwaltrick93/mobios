@@ -94,7 +94,7 @@ export function Inicio() {
           dados &&
           `${oficina} · ${PERIODOS_PAINEL[periodo]}: ${formatarDataIso(dados.periodo.inicio)}${
             dados.periodo.inicio === dados.periodo.fim ? '' : ` a ${formatarDataIso(dados.periodo.fim)}`
-          }`
+          } · atualizado às ${new Date(dados.atualizadoEm).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
         }
         acoes={
           <>
