@@ -69,6 +69,10 @@ describe('isolamento entre oficinas (RLS)', () => {
       'os_itens',
       'os_eventos',
       'os_mecanicos',
+      'os_checklist',
+      'os_fotos',
+      'os_item_mecanicos',
+      'os_solicitacoes_peca',
     ]) {
       const linhas = await db.execute(sql`select count(*)::int as n from ${sql.identifier(tabela)}`);
       expect(linhas[0]!.n, tabela).toBe(0);

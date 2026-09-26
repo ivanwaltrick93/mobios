@@ -1,5 +1,5 @@
 import { SITUACOES_OS, type OrdemServico, type SituacaoOs } from '@mobios/shared';
-import { and, asc, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray } from 'drizzle-orm';
 import type { FastifyRequest } from 'fastify';
 import type { Tx } from '../../db/client.js';
 import {
@@ -7,8 +7,12 @@ import {
   clientes,
   orcamentos,
   ordensServico,
+  osChecklist,
   osEventos,
+  osFotos,
+  osItemMecanicos,
   osMecanicos,
+  osSolicitacoesPeca,
   tabelasPreco,
   users,
   veiculos,
@@ -19,6 +23,7 @@ import { ErroHttp, naoEncontrado } from '../../lib/erros.js';
 import {
   filtroVisiveis,
   itensDaOs,
+  pendenciasDaConclusao,
   podeAlterarOs,
   podeProdutosOs,
   type ItemOsGravado,
@@ -27,20 +32,29 @@ import {
 
 // Leitura e trava da O.S., sempre respeitando o que o usuário pode ver (mecânico: só as vinculadas; fora disso, 404).
 
-type Usuario = FastifyRequest['user'];
+export type Usuario = FastifyRequest['user'];
 
-const paraItem = ({
-  tenantId: _t,
-  ordemServicoId: _o,
-  pmcCentavos: _pmc,
-  orcamentoItemId: _oi,
-  quantidade,
-  descontoPercentual,
-  ...i
-}: ItemOsGravado) => ({
+type Pessoa = { id: string; nome: string };
+
+const paraItem = (
+  {
+    tenantId: _t,
+    ordemServicoId: _o,
+    pmcCentavos: _pmc,
+    orcamentoItemId: _oi,
+    executadoPor,
+    quantidade,
+    descontoPercentual,
+    ...i
+  }: ItemOsGravado,
+  nomes: Map<string, string>,
+  mecanicos: Pessoa[],
+) => ({
   ...i,
   quantidade: quantidade == null ? null : Number(quantidade),
   descontoPercentual: descontoPercentual == null ? null : descontoPercentual / 100,
+  executadoPor: executadoPor ? (nomes.get(executadoPor) ?? null) : null,
+  mecanicos,
 });
 
 /** O.S. completa (detalhe e resposta das ações). */
@@ -56,6 +70,7 @@ export async function carregarOs(tx: Tx, id: string, u: Usuario, avisos: string[
       orcamentoNumero: orcamentos.numero,
       orcamentoVersao: orcamentos.versaoOrcamento,
       aprovadaPor: nomeUsuario('ordens_servico', 'aprovada_por'),
+      concluidaPor: nomeUsuario('ordens_servico', 'concluida_por'),
       criadaPor: nomeUsuario('ordens_servico', 'criado_por'),
     })
     .from(ordensServico)
@@ -70,6 +85,42 @@ export async function carregarOs(tx: Tx, id: string, u: Usuario, avisos: string[
   const g = o.gravada;
 
   const itens = await itensDaOs(tx, id);
+  const atribuidos = itens.length
+    ? await tx
+        .select({ osItemId: osItemMecanicos.osItemId, id: users.id, nome: users.nome })
+        .from(osItemMecanicos)
+        .innerJoin(users, eq(users.id, osItemMecanicos.usuarioId))
+        .where(
+          inArray(
+            osItemMecanicos.osItemId,
+            itens.map((i) => i.id),
+          ),
+        )
+        .orderBy(asc(users.nome))
+    : [];
+  const executores = [...new Set(itens.flatMap((i) => (i.executadoPor ? [i.executadoPor] : [])))];
+  const nomes = new Map(
+    (executores.length
+      ? await tx.select({ id: users.id, nome: users.nome }).from(users).where(inArray(users.id, executores))
+      : []
+    ).map((u) => [u.id, u.nome]),
+  );
+  const solicitacoes = await tx
+    .select({
+      id: osSolicitacoesPeca.id,
+      descricao: osSolicitacoesPeca.descricao,
+      quantidade: osSolicitacoesPeca.quantidade,
+      observacao: osSolicitacoesPeca.observacao,
+      status: osSolicitacoesPeca.status,
+      solicitadaPor: nomeUsuario('os_solicitacoes_peca', 'solicitada_por'),
+      solicitadaEm: osSolicitacoesPeca.solicitadaEm,
+      resolvidaPor: nomeUsuario('os_solicitacoes_peca', 'resolvida_por'),
+      resolvidaEm: osSolicitacoesPeca.resolvidaEm,
+      resposta: osSolicitacoesPeca.resposta,
+    })
+    .from(osSolicitacoesPeca)
+    .where(eq(osSolicitacoesPeca.ordemServicoId, id))
+    .orderBy(desc(osSolicitacoesPeca.solicitadaEm), desc(osSolicitacoesPeca.id));
   const mecanicos = await tx
     .select({ id: users.id, nome: users.nome })
     .from(osMecanicos)
@@ -89,6 +140,24 @@ export async function carregarOs(tx: Tx, id: string, u: Usuario, avisos: string[
     .leftJoin(users, eq(users.id, osEventos.usuarioId))
     .where(eq(osEventos.ordemServicoId, id))
     .orderBy(desc(osEventos.criadoEm), desc(osEventos.id));
+  const checklist = await tx
+    .select({ item: osChecklist.item, estado: osChecklist.estado, observacao: osChecklist.observacao })
+    .from(osChecklist)
+    .where(eq(osChecklist.ordemServicoId, id))
+    .orderBy(asc(osChecklist.ordem));
+  // Só os dados da foto: o conteúdo vem pela rota da imagem.
+  const fotos = await tx
+    .select({
+      id: osFotos.id,
+      categoria: osFotos.categoria,
+      tamanho: osFotos.tamanho,
+      criadaPor: users.nome,
+      criadaEm: osFotos.criadoEm,
+    })
+    .from(osFotos)
+    .leftJoin(users, eq(users.id, osFotos.criadoPor))
+    .where(eq(osFotos.ordemServicoId, id))
+    .orderBy(asc(osFotos.criadoEm), asc(osFotos.id));
   const [aprovacao] = await tx
     .select({
       id: aprovacoesComerciais.id,
@@ -121,6 +190,7 @@ export async function carregarOs(tx: Tx, id: string, u: Usuario, avisos: string[
     previsaoEntrega: g.previsaoEntrega,
     totalCentavos: g.totalCentavos,
     abertaEm: g.criadoEm,
+    pecasSolicitadas: solicitacoes.filter((s) => s.status === 'pendente').length,
     cliente: o.cliente,
     veiculo: o.veiculo,
     vendedor: g.vendedorId ? { id: g.vendedorId, nome: o.vendedorNome ?? '', ativo: !!o.vendedorAtivo } : null,
@@ -141,11 +211,27 @@ export async function carregarOs(tx: Tx, id: string, u: Usuario, avisos: string[
     motivoRecusa: g.motivoRecusa,
     canceladaEm: g.canceladaEm,
     motivoCancelamento: g.motivoCancelamento,
-    itens: itens.map(paraItem),
+    itens: itens.map((i) =>
+      paraItem(
+        i,
+        nomes,
+        atribuidos.filter((a) => a.osItemId === i.id).map(({ id: usuarioId, nome }) => ({ id: usuarioId, nome })),
+      ),
+    ),
     mecanicosVinculados: mecanicos,
     aprovacaoComercial: aprovacao ? { ...aprovacao, solicitante: aprovacao.solicitante ?? '' } : null,
     eventos,
+    checklist,
+    combustivel: g.combustivel,
+    avariasEntrada: g.avariasEntrada,
+    checklistEm: g.checklistEm,
+    diagnostico: g.diagnostico,
+    concluidaEm: g.concluidaEm,
+    concluidaPor: o.concluidaPor,
+    solicitacoesPeca: solicitacoes.map((s) => ({ ...s, quantidade: Number(s.quantidade) })),
+    fotos,
     permissoes: { alterar: podeAlterarOs(u, g), produtos: podeProdutosOs(u) },
+    pendenciasConclusao: pendenciasDaConclusao(itens, solicitacoes.filter((s) => s.status === 'pendente').length),
     criadaPor: o.criadaPor,
     versao: g.versao,
     avisos,

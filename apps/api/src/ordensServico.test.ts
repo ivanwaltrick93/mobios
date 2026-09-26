@@ -23,8 +23,15 @@ type Metodo = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 async function entrar(email: string) {
   const res = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email, senha: SENHA } });
   const token = res.cookies.find((c) => c.name === COOKIE_SESSAO)!.value;
-  return (method: Metodo, url: string, payload?: object) =>
-    app.inject({ method, url, payload, cookies: { [COOKIE_SESSAO]: token } });
+  // `tipo`: envio de arquivo como o próprio corpo (fotos da O.S.).
+  return (method: Metodo, url: string, payload?: object | Buffer, tipo?: string) =>
+    app.inject({
+      method,
+      url,
+      payload,
+      headers: tipo ? { 'content-type': tipo } : undefined,
+      cookies: { [COOKIE_SESSAO]: token },
+    });
 }
 type Chamar = Awaited<ReturnType<typeof entrar>>;
 
@@ -163,6 +170,9 @@ type Os = {
     aprovacao: string;
     formaPreco: string | null;
     unidade: string;
+    executadoEm: string | null;
+    executadoPor: string | null;
+    mecanicos: { id: string; nome: string }[];
   }[];
   permissoes: { alterar: boolean; produtos: boolean };
   [k: string]: unknown;
@@ -676,5 +686,290 @@ describe('O.S.: alçada de desconto (aprovação comercial tipo O.S.)', () => {
     ).json();
     os = (await acao(c.atendente.chamar, os, 'cancelar', 'Sem acordo')).json();
     expect(os.aprovacaoComercial).toMatchObject({ status: 'cancelada' });
+  });
+});
+
+describe('O.S.: recepção e diagnóstico (onda 5.2)', () => {
+  /** Imagem mínima que passa na checagem pelos bytes (assinatura PNG). */
+  const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(200, 1)]);
+  const enviarFoto = (chamar: Chamar, os: Os, categoria = 'entrada', conteudo = PNG, tipo = 'image/png') =>
+    chamar('POST', `/api/ordens-servico/${os.id}/fotos?categoria=${categoria}&versao=${os.versao}`, conteudo, tipo);
+  const checklist = (os: Os, extra: object = {}) => ({
+    itens: [
+      { item: 'Estepe', estado: 'presente' },
+      { item: 'Macaco', estado: 'ausente' },
+      { item: 'Rádio / som', estado: 'avariado', observacao: 'Botão quebrado' },
+    ],
+    combustivel: 'um_quarto',
+    avariasEntrada: 'Risco na porta traseira direita',
+    versao: os.versao,
+    ...extra,
+  });
+
+  it('checklist de entrada: itens, combustível e avarias; regravado inteiro; repetido, versão e situação', async () => {
+    const c = await cenario('Oficina OS Checklist');
+    const os = (await abrir(c)).json() as Os;
+    const r = await c.chamar('PUT', `/api/ordens-servico/${os.id}/checklist`, checklist(os));
+    expect(r.statusCode).toBe(200);
+    const salva = r.json();
+    expect(salva.checklist).toEqual([
+      { item: 'Estepe', estado: 'presente', observacao: null },
+      { item: 'Macaco', estado: 'ausente', observacao: null },
+      { item: 'Rádio / som', estado: 'avariado', observacao: 'Botão quebrado' },
+    ]);
+    expect(salva).toMatchObject({ combustivel: 'um_quarto', avariasEntrada: 'Risco na porta traseira direita' });
+    expect(salva.checklistEm).not.toBeNull();
+    expect(salva.eventos[0]).toMatchObject({
+      evento: 'checklist_registrado',
+      detalhe: '3 item(ns); ausente: Macaco; avariado: Rádio / som; combustível 1/4.',
+    });
+
+    // Regravar troca a lista inteira; combustível vazio vira sem informação.
+    const trocada = (
+      await c.chamar(
+        'PUT',
+        `/api/ordens-servico/${os.id}/checklist`,
+        checklist(salva, { itens: [{ item: 'Tapetes', estado: 'nao_aplicavel' }], combustivel: '' }),
+      )
+    ).json();
+    expect(trocada.checklist.map((i: { item: string }) => i.item)).toEqual(['Tapetes']);
+    expect(trocada.combustivel).toBeNull();
+
+    const repetido = await c.chamar(
+      'PUT',
+      `/api/ordens-servico/${os.id}/checklist`,
+      checklist(trocada, {
+        itens: [
+          { item: 'Estepe', estado: 'presente' },
+          { item: 'estepe', estado: 'ausente' },
+        ],
+      }),
+    );
+    expect(repetido.statusCode).toBe(400);
+    expect((await c.chamar('PUT', `/api/ordens-servico/${os.id}/checklist`, checklist(salva))).statusCode).toBe(409);
+
+    const cancelada = (await acao(c.chamar, trocada, 'cancelar', 'Cliente desistiu')).json() as Os;
+    expect((await c.chamar('PUT', `/api/ordens-servico/${os.id}/checklist`, checklist(cancelada))).statusCode).toBe(
+      409,
+    );
+  });
+
+  it('diagnóstico: o mecânico vinculado registra; quem só consulta, não; apagar deixa vazio', async () => {
+    const c = await cenario('Oficina OS Diagnóstico');
+    const mecanico = await c.pessoa('Mecânico');
+    const financeiro = await c.pessoa('Financeiro');
+    const os = (await abrir(c)).json() as Os;
+    const vinculada = (
+      await c.chamar('POST', `/api/ordens-servico/${os.id}/mecanicos`, { usuarioId: mecanico.id, versao: os.versao })
+    ).json() as Os;
+
+    const texto = 'Bucha da bandeja dianteira esquerda gasta. Recomendo trocar o par.';
+    const r = await mecanico.chamar('PUT', `/api/ordens-servico/${os.id}/diagnostico`, {
+      diagnostico: texto,
+      versao: vinculada.versao,
+    });
+    expect(r.statusCode).toBe(200);
+    const comDiagnostico = r.json();
+    expect(comDiagnostico.diagnostico).toBe(texto);
+    expect(comDiagnostico.eventos[0]).toMatchObject({ evento: 'diagnostico_registrado', detalhe: texto });
+
+    expect(
+      (
+        await financeiro.chamar('PUT', `/api/ordens-servico/${os.id}/diagnostico`, {
+          diagnostico: 'x',
+          versao: comDiagnostico.versao,
+        })
+      ).statusCode,
+    ).toBe(403);
+    const apagado = (
+      await c.chamar('PUT', `/api/ordens-servico/${os.id}/diagnostico`, {
+        diagnostico: '  ',
+        versao: comDiagnostico.versao,
+      })
+    ).json();
+    expect(apagado.diagnostico).toBeNull();
+  });
+
+  it('fotos: até 5 por O.S., tipo pelos bytes, imagem só para quem vê a O.S., remoção com histórico', async () => {
+    const c = await cenario('Oficina OS Fotos');
+    const outra = await cenario('Oficina OS Fotos B');
+    const mecanico = await c.pessoa('Mecânico');
+    let os = (await abrir(c)).json() as Os;
+
+    const r = await enviarFoto(c.chamar, os, 'avaria');
+    expect(r.statusCode).toBe(201);
+    os = r.json();
+    const fotos = os.fotos as { id: string; categoria: string; tamanho: number; criadaPor: string }[];
+    expect(fotos).toHaveLength(1);
+    expect(fotos[0]).toMatchObject({ categoria: 'avaria', tamanho: PNG.length, criadaPor: 'Admin Teste' });
+    expect((os.eventos as { evento: string; detalhe: string }[])[0]).toMatchObject({
+      evento: 'foto_adicionada',
+      detalhe: 'Avaria',
+    });
+
+    const imagem = await c.chamar('GET', `/api/ordens-servico/${os.id}/fotos/${fotos[0]!.id}`);
+    expect(imagem.statusCode).toBe(200);
+    expect(imagem.headers['content-type']).toBe('image/png');
+    expect(imagem.rawPayload.equals(PNG)).toBe(true);
+    // Outra oficina e o mecânico não vinculado não veem a foto.
+    expect((await outra.chamar('GET', `/api/ordens-servico/${os.id}/fotos/${fotos[0]!.id}`)).statusCode).toBe(404);
+    expect((await mecanico.chamar('GET', `/api/ordens-servico/${os.id}/fotos/${fotos[0]!.id}`)).statusCode).toBe(404);
+
+    // Tipo pelos bytes, não pelo cabeçalho; categoria inválida; versão lida.
+    expect((await enviarFoto(c.chamar, os, 'entrada', Buffer.from('não é imagem'))).statusCode).toBe(415);
+    expect((await enviarFoto(c.chamar, os, 'lataria')).statusCode).toBe(400);
+    expect((await enviarFoto(c.chamar, { ...os, versao: 1 })).statusCode).toBe(409);
+
+    for (let n = 0; n < 3; n++) os = (await enviarFoto(c.chamar, os)).json();
+    // Duas ao mesmo tempo com 4 gravadas: só uma entra (a outra esbarra no limite ou na versão).
+    const [a, b] = await Promise.all([enviarFoto(c.chamar, os), enviarFoto(c.chamar, os)]);
+    expect([a.statusCode, b.statusCode].sort()).toEqual([201, 409]);
+    os = (await c.chamar('GET', `/api/ordens-servico/${os.id}`)).json();
+    expect(os.fotos).toHaveLength(5);
+    const sexta = await enviarFoto(c.chamar, os);
+    expect(sexta.statusCode).toBe(409);
+    expect(sexta.json().erro).toContain('5 fotos');
+
+    const primeira = (os.fotos as { id: string }[])[0]!.id;
+    const semFoto = await c.chamar('DELETE', `/api/ordens-servico/${os.id}/fotos/${primeira}?versao=${os.versao}`);
+    expect(semFoto.statusCode).toBe(200);
+    expect(semFoto.json().fotos).toHaveLength(4);
+    expect(semFoto.json().eventos[0]).toMatchObject({ evento: 'foto_removida', detalhe: 'Avaria' });
+    expect((await c.chamar('GET', `/api/ordens-servico/${os.id}/fotos/${primeira}`)).statusCode).toBe(404);
+  });
+});
+
+describe('O.S.: execução (onda 5.3)', () => {
+  /** O.S. em execução com um serviço e um produto aprovados, e um mecânico vinculado. */
+  async function emExecucao(nome: string) {
+    const c = await cenario(nome);
+    const mecanico = await c.pessoa('Mecânico');
+    let os = (await abrir(c)).json() as Os;
+    os = (await salvarItens(c.chamar, os, [servico(c), produto(c)])).json();
+    os = (await acao(c.chamar, os, 'solicitar-aprovacao')).json();
+    os = (await acao(c.chamar, os, 'aprovar')).json();
+    os = (
+      await c.chamar('POST', `/api/ordens-servico/${os.id}/mecanicos`, { usuarioId: mecanico.id, versao: os.versao })
+    ).json();
+    return { c, mecanico, os };
+  }
+  const executar = (chamar: Chamar, os: Os, itemId: string, desfazer = false) =>
+    chamar('POST', `/api/ordens-servico/${os.id}/itens/${itemId}/${desfazer ? 'desfazer-execucao' : 'executar'}`, {
+      versao: os.versao,
+    });
+  const solicitar = (chamar: Chamar, os: Os, descricao = 'Pastilha de freio dianteira') =>
+    chamar('POST', `/api/ordens-servico/${os.id}/solicitacoes-peca`, {
+      descricao,
+      quantidade: 1,
+      observacao: 'Lado esquerdo',
+      versao: os.versao,
+    });
+
+  it('confirma a execução por serviço; conclui só com os serviços executados e sem peça pendente', async () => {
+    const { c, mecanico, os: inicial } = await emExecucao('Oficina OS Execução');
+    let os = inicial;
+    const [servicoId, produtoId] = os.itens.map((i) => i.id) as [string, string];
+
+    // Antes de iniciar a execução, não confirma.
+    expect((await executar(mecanico.chamar, os, servicoId)).statusCode).toBe(409);
+    os = (await acao(c.chamar, os, 'iniciar-execucao')).json();
+    const incompleta = await acao(c.chamar, os, 'concluir');
+    expect(incompleta.statusCode).toBe(409);
+    expect(incompleta.json().erro).toContain('Alinhamento');
+    expect(os.pendenciasConclusao).toEqual(['Serviço(s) sem execução confirmada: Alinhamento.']);
+
+    expect((await executar(mecanico.chamar, os, produtoId)).statusCode).toBe(400);
+    const r = await executar(mecanico.chamar, os, servicoId);
+    expect(r.statusCode).toBe(200);
+    os = r.json();
+    expect(os.itens[0]).toMatchObject({ executadoPor: mecanico.nome });
+    expect(os.itens[0]!.executadoEm).not.toBeNull();
+    expect((await executar(mecanico.chamar, os, servicoId)).statusCode).toBe(409);
+
+    // Serviço executado não muda nem sai; o produto continua editável e o serviço mantém a execução.
+    const semServico = reenviar(os).slice(1);
+    expect((await salvarItens(c.chamar, os, semServico)).statusCode).toBe(409);
+    const [servicoReenviado, produtoReenviado] = reenviar(os);
+    expect(
+      (await salvarItens(c.chamar, os, [{ ...servicoReenviado, quantidade: 2 }, produtoReenviado!])).statusCode,
+    ).toBe(409);
+    os = (await salvarItens(c.chamar, os, [servicoReenviado!, { ...produtoReenviado, quantidade: 3 }])).json();
+    expect(os.itens[0]!.executadoEm).not.toBeNull();
+
+    // Desfazer e confirmar de novo.
+    os = (await executar(mecanico.chamar, os, servicoId, true)).json();
+    expect(os.itens[0]!.executadoEm).toBeNull();
+    os = (await executar(mecanico.chamar, os, servicoId)).json();
+
+    // Peça pendente segura a conclusão; o mecânico pede, não atende; quem tem "Peças na O.S." atende.
+    os = (await solicitar(mecanico.chamar, os)).json();
+    const [solicitacao] = os.solicitacoesPeca as { id: string; status: string }[];
+    expect(solicitacao).toMatchObject({ status: 'pendente', solicitadaPor: mecanico.nome, quantidade: 1 });
+    expect(os.pecasSolicitadas).toBe(1);
+    expect((await acao(c.chamar, os, 'concluir')).statusCode).toBe(409);
+    const url = `/api/ordens-servico/${os.id}/solicitacoes-peca/${solicitacao!.id}`;
+    expect((await mecanico.chamar('POST', `${url}/atender`, { versao: os.versao })).statusCode).toBe(403);
+    expect((await c.atendente.chamar('POST', `${url}/recusar`, { versao: os.versao })).statusCode).toBe(400);
+    os = (
+      await c.atendente.chamar('POST', `${url}/atender`, { versao: os.versao, resposta: 'Incluída nos itens' })
+    ).json();
+    expect((os.solicitacoesPeca as object[])[0]).toMatchObject({
+      status: 'atendida',
+      resolvidaPor: c.atendente.nome,
+      resposta: 'Incluída nos itens',
+    });
+    expect((await c.atendente.chamar('POST', `${url}/recusar`, { versao: os.versao, resposta: 'x' })).statusCode).toBe(
+      409,
+    );
+
+    expect(os.pendenciasConclusao).toEqual([]);
+    os = (await acao(mecanico.chamar, os, 'concluir')).json();
+    expect(os).toMatchObject({ situacao: 'concluida', concluidaPor: mecanico.nome });
+    expect((await salvarItens(c.chamar, os, reenviar(os))).statusCode).toBe(409);
+    expect((await executar(mecanico.chamar, os, servicoId, true)).statusCode).toBe(409);
+    const eventos = (os.eventos as { evento: string }[]).map((e) => e.evento);
+    expect(eventos.slice(0, 3)).toEqual(['concluida', 'solicitacao_atendida', 'peca_solicitada']);
+    // Concluída sai das "em aberto".
+    expect((await c.chamar('GET', `/api/ordens-servico?abertas=true`)).json().total).toBe(0);
+  });
+
+  it('mecânicos por serviço: atribuir vincula à O.S., regravar mantém, desvincular tira do serviço', async () => {
+    const { c, mecanico, os: inicial } = await emExecucao('Oficina OS Mecânico por serviço');
+    let os = inicial;
+    const outro = await c.pessoa('Mecânico', 'Segundo mecânico');
+    const financeiro = await c.pessoa('Financeiro');
+    const servicoId = os.itens[0]!.id;
+    const atribuir = (usuarioIds: string[]) =>
+      c.chamar('PUT', `/api/ordens-servico/${os.id}/itens/${servicoId}/mecanicos`, { usuarioIds, versao: os.versao });
+
+    expect((await outro.chamar('GET', `/api/ordens-servico/${os.id}`)).statusCode).toBe(404);
+    expect((await atribuir([financeiro.id])).statusCode).toBe(400);
+    os = (await atribuir([mecanico.id, outro.id])).json();
+    expect(os.itens[0]!.mecanicos.map((m) => m.id).sort()).toEqual([mecanico.id, outro.id].sort());
+    // O segundo mecânico passou a estar vinculado (e vê a O.S.).
+    expect((await outro.chamar('GET', `/api/ordens-servico/${os.id}`)).statusCode).toBe(200);
+    expect((os.mecanicosVinculados as { id: string }[]).map((m) => m.id).sort()).toEqual(
+      [mecanico.id, outro.id].sort(),
+    );
+
+    os = (await salvarItens(c.chamar, os, reenviar(os))).json();
+    expect(os.itens[0]!.mecanicos).toHaveLength(2);
+
+    os = (await c.chamar('DELETE', `/api/ordens-servico/${os.id}/mecanicos/${outro.id}?versao=${os.versao}`)).json();
+    expect(os.itens[0]!.mecanicos.map((m) => m.id)).toEqual([mecanico.id]);
+    expect(
+      (
+        await c.chamar('PUT', `/api/ordens-servico/${os.id}/itens/${os.itens[1]!.id}/mecanicos`, {
+          usuarioIds: [],
+          versao: os.versao,
+        })
+      ).statusCode,
+    ).toBe(400);
+
+    // Lista: solicitações pendentes e o filtro das O.S. com peça pedida.
+    os = (await solicitar(mecanico.chamar, os)).json();
+    const lista = (await c.chamar('GET', '/api/ordens-servico?pecaPendente=true')).json();
+    expect(lista.total).toBe(1);
+    expect(lista.itens[0]).toMatchObject({ id: os.id, pecasSolicitadas: 1 });
   });
 });

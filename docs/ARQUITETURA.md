@@ -175,12 +175,17 @@ cliente_responsaveis (id, tenant_id, cliente_id, nome, telefone, email, cargo_id
 veiculos (id, tenant_id, cliente_id, placa, marca, modelo, versao, cor, chassi, renavam, ano_fabricacao, ano_modelo,
           combustivel, km_atual, ultima_visita, principal, status ativo|vendido|inativo)
 
-ordens_servico (id, tenant_id, numero [seq. por tenant], cliente_id, veiculo_id, status,
-                km_entrada, relato_cliente, diagnostico, checklist_entrada jsonb,
-                mecanico_id, previsao_entrega, aprovada_em, concluida_em, entregue_em,
-                total_servicos, total_pecas, desconto, total)
-os_itens (id, tenant_id, os_id, tipo servico|peca, peca_id?, descricao, quantidade, valor_unitario, desconto)
-os_eventos (id, tenant_id, os_id, de_status, para_status, user_id, observacao, criado_em)   -- auditoria
+ordens_servico (id, tenant_id, numero [seq. por tenant], cliente_id, veiculo_id, vendedor_id?, orcamento_id?,
+                tabela_preco_id, status, km_entrada, relato_cliente, observacoes, previsao_entrega,
+                combustivel, avarias_entrada, checklist_em, diagnostico, aprovada/recusada/cancelada (em, por),
+                subtotais, desconto, total)                -- detalhes: docs/modulos/ORDENS_SERVICO.md
+os_itens (id, tenant_id, ordem_servico_id, tipo, material_id?|servico_id?|avulso, retrato do item e do preço, aprovacao)
+os_eventos (id, tenant_id, ordem_servico_id, evento, situacao_anterior, situacao_nova, usuario_id, criado_em) -- imutável
+os_mecanicos (ordem_servico_id + usuario_id [PK], tenant_id)
+os_item_mecanicos (os_item_id + usuario_id [PK], tenant_id)       -- mecânicos por serviço
+os_solicitacoes_peca (id, tenant_id, ordem_servico_id, descricao, quantidade, status, solicitada/resolvida por e em)
+os_checklist (id, tenant_id, ordem_servico_id, ordem, item, estado, observacao)
+os_fotos (id, tenant_id, ordem_servico_id, categoria, conteudo bytea, tipo, tamanho, criado_por)  -- até 5 por O.S., até 1 MB
 
 pecas (id, tenant_id, codigo, descricao, unidade, custo, preco_venda, estoque_atual, estoque_minimo, fornecedor_id?)
 fornecedores (id, tenant_id, nome, cnpj, telefone, email)

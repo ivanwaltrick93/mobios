@@ -17,7 +17,6 @@ import {
   ordemServicoFiltroSchema,
   ordemServicoResumoSchema,
   ordemServicoSchema,
-  PARAMETRO_MECANICO,
   SITUACOES_OS_EM_ABERTO,
   SITUACOES_OS_ITENS_EDITAVEIS,
   transicaoOsSchema,
@@ -26,7 +25,7 @@ import {
   type EventoOs,
   type SituacaoOs,
 } from '@mobios/shared';
-import { and, asc, count, desc, eq, gte, lt, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gte, inArray, lt, sql } from 'drizzle-orm';
 import type { FastifyRequest } from 'fastify';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
@@ -34,8 +33,10 @@ import { withTenant, type Tx } from '../../db/client.js';
 import {
   clientes,
   ordensServico,
+  osItemMecanicos,
   osItens,
   osMecanicos,
+  osSolicitacoesPeca,
   tabelasPreco,
   users,
   veiculos,
@@ -55,16 +56,21 @@ import {
   veiculosDoCliente,
 } from '../orcamentos/apoio.js';
 import { snapshotDaOs } from './aprovacao.js';
+import { execucaoOsRoutes } from './execucao.js';
+import { recepcaoOsRoutes } from './recepcao.js';
 import { carregarOs, exigirSemAprovacaoPendente, exigirSituacaoOs, exigirVersaoLidaOs, travarOs } from './consulta.js';
 import {
   abrirOs,
   assinaturaDosProdutos,
   descreverDescontosOs,
+  ehMecanico,
+  exigirExecutadosIntactos,
   exigirAlterar,
   filtroVisiveis,
   gravarItensOs,
   itensAcimaDaAlcada,
   itensDaOs,
+  pendenciasDaConclusao,
   montarItensOs,
   percentualDaLinhaOs,
   podeAbrirOs,
@@ -79,11 +85,6 @@ import {
 
 const FUSO = 'America/Sao_Paulo';
 const resumoDoTotal = (itens: number, total: number) => `${itens} item(ns), total ${formatarMoeda(total)}.`;
-
-/** Mecânicos vinculáveis: usuários ativos com uma função ativa que tem o parâmetro MECÂNICO. */
-const ehMecanico = sql`exists (select 1 from usuario_funcoes uf join funcoes f on f.id = uf.funcao_id
-  join funcao_parametros fp on fp.funcao_id = f.id join parametros_funcao p on p.id = fp.parametro_id
-  where uf.usuario_id = ${users.id} and f.ativa and p.codigo = ${PARAMETRO_MECANICO})`;
 
 /** Tabela padrão da oficina (O.S. aberta no balcão). */
 async function tabelaPadrao(tx: Tx): Promise<string> {
@@ -112,6 +113,10 @@ export const ordensServicoRoutes: FastifyPluginAsyncZod = async (app) => {
   };
   const resposta = { 200: ordemServicoSchema };
 
+  // Checklist, fotos e diagnóstico (onda 5.2); execução, mecânicos por serviço e solicitação de peça (onda 5.3).
+  await app.register(recepcaoOsRoutes);
+  await app.register(execucaoOsRoutes);
+
   /** Lista: número (com ou sem "OS-"), nome do cliente ou placa; filtros; o mecânico só vê as dele. */
   app.get(
     '/',
@@ -122,7 +127,9 @@ export const ordensServicoRoutes: FastifyPluginAsyncZod = async (app) => {
       },
     },
     async (req) => {
-      const { q, situacao, clienteId, veiculoId, vendedorId, mecanicoId, desde, ate, pagina, porPagina } = req.query;
+      const { q, situacao, clienteId, veiculoId, vendedorId, mecanicoId, abertas, pecaPendente, desde, ate } =
+        req.query;
+      const { pagina, porPagina } = req.query;
       const numero = q?.replace(/^os-?/i, '').replace(/^0+(?=\d)/, '');
       const onde = and(
         filtroVisiveis(req.user),
@@ -139,6 +146,11 @@ export const ordensServicoRoutes: FastifyPluginAsyncZod = async (app) => {
         mecanicoId
           ? sql`exists (select 1 from os_mecanicos m where m.ordem_servico_id = ${ordensServico.id}
               and m.usuario_id = ${mecanicoId})`
+          : undefined,
+        abertas ? inArray(ordensServico.status, SITUACOES_OS_EM_ABERTO) : undefined,
+        pecaPendente
+          ? sql`exists (select 1 from os_solicitacoes_peca s where s.ordem_servico_id = ${ordensServico.id}
+              and s.status = 'pendente')`
           : undefined,
         desde ? gte(ordensServico.criadoEm, sql`${desde}::date::timestamp at time zone ${FUSO}`) : undefined,
         ate ? lt(ordensServico.criadoEm, sql`(${ate}::date + 1)::timestamp at time zone ${FUSO}`) : undefined,
@@ -167,6 +179,8 @@ export const ordensServicoRoutes: FastifyPluginAsyncZod = async (app) => {
             previsaoEntrega: ordensServico.previsaoEntrega,
             totalCentavos: ordensServico.totalCentavos,
             abertaEm: ordensServico.criadoEm,
+            pecasSolicitadas: sql<number>`(select count(*) from os_solicitacoes_peca s
+              where s.ordem_servico_id = "ordens_servico"."id" and s.status = 'pendente')`.mapWith(Number),
           })
           .from(ordensServico)
           .innerJoin(daPagina, eq(daPagina.id, ordensServico.id))
@@ -328,6 +342,7 @@ export const ordensServicoRoutes: FastifyPluginAsyncZod = async (app) => {
         await exigirSemAprovacaoPendente(tx, atual.id);
         const gravados = await itensDaOs(tx, atual.id);
         const { linhas, avisos } = await montarItensOs(tx, req.body.itens, gravados, atual);
+        exigirExecutadosIntactos(gravados, linhas);
         if (!podeProdutosOs(req.user) && assinaturaDosProdutos(gravados) !== assinaturaDosProdutos(linhas))
           throw new ErroHttp(403, 'Incluir, alterar ou remover produtos na O.S. exige "Peças na O.S." em Editar.');
         await gravarItensOs(tx, atual.id, linhas);
@@ -494,6 +509,24 @@ export const ordensServicoRoutes: FastifyPluginAsyncZod = async (app) => {
     acao: 'retomar a execução',
     evento: 'execucao_retomada',
   });
+  // Conclusão (OS-R11): as mesmas pendências que a tela mostra (pendenciasConclusao).
+  acao('/:id/concluir', {
+    de: ['em_execucao'],
+    para: 'concluida',
+    acao: 'concluir',
+    evento: 'concluida',
+    async conferir(tx, os) {
+      const [{ pendentes }] = (await tx
+        .select({ pendentes: count() })
+        .from(osSolicitacoesPeca)
+        .where(and(eq(osSolicitacoesPeca.ordemServicoId, os.id), eq(osSolicitacoesPeca.status, 'pendente')))) as [
+        { pendentes: number },
+      ];
+      const pendencias = pendenciasDaConclusao(await itensDaOs(tx, os.id), pendentes);
+      if (pendencias.length) throw new ErroHttp(409, `Não é possível concluir: ${pendencias.join(' ')}`);
+    },
+    valores: (usuarioId) => ({ concluidaEm: new Date(), concluidaPor: usuarioId }),
+  });
   acao('/:id/cancelar', {
     de: SITUACOES_OS_EM_ABERTO,
     para: 'cancelada',
@@ -563,6 +596,18 @@ export const ordensServicoRoutes: FastifyPluginAsyncZod = async (app) => {
           .where(and(eq(osMecanicos.ordemServicoId, atual.id), eq(osMecanicos.usuarioId, req.params.usuarioId)))
           .returning({ usuarioId: osMecanicos.usuarioId });
         if (!removido) throw naoEncontrado('Mecânico vinculado');
+        // Fora da O.S., fora dos serviços dela.
+        await tx
+          .delete(osItemMecanicos)
+          .where(
+            and(
+              eq(osItemMecanicos.usuarioId, req.params.usuarioId),
+              inArray(
+                osItemMecanicos.osItemId,
+                tx.select({ id: osItens.id }).from(osItens).where(eq(osItens.ordemServicoId, atual.id)),
+              ),
+            ),
+          );
         const [u] = await tx.select({ nome: users.nome }).from(users).where(eq(users.id, req.params.usuarioId));
         await tx
           .update(ordensServico)

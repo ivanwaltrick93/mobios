@@ -218,6 +218,20 @@
       "when": 1790447311204,
       "tag": "0030_ordens_servico",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1790449527849,
+      "tag": "0031_recepcao_os",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1790451452385,
+      "tag": "0032_execucao_os",
+      "breakpoints": true
     }
   ]
 }

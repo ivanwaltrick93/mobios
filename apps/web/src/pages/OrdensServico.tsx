@@ -16,6 +16,7 @@ import {
   Paginacao,
   POR_PAGINA,
   Select,
+  Selo,
   Tabela,
   Td,
   Th,
@@ -26,7 +27,7 @@ import { api } from '../lib/api';
 import { useMecanicosOs, useVendedoresOs } from '../lib/ordensServico';
 import { usePerfilOs } from '../lib/sessao';
 
-const FILTRO_INICIAL = { q: '', situacao: '', vendedorId: '', mecanicoId: '', desde: '', ate: '' };
+const FILTRO_INICIAL = { q: '', situacao: '', vendedorId: '', mecanicoId: '', pecaPendente: '', desde: '', ate: '' };
 
 const dataHora = (d: Date | string | null) =>
   d ? new Date(d).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—';
@@ -79,7 +80,7 @@ export function OrdensServico() {
           valor={filtro.q}
           aoMudar={(valor) => mudar('q', valor)}
         />
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
           <Campo rotulo="Situação">
             <Select value={filtro.situacao} onChange={(e) => mudar('situacao', e.target.value)}>
               <option value="">Todas</option>
@@ -113,6 +114,12 @@ export function OrdensServico() {
               </Select>
             </Campo>
           )}
+          <Campo rotulo="Peças">
+            <Select value={filtro.pecaPendente} onChange={(e) => mudar('pecaPendente', e.target.value)}>
+              <option value="">Todas</option>
+              <option value="true">Com peça solicitada</option>
+            </Select>
+          </Campo>
           <Campo rotulo="Aberta de">
             <Input type="date" value={filtro.desde} onChange={(e) => mudar('desde', e.target.value)} />
           </Campo>
@@ -156,7 +163,10 @@ export function OrdensServico() {
                 <Td suave>{o.vendedorNome ?? '—'}</Td>
                 <Td suave>{o.mecanicos.length ? o.mecanicos.join(', ') : '—'}</Td>
                 <Td>
-                  <SeloSituacaoOs situacao={o.situacao} />
+                  <div className="flex flex-wrap items-center gap-1">
+                    <SeloSituacaoOs situacao={o.situacao} />
+                    {o.pecasSolicitadas > 0 && <Selo tom="alerta">{o.pecasSolicitadas} peça(s) pedida(s)</Selo>}
+                  </div>
                 </Td>
                 <Td suave className="whitespace-nowrap">
                   {dataHora(o.previsaoEntrega)}

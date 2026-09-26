@@ -1,5 +1,20 @@
 import { sql } from 'drizzle-orm';
-import { APROVACOES_ITEM_OS, EVENTOS_OS, STATUS_OS, type AprovacaoItemOs, type EventoOs } from '@mobios/shared';
+import {
+  APROVACOES_ITEM_OS,
+  CATEGORIAS_FOTO_OS,
+  ESTADOS_CHECKLIST,
+  EVENTOS_OS,
+  IMAGEM_TAMANHO_MAXIMO,
+  NIVEIS_COMBUSTIVEL,
+  STATUS_OS,
+  STATUS_SOLICITACAO_PECA,
+  type AprovacaoItemOs,
+  type CategoriaFotoOs,
+  type EstadoChecklist,
+  type EventoOs,
+  type NivelCombustivel,
+  type StatusSolicitacaoPeca,
+} from '@mobios/shared';
 import {
   bigint,
   boolean,
@@ -16,7 +31,7 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { codigoAutomatico, isolamentoPorTenant, quantidade, tenantId, timestamps } from './comum.js';
+import { bytea, codigoAutomatico, isolamentoPorTenant, quantidade, tenantId, timestamps } from './comum.js';
 import { clientes, veiculos } from './clientes.js';
 import { formaPrecoServico, materiais, servicos, tabelasPreco } from './materiais.js';
 import { autoria, fksAutoria, users } from './oficina.js';
@@ -30,6 +45,22 @@ export const eventoOs = pgEnum('evento_os', Object.keys(EVENTOS_OS) as [EventoOs
 export const aprovacaoItemOs = pgEnum(
   'aprovacao_item_os',
   Object.keys(APROVACOES_ITEM_OS) as [AprovacaoItemOs, ...AprovacaoItemOs[]],
+);
+export const nivelCombustivel = pgEnum(
+  'nivel_combustivel',
+  Object.keys(NIVEIS_COMBUSTIVEL) as [NivelCombustivel, ...NivelCombustivel[]],
+);
+export const estadoChecklist = pgEnum(
+  'estado_checklist',
+  Object.keys(ESTADOS_CHECKLIST) as [EstadoChecklist, ...EstadoChecklist[]],
+);
+export const statusSolicitacaoPeca = pgEnum(
+  'status_solicitacao_peca',
+  Object.keys(STATUS_SOLICITACAO_PECA) as [StatusSolicitacaoPeca, ...StatusSolicitacaoPeca[]],
+);
+export const categoriaFotoOs = pgEnum(
+  'categoria_foto_os',
+  Object.keys(CATEGORIAS_FOTO_OS) as [CategoriaFotoOs, ...CategoriaFotoOs[]],
 );
 
 /**
@@ -61,6 +92,15 @@ export const ordensServico = pgTable(
     canceladaEm: timestamp({ withTimezone: true }),
     canceladaPor: uuid(),
     motivoCancelamento: text(),
+    /** Recepção (onda 5.2): combustível, avarias na entrada e quando o checklist foi registrado. */
+    combustivel: nivelCombustivel(),
+    avariasEntrada: text(),
+    checklistEm: timestamp({ withTimezone: true }),
+    /** Diagnóstico técnico e observações do mecânico (OS-05). */
+    diagnostico: text(),
+    /** Conclusão (onda 5.3): todos os serviços aprovados executados. */
+    concluidaEm: timestamp({ withTimezone: true }),
+    concluidaPor: uuid(),
     /** Bruto dos serviços e dos produtos, desconto (só de produto do catálogo) e total. */
     subtotalServicosCentavos: bigint({ mode: 'number' }).notNull().default(0),
     subtotalMateriaisCentavos: bigint({ mode: 'number' }).notNull().default(0),
@@ -81,7 +121,7 @@ export const ordensServico = pgTable(
     foreignKey({ columns: [t.tenantId, t.vendedorId], foreignColumns: [vendedores.tenantId, vendedores.id] }),
     foreignKey({ columns: [t.tenantId, t.orcamentoId], foreignColumns: [orcamentos.tenantId, orcamentos.id] }),
     foreignKey({ columns: [t.tenantId, t.tabelaPrecoId], foreignColumns: [tabelasPreco.tenantId, tabelasPreco.id] }),
-    ...[t.aprovadaPor, t.recusadaPor, t.canceladaPor].map((c) =>
+    ...[t.aprovadaPor, t.recusadaPor, t.canceladaPor, t.concluidaPor].map((c) =>
       foreignKey({ columns: [t.tenantId, c], foreignColumns: [users.tenantId, users.id] }),
     ),
     ...fksAutoria(t),
@@ -138,8 +178,18 @@ export const osItens = pgTable(
     descontoCentavos: bigint({ mode: 'number' }).notNull(),
     totalCentavos: bigint({ mode: 'number' }).notNull(),
     aprovacao: aprovacaoItemOs().notNull().default('pendente'),
+    /** Serviço confirmado como executado (OS-22): quem e quando. */
+    executadoEm: timestamp({ withTimezone: true }),
+    executadoPor: uuid(),
   },
   (t) => [
+    unique().on(t.tenantId, t.id),
+    foreignKey({ columns: [t.tenantId, t.executadoPor], foreignColumns: [users.tenantId, users.id] }),
+    check(
+      'os_itens_execucao',
+      sql`(${t.executadoEm} is null) = (${t.executadoPor} is null) and (${t.executadoEm} is null or ${t.tipo} = 'servico')`,
+    ),
+    index().on(t.executadoPor),
     foreignKey({
       columns: [t.tenantId, t.ordemServicoId],
       foreignColumns: [ordensServico.tenantId, ordensServico.id],
@@ -234,5 +284,122 @@ export const osMecanicos = pgTable(
     foreignKey({ columns: [t.tenantId, t.usuarioId], foreignColumns: [users.tenantId, users.id] }),
     index().on(t.usuarioId),
     isolamentoPorTenant('os_mecanicos'),
+  ],
+);
+
+/** Checklist de entrada (OS-03): um item por linha, na ordem da tela; regravado inteiro a cada registro. */
+export const osChecklist = pgTable(
+  'os_checklist',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: tenantId(),
+    ordemServicoId: uuid().notNull(),
+    ordem: integer().notNull(),
+    item: text().notNull(),
+    estado: estadoChecklist().notNull(),
+    observacao: text(),
+  },
+  (t) => [
+    foreignKey({
+      columns: [t.tenantId, t.ordemServicoId],
+      foreignColumns: [ordensServico.tenantId, ordensServico.id],
+    }).onDelete('cascade'),
+    uniqueIndex('os_checklist_item_unico').on(t.ordemServicoId, sql`lower(${t.item})`),
+    isolamentoPorTenant('os_checklist'),
+  ],
+);
+
+/**
+ * Fotos da O.S. (OS-04): no banco, como o logo e as fotos da equipe (ARQUITETURA §9), reduzidas no navegador;
+ * até MAXIMO_FOTOS_OS por O.S., conferido com a O.S. travada. Tipo validado pelos bytes; até 1 MB cada.
+ */
+export const osFotos = pgTable(
+  'os_fotos',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: tenantId(),
+    ordemServicoId: uuid().notNull(),
+    categoria: categoriaFotoOs().notNull(),
+    conteudo: bytea().notNull(),
+    tipo: text().notNull(),
+    tamanho: integer().notNull(),
+    criadoPor: uuid().notNull(),
+    criadoEm: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    foreignKey({
+      columns: [t.tenantId, t.ordemServicoId],
+      foreignColumns: [ordensServico.tenantId, ordensServico.id],
+    }).onDelete('cascade'),
+    foreignKey({ columns: [t.tenantId, t.criadoPor], foreignColumns: [users.tenantId, users.id] }),
+    check('os_fotos_tamanho', sql`${t.tamanho} > 0 and ${t.tamanho} <= ${sql.raw(String(IMAGEM_TAMANHO_MAXIMO))}`),
+    index().on(t.ordemServicoId, t.criadoEm),
+    index().on(t.criadoPor),
+    isolamentoPorTenant('os_fotos'),
+  ],
+);
+
+/** Mecânicos atribuídos a um serviço da O.S. (OS-10); atribuir também vincula o mecânico à O.S. */
+export const osItemMecanicos = pgTable(
+  'os_item_mecanicos',
+  {
+    tenantId: tenantId(),
+    osItemId: uuid().notNull(),
+    usuarioId: uuid().notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.osItemId, t.usuarioId] }),
+    foreignKey({ columns: [t.tenantId, t.osItemId], foreignColumns: [osItens.tenantId, osItens.id] }).onDelete(
+      'cascade',
+    ),
+    foreignKey({ columns: [t.tenantId, t.usuarioId], foreignColumns: [users.tenantId, users.id] }),
+    index().on(t.usuarioId),
+    isolamentoPorTenant('os_item_mecanicos'),
+  ],
+);
+
+/**
+ * Solicitação de peça pelo mecânico (OS-21, sem estoque nesta fase): descrição livre e quantidade; quem tem
+ * "Peças na O.S." atende (e inclui a peça nos itens) ou recusa com o motivo.
+ */
+export const osSolicitacoesPeca = pgTable(
+  'os_solicitacoes_peca',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: tenantId(),
+    ordemServicoId: uuid().notNull(),
+    descricao: text().notNull(),
+    quantidade: quantidade().notNull(),
+    observacao: text(),
+    status: statusSolicitacaoPeca().notNull().default('pendente'),
+    solicitadaPor: uuid().notNull(),
+    solicitadaEm: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    resolvidaPor: uuid(),
+    resolvidaEm: timestamp({ withTimezone: true }),
+    resposta: text(),
+  },
+  (t) => [
+    foreignKey({
+      columns: [t.tenantId, t.ordemServicoId],
+      foreignColumns: [ordensServico.tenantId, ordensServico.id],
+    }).onDelete('cascade'),
+    ...[t.solicitadaPor, t.resolvidaPor].map((c) =>
+      foreignKey({ columns: [t.tenantId, c], foreignColumns: [users.tenantId, users.id] }),
+    ),
+    check('os_solicitacoes_peca_quantidade', sql`${t.quantidade} > 0`),
+    check(
+      'os_solicitacoes_peca_resolucao',
+      sql`(${t.status} = 'pendente') = (${t.resolvidaEm} is null)
+        and (${t.resolvidaEm} is null) = (${t.resolvidaPor} is null)
+        and (${t.status} <> 'recusada' or ${t.resposta} is not null)`,
+    ),
+    index().on(t.ordemServicoId, t.solicitadaEm),
+    // Filtro "com peça solicitada" da lista: só as pendentes.
+    index('os_solicitacoes_peca_pendentes')
+      .on(t.tenantId, t.ordemServicoId)
+      .where(sql`${t.status} = 'pendente'`),
+    index().on(t.solicitadaPor),
+    index().on(t.resolvidaPor),
+    isolamentoPorTenant('os_solicitacoes_peca'),
   ],
 );

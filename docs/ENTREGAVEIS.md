@@ -323,7 +323,7 @@ O estoque pode começar junto com a O.S.: as peças da O.S. já nascem ligadas a
 
 | Tema | Por que importa | Entregáveis |
 |---|---|---|
-| **Fotos e PDFs** | Volume bem maior que o logo. No banco (regra atual) é simples, mas o banco e o backup crescem rápido. Decidir limite, compressão e quando migrar para storage S3 | OS-04, OS-07, OS-14 |
+| **Fotos e PDFs** | Volume bem maior que o logo. **Fotos da O.S. decididas (26/09/2026):** no banco, até 5 por O.S., reduzidas no navegador (1600 px, JPEG, até 1 MB). Reavaliar a migração para storage S3 se o banco ou o backup crescerem demais | OS-04, OS-07, OS-14 |
 | **Rotas públicas com token** | O link de aprovação do orçamento é acessado pelo cliente sem login: precisa de token forte, expiração e registro de uso | COM-02, OS-08 |
 | **Trabalho em segundo plano** | Lembretes, alertas e envio de mensagens não podem rodar dentro da API (regra de escalabilidade): exige um processo `worker` | COM-04, COM-06, EST-06, FIN-09 |
 | **E-mail (SMTP)** | Recuperar senha e enviar nota/orçamento exigem um provedor de e-mail | PLT-09, FIS-05 |

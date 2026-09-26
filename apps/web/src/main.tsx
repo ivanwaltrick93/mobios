@@ -35,6 +35,7 @@ import { NovoVeiculo } from './pages/NovoVeiculo';
 import { OrcamentoDetalhe } from './pages/OrcamentoDetalhe';
 import { EditarOrcamento, NovoOrcamento } from './pages/OrcamentoForm';
 import { Orcamentos } from './pages/Orcamentos';
+import { MinhasOrdensServico } from './pages/MinhasOrdensServico';
 import { NovaOrdemServico } from './pages/NovaOrdemServico';
 import { OrdemServicoDetalhe } from './pages/OrdemServicoDetalhe';
 import { OrdensServico } from './pages/OrdensServico';
@@ -108,6 +109,7 @@ const router = createBrowserRouter([
       { path: '/os', element: <OrdensServico /> },
       { path: '/os/nova', element: <NovaOrdemServico /> },
       { path: '/os/:id', element: <OrdemServicoDetalhe /> },
+      { path: '/minhas-ordens-servico', element: <MinhasOrdensServico /> },
       { path: '/estoque', element: <Estoque /> },
       { path: '/financeiro', element: <EmBreve titulo="Financeiro" /> },
       { path: '/relatorios', element: <Relatorios /> },

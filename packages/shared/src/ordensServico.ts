@@ -82,8 +82,128 @@ export const EVENTOS_OS = {
   aprovacao_comercial_solicitada: 'Enviada para aprovação comercial',
   aprovado_comercialmente: 'Aprovado comercialmente',
   reprovado_comercialmente: 'Reprovado comercialmente',
+  checklist_registrado: 'Checklist de entrada registrado',
+  diagnostico_registrado: 'Diagnóstico registrado',
+  foto_adicionada: 'Foto adicionada',
+  foto_removida: 'Foto removida',
+  servico_executado: 'Serviço executado',
+  execucao_desfeita: 'Execução do serviço desfeita',
+  mecanicos_do_servico: 'Mecânicos do serviço alterados',
+  peca_solicitada: 'Peça solicitada',
+  solicitacao_atendida: 'Solicitação de peça atendida',
+  solicitacao_recusada: 'Solicitação de peça recusada',
+  concluida: 'Concluída',
 } as const;
 export type EventoOs = keyof typeof EVENTOS_OS;
+
+/** Situações em que o serviço pode ser confirmado como executado (ou desfeito). */
+export const SITUACOES_OS_EXECUCAO: SituacaoOs[] = ['em_execucao', 'aguardando_peca'];
+
+// ---------- Execução (onda 5.3; docs/modulos/ORDENS_SERVICO.md §11) ----------
+
+export const STATUS_SOLICITACAO_PECA = { pendente: 'Pendente', atendida: 'Atendida', recusada: 'Recusada' } as const;
+export type StatusSolicitacaoPeca = keyof typeof STATUS_SOLICITACAO_PECA;
+
+/** Mecânicos atribuídos a um serviço (substitui a lista). */
+export const mecanicosDoServicoInputSchema = z.object({
+  usuarioIds: z.array(z.uuid()).max(10, 'No máximo 10 mecânicos por serviço'),
+  versao: z.number().int().min(1),
+});
+
+/** Solicitação de peça pelo mecânico (OS-21, sem estoque nesta fase): o que precisa, quanto e por quê. */
+export const solicitacaoPecaInputSchema = z.object({
+  descricao: z.string().trim().min(1, 'Informe a peça').max(200, 'Máximo de 200 caracteres'),
+  quantidade: z
+    .number({ error: 'Informe a quantidade' })
+    .positive('A quantidade deve ser maior que zero')
+    .max(99_999, 'Quantidade alta demais'),
+  observacao: textoOpcional(500),
+  versao: z.number().int().min(1),
+});
+export type SolicitacaoPecaInput = z.input<typeof solicitacaoPecaInputSchema>;
+
+/** Atender (resposta opcional) ou recusar (motivo obrigatório) a solicitação. */
+export const atendimentoSolicitacaoSchema = z.object({ versao: z.number().int().min(1), resposta: textoOpcional(500) });
+export const recusaSolicitacaoSchema = z.object({
+  versao: z.number().int().min(1),
+  resposta: z
+    .string({ error: 'Informe o motivo' })
+    .trim()
+    .min(1, 'Informe o motivo')
+    .max(500, 'Máximo de 500 caracteres'),
+});
+
+// ---------- Recepção e diagnóstico (onda 5.2; docs/modulos/ORDENS_SERVICO.md §10) ----------
+
+/** Estado de cada item do checklist de entrada. */
+export const ESTADOS_CHECKLIST = {
+  presente: 'Presente',
+  ausente: 'Ausente',
+  avariado: 'Avariado',
+  nao_aplicavel: 'Não se aplica',
+} as const;
+export type EstadoChecklist = keyof typeof ESTADOS_CHECKLIST;
+
+/** Nível de combustível na entrada. */
+export const NIVEIS_COMBUSTIVEL = {
+  reserva: 'Reserva',
+  um_quarto: '1/4',
+  meio: '1/2',
+  tres_quartos: '3/4',
+  cheio: 'Cheio',
+} as const;
+export type NivelCombustivel = keyof typeof NIVEIS_COMBUSTIVEL;
+
+/** Itens sugeridos no checklist de uma O.S. nova (a tela permite tirar e incluir outros). */
+export const ITENS_CHECKLIST_PADRAO = [
+  'Estepe',
+  'Macaco',
+  'Chave de roda',
+  'Triângulo',
+  'Rádio / som',
+  'Tapetes',
+  'Documento do veículo',
+  'Calotas',
+  'Antena',
+  'Manual do proprietário',
+] as const;
+
+export const CATEGORIAS_FOTO_OS = { entrada: 'Entrada', avaria: 'Avaria', execucao: 'Execução' } as const;
+export type CategoriaFotoOs = keyof typeof CATEGORIAS_FOTO_OS;
+
+/** Fotos por O.S. (decisão de 26/09/2026): guardadas no banco, reduzidas no navegador antes do envio. */
+export const MAXIMO_FOTOS_OS = 5;
+export const MAXIMO_ITENS_CHECKLIST = 40;
+
+export const checklistOsInputSchema = z.object({
+  itens: z
+    .array(
+      z.object({
+        item: z.string().trim().min(1, 'Informe o item').max(60, 'Máximo de 60 caracteres'),
+        estado: z.enum(chaves(ESTADOS_CHECKLIST), { error: 'Escolha o estado' }),
+        observacao: textoOpcional(200),
+      }),
+    )
+    .max(MAXIMO_ITENS_CHECKLIST, `No máximo ${MAXIMO_ITENS_CHECKLIST} itens`)
+    .refine((itens) => new Set(itens.map((i) => i.item.toLowerCase())).size === itens.length, {
+      message: 'Há itens repetidos no checklist',
+    }),
+  combustivel: z.preprocess(vazioComoNulo, z.enum(chaves(NIVEIS_COMBUSTIVEL)).nullable()),
+  avariasEntrada: textoOpcional(1000),
+  versao: z.number().int().min(1),
+});
+export type ChecklistOsInput = z.input<typeof checklistOsInputSchema>;
+
+export const diagnosticoOsInputSchema = z.object({
+  diagnostico: textoOpcional(4000),
+  versao: z.number().int().min(1),
+});
+
+/** Envio da foto: o arquivo vai no corpo; categoria e versão lida na URL. */
+export const fotoOsQuerySchema = z.object({
+  categoria: z.enum(chaves(CATEGORIAS_FOTO_OS)),
+  versao: z.coerce.number().int().min(1),
+});
 
 // ---------- Entradas ----------
 
@@ -213,6 +333,10 @@ export const itemOsSchema = itemOrcamentoSchema.extend({
   /** Código do cadastro (null no avulso). */
   codigo: z.string().nullable(),
   aprovacao: z.enum(chaves(APROVACOES_ITEM_OS)),
+  /** Serviço: confirmação de execução (OS-22) e mecânicos atribuídos (OS-10). */
+  executadoEm: z.coerce.date().nullable(),
+  executadoPor: z.string().nullable(),
+  mecanicos: z.array(z.object({ id: z.uuid(), nome: z.string() })),
 });
 export type ItemOs = z.infer<typeof itemOsSchema>;
 
@@ -227,6 +351,8 @@ export const ordemServicoResumoSchema = z.object({
   previsaoEntrega: z.coerce.date().nullable(),
   totalCentavos: z.number(),
   abertaEm: z.coerce.date(),
+  /** Solicitações de peça ainda sem resposta. */
+  pecasSolicitadas: z.number(),
 });
 export type OrdemServicoResumo = z.infer<typeof ordemServicoResumoSchema>;
 
@@ -263,8 +389,43 @@ export const ordemServicoSchema = ordemServicoResumoSchema.extend({
       criadoEm: z.coerce.date(),
     }),
   ),
+  /** Checklist de entrada (null em `checklistEm` = ainda não registrado). */
+  checklist: z.array(
+    z.object({ item: z.string(), estado: z.enum(chaves(ESTADOS_CHECKLIST)), observacao: z.string().nullable() }),
+  ),
+  combustivel: z.enum(chaves(NIVEIS_COMBUSTIVEL)).nullable(),
+  avariasEntrada: z.string().nullable(),
+  checklistEm: z.coerce.date().nullable(),
+  diagnostico: z.string().nullable(),
+  concluidaEm: z.coerce.date().nullable(),
+  concluidaPor: z.string().nullable(),
+  solicitacoesPeca: z.array(
+    z.object({
+      id: z.uuid(),
+      descricao: z.string(),
+      quantidade: z.number(),
+      observacao: z.string().nullable(),
+      status: z.enum(chaves(STATUS_SOLICITACAO_PECA)),
+      solicitadaPor: z.string().nullable(),
+      solicitadaEm: z.coerce.date(),
+      resolvidaPor: z.string().nullable(),
+      resolvidaEm: z.coerce.date().nullable(),
+      resposta: z.string().nullable(),
+    }),
+  ),
+  fotos: z.array(
+    z.object({
+      id: z.uuid(),
+      categoria: z.enum(chaves(CATEGORIAS_FOTO_OS)),
+      tamanho: z.number(),
+      criadaPor: z.string().nullable(),
+      criadaEm: z.coerce.date(),
+    }),
+  ),
   /** O que o usuário atual pode fazer (a API confere de novo em cada ação). */
   permissoes: z.object({ alterar: z.boolean(), produtos: z.boolean() }),
+  /** Faltas para concluir (vazia = pode concluir, se estiver em execução). */
+  pendenciasConclusao: z.array(z.string()),
   criadaPor: z.string().nullable(),
   versao: z.number(),
   /** Avisos da última gravação (quantidades arredondadas). */
@@ -283,6 +444,10 @@ export const ordemServicoFiltroSchema = z.object({
   veiculoId: idFiltro,
   vendedorId: idFiltro,
   mecanicoId: idFiltro,
+  /** Só as em aberto (tela do mecânico). */
+  abertas: z.enum(['', 'true']).optional(),
+  /** Só as com solicitação de peça pendente. */
+  pecaPendente: z.enum(['', 'true']).optional(),
   /** Período da abertura (extremos inclusivos). */
   desde: dataFiltro,
   ate: dataFiltro,

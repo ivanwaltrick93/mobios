@@ -20,6 +20,7 @@ import {
   Users,
   Wallet,
   Warehouse,
+  Wrench,
   X,
   type LucideIcon,
 } from 'lucide-react';
@@ -44,6 +45,8 @@ type ItemMenu = {
   somenteAdmin?: boolean;
   /** Também aparece para o vendedor ativo, mesmo sem o módulo na matriz (ex.: Orçamentos). */
   paraVendedor?: boolean;
+  /** Só para o mecânico (função com o parâmetro MECÂNICO, sem ser Administrador nem vendedor). */
+  paraMecanico?: boolean;
   /** Submenu que abre e fecha (collapse) no menu lateral. Filho com `modulo` só aparece para quem o acessa. */
   filhos?: { para: string; rotulo: string; modulo?: ModuloId }[];
 };
@@ -85,6 +88,7 @@ const menu: ItemMenu[] = [
     ],
   },
   { para: '/estoque', rotulo: 'Estoque', icone: Warehouse, modulo: 'estoque' },
+  { para: '/minhas-ordens-servico', rotulo: 'Minhas O.S.', icone: Wrench, paraMecanico: true },
   { para: '/os', rotulo: 'Ordens de serviço', icone: ClipboardList, modulo: 'os', paraVendedor: true },
   { para: '/financeiro', rotulo: 'Financeiro', icone: Wallet, modulo: 'financeiro' },
   { para: '/relatorios', rotulo: 'Relatórios', icone: BarChart3, modulo: 'relatorios' },
@@ -167,7 +171,9 @@ export function Layout() {
       .filter((item) =>
         item.somenteAdmin
           ? usuario.admin
-          : visivel(item.modulo) || (item.paraVendedor === true && !!sessao.data.vendedorId),
+          : item.paraMecanico
+            ? sessao.data.mecanico
+            : visivel(item.modulo) || (item.paraVendedor === true && !!sessao.data.vendedorId),
       )
       .map((item) => ({ ...item, filhos: item.filhos?.filter((f) => visivel(f.modulo)) }))
       // Grupo sem nenhum filho acessível some do menu.

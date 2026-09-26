@@ -7,6 +7,7 @@ import {
   hojeIso,
   paraMilesimos,
   pendenciasCliente,
+  PARAMETRO_MECANICO,
   pendenciasVeiculo,
   percentualDoItem,
   temAcesso,
@@ -16,10 +17,19 @@ import {
   type ItemOsDados,
   type SituacaoOs,
 } from '@mobios/shared';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { FastifyRequest } from 'fastify';
 import type { Tx } from '../../db/client.js';
-import { clientes, ordensServico, osEventos, osItens, veiculos, vendedores } from '../../db/schema.js';
+import {
+  clientes,
+  ordensServico,
+  osEventos,
+  osItemMecanicos,
+  osItens,
+  users,
+  veiculos,
+  vendedores,
+} from '../../db/schema.js';
 import { ErroHttp } from '../../lib/erros.js';
 import { temEndereco, temResponsavel } from '../clientes/routes.js';
 import { montarItens } from '../orcamentos/regras.js';
@@ -32,6 +42,11 @@ export type LinhaOs = Omit<typeof osItens.$inferInsert, 'tenantId' | 'ordemServi
 type Usuario = FastifyRequest['user'];
 
 // ---------- Quem vê e quem altera (§7) ----------
+
+/** Mecânicos vinculáveis: usuários ativos com uma função ativa que tem o parâmetro MECÂNICO. */
+export const ehMecanico = sql`exists (select 1 from usuario_funcoes uf join funcoes f on f.id = uf.funcao_id
+  join funcao_parametros fp on fp.funcao_id = f.id join parametros_funcao p on p.id = fp.parametro_id
+  where uf.usuario_id = ${users.id} and f.ativa and p.codigo = ${PARAMETRO_MECANICO})`;
 
 /** Entra no módulo: Administrador, qualquer vendedor ou quem consulta O.S. na matriz. */
 export const podeVerOs = (u: Usuario) => u.admin || !!u.vendedorId || temAcesso(u.acessos, 'os');
@@ -273,7 +288,12 @@ export async function montarItensOs(
     if (ehAvulso(i)) {
       const anterior = i.id ? porId.get(i.id) : undefined;
       const base = linhaAvulsa(i, anterior?.avulso ? anterior.id : randomUUID());
-      return { ...base, ordem: n + 1, aprovacao: anterior?.avulso ? anterior.aprovacao : aprovacaoDoNovo };
+      return {
+        ...base,
+        ...execucaoDe(anterior?.avulso ? anterior : undefined),
+        ordem: n + 1,
+        aprovacao: anterior?.avulso ? anterior.aprovacao : aprovacaoDoNovo,
+      };
     }
     const l = doCatalogo[proximoDoCatalogo++]!;
     const anterior = porId.get(l.id);
@@ -283,9 +303,34 @@ export async function montarItensOs(
       avulso: false,
       orcamentoItemId: anterior?.orcamentoItemId ?? null,
       aprovacao: anterior && !anterior.avulso ? anterior.aprovacao : aprovacaoDoNovo,
+      ...execucaoDe(anterior && !anterior.avulso ? anterior : undefined),
     };
   });
   return { linhas, avisos };
+}
+
+/** O item regravado mantém a confirmação de execução. */
+const execucaoDe = (anterior: ItemOsGravado | undefined) => ({
+  executadoEm: anterior?.executadoEm ?? null,
+  executadoPor: anterior?.executadoPor ?? null,
+});
+
+/**
+ * Serviço já executado não muda nem sai na gravação dos itens (OS-22): para corrigir, desfaz-se a execução antes.
+ * Quantidade e horas são o que importa; o preço de serviço não se negocia.
+ */
+export function exigirExecutadosIntactos(gravados: ItemOsGravado[], linhas: LinhaOs[]) {
+  const porId = new Map(linhas.map((l) => [l.id, l]));
+  for (const g of gravados.filter((x) => x.executadoEm)) {
+    const l = porId.get(g.id);
+    const igual =
+      l && Number(l.quantidade ?? 0) === Number(g.quantidade ?? 0) && (l.tempoMinutos ?? 0) === (g.tempoMinutos ?? 0);
+    if (!igual)
+      throw new ErroHttp(
+        409,
+        `O serviço "${g.descricao}" já foi executado: desfaça a execução para alterá-lo ou removê-lo.`,
+      );
+  }
 }
 
 /** Assinatura dos produtos (catálogo e avulsos): mudou sem "Peças na O.S.", a gravação é recusada. */
@@ -300,9 +345,38 @@ export const assinaturaDosProdutos = (
   );
 
 /** Troca os itens da O.S. (a O.S. já está travada e em situação que aceita mudança). */
+/** Regrava os itens (mesmos ids); os mecânicos atribuídos aos serviços que continuam são mantidos. */
 export async function gravarItensOs(tx: Tx, ordemServicoId: string, linhas: LinhaOs[]) {
+  const ids = linhas.map((l) => l.id);
+  const atribuicoes = ids.length
+    ? await tx
+        .select({ osItemId: osItemMecanicos.osItemId, usuarioId: osItemMecanicos.usuarioId })
+        .from(osItemMecanicos)
+        .innerJoin(osItens, eq(osItens.id, osItemMecanicos.osItemId))
+        .where(and(eq(osItens.ordemServicoId, ordemServicoId), inArray(osItemMecanicos.osItemId, ids)))
+    : [];
   await tx.delete(osItens).where(eq(osItens.ordemServicoId, ordemServicoId));
   if (linhas.length) await tx.insert(osItens).values(linhas.map((l) => ({ ...l, ordemServicoId })));
+  if (atribuicoes.length) await tx.insert(osItemMecanicos).values(atribuicoes);
+}
+
+/**
+ * O que falta para concluir a O.S. (OS-R11), na ordem em que a tela mostra: itens pendentes de aprovação do cliente,
+ * serviços aprovados sem execução confirmada e solicitações de peça sem resposta. Vazia = pode concluir.
+ */
+export function pendenciasDaConclusao(
+  itens: Pick<ItemOsGravado, 'tipo' | 'aprovacao' | 'executadoEm' | 'descricao'>[],
+  solicitacoesPendentes: number,
+) {
+  const pendencias: string[] = [];
+  if (!itens.some((i) => i.tipo === 'servico')) pendencias.push('Inclua ao menos um serviço.');
+  const semAprovacao = itens.filter((i) => i.aprovacao === 'pendente').length;
+  if (semAprovacao) pendencias.push(`${semAprovacao} item(ns) aguardando a aprovação do cliente.`);
+  const naoExecutados = itens.filter((i) => i.tipo === 'servico' && i.aprovacao === 'aprovado' && !i.executadoEm);
+  if (naoExecutados.length)
+    pendencias.push(`Serviço(s) sem execução confirmada: ${naoExecutados.map((i) => i.descricao).join(', ')}.`);
+  if (solicitacoesPendentes) pendencias.push(`${solicitacoesPendentes} solicitação(ões) de peça sem resposta.`);
+  return pendencias;
 }
 
 export const itensDaOs = (tx: Tx, ordemServicoId: string) =>

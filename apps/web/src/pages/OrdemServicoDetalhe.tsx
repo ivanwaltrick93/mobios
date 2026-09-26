@@ -20,10 +20,13 @@ import { useState, type ReactNode } from 'react';
 import { useForm } from 'react-hook-form';
 import { Link, useParams } from 'react-router';
 import type { z } from 'zod';
+import { ExecucaoOs } from '../components/ExecucaoOs';
 import { ItensOrcamento } from '../components/ItensOrcamento';
 import { AvisoAprovacaoComercial, PrecoNegociado, Totais } from '../components/Orcamento';
 import { ItensAvulsos, SeloSituacaoOs } from '../components/OrdemServico';
+import { ChecklistOs, DiagnosticoOs, FotosOs } from '../components/RecepcaoOs';
 import {
+  Abas,
   Alerta,
   AreaTexto,
   Aviso,
@@ -86,7 +89,10 @@ type Acao =
   | 'iniciar-execucao'
   | 'aguardar-peca'
   | 'retomar'
+  | 'concluir'
   | 'cancelar';
+
+type Aba = 'itens' | 'execucao' | 'recepcao' | 'fotos' | 'diagnostico' | 'dados' | 'historico';
 
 type Variante = 'primario' | 'secundario' | 'perigo' | 'sucesso';
 
@@ -153,6 +159,13 @@ const ACOES: Record<
     variante: 'primario',
     texto: 'A peça chegou: o serviço volta à execução.',
   },
+  concluir: {
+    rotulo: 'Concluir',
+    de: ['em_execucao'],
+    icone: <CheckCircle2 className="mr-1.5 size-4" aria-hidden />,
+    variante: 'sucesso',
+    texto: 'Todos os serviços foram executados: a O.S. fica concluída e sai das O.S. em aberto. A entrega vem depois.',
+  },
   cancelar: {
     rotulo: 'Cancelar O.S.',
     de: SITUACOES_OS_EM_ABERTO,
@@ -170,11 +183,15 @@ function acoesPossiveis(o: OrdemServico): Acao[] {
     if (!ACOES[a].de.includes(o.situacao)) return false;
     if (a === 'solicitar-aprovacao') return pendentes;
     if (a === 'iniciar-execucao') return o.itens.length > 0 && !pendentes;
+    if (a === 'concluir') return o.pendenciasConclusao.length === 0;
     return true;
   });
 }
 
-/** Detalhe da O.S. (OS-01, OS-05, OS-06): cabeçalho, ações da situação, itens, mecânicos e histórico. */
+/**
+ * Detalhe da O.S. (OS-01 a OS-06): cabeçalho com as ações da situação e abas de itens, recepção (checklist), fotos,
+ * diagnóstico, dados e mecânicos e histórico.
+ */
 export function OrdemServicoDetalhe() {
   const { id } = useParams() as { id: string };
   const perfil = usePerfilOs();
@@ -184,6 +201,8 @@ export function OrdemServicoDetalhe() {
   const [motivo, setMotivo] = useState('');
   const [editandoDados, setEditandoDados] = useState(false);
   const [editandoItens, setEditandoItens] = useState(false);
+  // O mecânico chega pela execução; os demais, pelos itens.
+  const [aba, setAba] = useState<Aba>(perfil.mecanico ? 'execucao' : 'itens');
   const [avisos, setAvisos] = useState<string[]>([]);
   const guardar = (o: OrdemServico) => {
     queryClient.setQueryData(['ordens-servico', id], o);
@@ -254,39 +273,90 @@ export function OrdemServicoDetalhe() {
             Cancelada em {dataHora(o.canceladaEm)} — {o.motivoCancelamento}.
           </Alerta>
         )}
+        {o.situacao === 'em_execucao' && o.pendenciasConclusao.length > 0 && (
+          <Aviso>
+            Para concluir: {o.pendenciasConclusao.join(' ')}{' '}
+            <button type="button" className="font-medium underline" onClick={() => setAba('execucao')}>
+              Ver execução
+            </button>
+          </Aviso>
+        )}
+        {o.concluidaEm && (
+          <TextoSuave>
+            Concluída em {dataHora(o.concluidaEm)} por {o.concluidaPor ?? '—'}.
+          </TextoSuave>
+        )}
         <Alerta>{acao.isError && !confirmando && acao.error.message}</Alerta>
       </CabecalhoObjeto>
 
-      <Cartao className="p-5">
-        <Secao
-          titulo="Serviços e produtos"
-          acao={
-            podeEditarItens &&
-            !editandoItens && (
-              <Botao variante="secundario" onClick={() => setEditandoItens(true)}>
-                <Pencil className="mr-1.5 size-4" aria-hidden /> Editar itens
-              </Botao>
-            )
-          }
-        >
-          <Aviso>{avisos.length > 0 && avisos.join(' ')}</Aviso>
-          {editandoItens ? (
-            <EdicaoItens
-              os={o}
-              aoSalvar={(salva) => {
-                guardar(salva);
-                setAvisos(salva.avisos);
-                setEditandoItens(false);
-              }}
-              aoCancelar={() => setEditandoItens(false)}
-            />
-          ) : (
-            <ItensDaOs os={o} />
-          )}
-        </Secao>
-      </Cartao>
+      <Abas
+        abas={[
+          { id: 'itens', rotulo: 'Serviços e produtos', contagem: o.itens.length },
+          { id: 'execucao', rotulo: 'Execução', contagem: o.pecasSolicitadas || undefined },
+          { id: 'recepcao', rotulo: 'Recepção' },
+          { id: 'fotos', rotulo: 'Fotos', contagem: o.fotos.length },
+          { id: 'diagnostico', rotulo: 'Diagnóstico' },
+          { id: 'dados', rotulo: 'Dados e mecânicos' },
+          { id: 'historico', rotulo: 'Histórico' },
+        ]}
+        atual={aba}
+        aoTrocar={setAba}
+      />
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      {/* Abas escondidas, não desmontadas: a edição em andamento numa aba não se perde ao trocar. */}
+      <div hidden={aba !== 'execucao'}>
+        <Cartao className="p-5">
+          <ExecucaoOs os={o} aoSalvar={guardar} />
+        </Cartao>
+      </div>
+      <div hidden={aba !== 'recepcao'}>
+        <Cartao className="p-5">
+          <ChecklistOs os={o} podeAlterar={alterar && emAberto} aoSalvar={guardar} />
+        </Cartao>
+      </div>
+      <div hidden={aba !== 'fotos'}>
+        <Cartao className="p-5">
+          <FotosOs os={o} podeAlterar={alterar && emAberto} aoSalvar={guardar} />
+        </Cartao>
+      </div>
+      <div hidden={aba !== 'diagnostico'}>
+        <Cartao className="p-5">
+          <DiagnosticoOs os={o} podeAlterar={alterar && emAberto} aoSalvar={guardar} />
+        </Cartao>
+      </div>
+
+      <div hidden={aba !== 'itens'}>
+        <Cartao className="p-5">
+          <Secao
+            titulo="Serviços e produtos"
+            acao={
+              podeEditarItens &&
+              !editandoItens && (
+                <Botao variante="secundario" onClick={() => setEditandoItens(true)}>
+                  <Pencil className="mr-1.5 size-4" aria-hidden /> Editar itens
+                </Botao>
+              )
+            }
+          >
+            <Aviso>{avisos.length > 0 && avisos.join(' ')}</Aviso>
+            {editandoItens ? (
+              <EdicaoItens
+                os={o}
+                aoSalvar={(salva) => {
+                  guardar(salva);
+                  setAvisos(salva.avisos);
+                  setEditandoItens(false);
+                }}
+                aoCancelar={() => setEditandoItens(false)}
+              />
+            ) : (
+              <ItensDaOs os={o} />
+            )}
+          </Secao>
+        </Cartao>
+      </div>
+
+      <div hidden={aba !== 'dados'} className="grid gap-4 lg:grid-cols-2">
         <Cartao className="p-5">
           <Secao
             titulo="Dados"
@@ -328,25 +398,27 @@ export function OrdemServicoDetalhe() {
         </Cartao>
       </div>
 
-      <Cartao className="p-5">
-        <Secao titulo="Histórico">
-          <ul className="space-y-2 text-sm">
-            {o.eventos.map((e, n) => (
-              <li key={n} className="flex flex-wrap gap-x-2">
-                <span className="whitespace-nowrap text-texto-suave">{dataHora(e.criadoEm)}</span>
-                <span className="font-medium">{EVENTOS_OS[e.evento]}</span>
-                {e.situacaoAnterior && e.situacaoNova && (
-                  <span className="text-texto-suave">
-                    ({SITUACOES_OS[e.situacaoAnterior]} → {SITUACOES_OS[e.situacaoNova]})
-                  </span>
-                )}
-                {e.usuario && <span className="text-texto-suave">por {e.usuario}</span>}
-                {e.detalhe && <span className="w-full text-texto-suave sm:w-auto">— {e.detalhe}</span>}
-              </li>
-            ))}
-          </ul>
-        </Secao>
-      </Cartao>
+      <div hidden={aba !== 'historico'}>
+        <Cartao className="p-5">
+          <Secao titulo="Histórico">
+            <ul className="space-y-2 text-sm">
+              {o.eventos.map((e, n) => (
+                <li key={n} className="flex flex-wrap gap-x-2">
+                  <span className="whitespace-nowrap text-texto-suave">{dataHora(e.criadoEm)}</span>
+                  <span className="font-medium">{EVENTOS_OS[e.evento]}</span>
+                  {e.situacaoAnterior && e.situacaoNova && (
+                    <span className="text-texto-suave">
+                      ({SITUACOES_OS[e.situacaoAnterior]} → {SITUACOES_OS[e.situacaoNova]})
+                    </span>
+                  )}
+                  {e.usuario && <span className="text-texto-suave">por {e.usuario}</span>}
+                  {e.detalhe && <span className="w-full text-texto-suave sm:w-auto">— {e.detalhe}</span>}
+                </li>
+              ))}
+            </ul>
+          </Secao>
+        </Cartao>
+      </div>
 
       {editandoDados && <JanelaDados os={o} aoSalvar={guardar} aoFechar={() => setEditandoDados(false)} />}
 
